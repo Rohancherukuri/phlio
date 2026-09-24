@@ -1,0 +1,10 @@
+[package]
+name = "phlio-risk-features"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+phlio-common = { path = "../common" }
+serde = { version = "1", features = ["derive"] }
+log = "0.4"

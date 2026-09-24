@@ -1,0 +1,69 @@
+[project]
+name = "phlio-backend"
+version = "0.1.0"
+description = "Phlio backend API — modular-monolith FastAPI service (identity, social, rooms, art, agent)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "pyjwt>=2.9.0",
+    "bcrypt>=4.2.0",
+    "python-multipart>=0.0.12",
+    "email-validator>=2.2.0",
+    "anthropic>=0.39.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+# Only needed when DATABASE_BACKEND=surreal. Kept optional so the default
+# in-memory backend has zero external-database dependencies to install.
+# Install with: uv sync --extra surreal
+surreal = [
+    "surrealdb>=0.3.2",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    # FastAPI's dependency-injection pattern is `param: T = Depends(...)`
+    # by design — the call is deliberately evaluated once per request by
+    # FastAPI's own machinery, not a mutable-default-argument bug.
+    "B008",
+    # Keep `class Page(BaseModel, Generic[T])` rather than PEP 695
+    # `class Page[T]` — broader compatibility with tooling around Pydantic
+    # generics than the newer syntax currently offers.
+    "UP046",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

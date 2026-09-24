@@ -1,0 +1,30 @@
+# -- Rust ------------------------------------------------------------------
+phlio_core/target/
+**/*.rs.bk
+
+# -- Python / backend -----------------------------------------------------
+backend/.venv/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+.env
+backend/.env
+
+# -- Flutter / Dart --------------------------------------------------------
+frontend/ui/.dart_tool/
+frontend/ui/.flutter-plugins
+frontend/ui/.flutter-plugins-dependencies
+frontend/ui/build/
+frontend/ui/.packages
+frontend/ui/pubspec.lock
+frontend/ui/*.iml
+frontend/ui/.idea/
+
+# -- Editors / OS -----------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp

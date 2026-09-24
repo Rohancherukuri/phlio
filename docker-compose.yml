@@ -1,0 +1,74 @@
+# Phlio — Docker Compose
+#
+# Two ways to run this:
+#
+#   1. Quickstart (default, zero extra services):
+#        docker compose up --build
+#      Starts only the `backend` service with DATABASE_BACKEND=memory —
+#      seeded in-process data, nothing else to configure. This is the
+#      fastest way to get the API up and point the Flutter app at it.
+#
+#   2. Full stack (SurrealDB-backed):
+#        docker compose --profile full up --build
+#      Additionally starts `surrealdb` and `redis`, and switches the
+#      backend to DATABASE_BACKEND=surreal. Note: `redis` is started for
+#      forward compatibility with the caching/session layer described in
+#      docs/architecture/phlio_architecture.md — the backend code in this
+#      build stage does not yet call it for anything.
+#
+# The Flutter app is not part of this compose file — see
+# frontend/ui/flutter/README.md to run it with `flutter run`.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_BACKEND: ${DATABASE_BACKEND:-memory}
+      SURREAL_URL: ws://surrealdb:8000/rpc
+      SURREAL_NAMESPACE: phlio
+      SURREAL_DATABASE: phlio
+      SURREAL_USER: root
+      SURREAL_PASSWORD: root
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-dev-only-change-me}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No `depends_on` here on purpose: `surrealdb`/`redis` only exist under
+    # the "full" profile, and referencing a profile-gated service from an
+    # always-on one trips up some Compose versions. The backend connects to
+    # SurrealDB eagerly at startup (not lazily), so on a cold `--profile
+    # full up` it can occasionally win the race and fail before SurrealDB
+    # is accepting connections yet — if that happens, `docker compose
+    # --profile full restart backend` once SurrealDB is up.
+
+  surrealdb:
+    image: surrealdb/surrealdb:v1.5.4
+    profiles: ["full"]
+    command: start --user root --pass root rocksdb:/data/phlio.db
+    ports:
+      - "8001:8000"
+    volumes:
+      - surrealdb-data:/data
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["full"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  surrealdb-data:
+  redis-data:

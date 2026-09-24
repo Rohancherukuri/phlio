@@ -1,0 +1,18 @@
+[package]
+name = "phlio-core-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "phlio-core"
+path = "src/main.rs"
+
+[dependencies]
+phlio-common = { path = "../crates/common" }
+phlio-crypto = { path = "../crates/crypto" }
+phlio-risk-features = { path = "../crates/risk_features" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"

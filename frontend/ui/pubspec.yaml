@@ -1,0 +1,66 @@
+name: phlio
+description: >
+  Phlio — People. Places. Possibilities. Flutter client implementing the
+  Home, Auth, Social, Rooms, Art, and Phlio Agent surfaces on top of the
+  Phlio backend API.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+# NOTE for whoever runs this: `flutter pub get` needs network access to
+# pub.dev, which the sandbox this project was scaffolded in does not have.
+# Every dependency below is deliberately a well-known, actively maintained
+# package — run `flutter pub get` locally to fetch them before building.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # -- State management --------------------------------------------------
+  flutter_riverpod: ^2.6.1
+
+  # -- Routing --------------------------------------------------------------
+  go_router: ^14.6.2
+
+  # -- Networking -------------------------------------------------------------
+  dio: ^5.7.0
+
+  # -- Dependency injection (service locator for repositories/data sources) --
+  get_it: ^8.0.2
+
+  # -- Local secure storage (JWT access/refresh tokens) ------------------
+  flutter_secure_storage: ^9.2.2
+
+  # -- Icons matching the reference UI's outline icon style ----------------
+  cupertino_icons: ^1.0.8
+
+  # -- Rendering the Twemoji mascot asset (assets/agent/fox.svg) -----------
+  flutter_svg: ^2.0.10+1
+
+  # -- Value equality for entities/state classes without code generation --
+  equatable: ^2.0.5
+
+  # -- Relative timestamps ("2h ago") in feeds/rooms/agent chat -----------
+  timeago: ^3.7.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # Lightweight mocking for repository/use-case unit tests (see test/) —
+  # chosen over `mockito` because it needs no code generation step, which
+  # matters here since this project was scaffolded without pub.dev access
+  # to run `build_runner`.
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+
+  # Populate these directories with real brand assets (the Phlio wordmark,
+  # the fox mascot in its various poses, category icons) before shipping —
+  # see assets/README.md. Left as empty, tracked directories for now so the
+  # app runs without missing-asset build errors.
+  assets:
+    - assets/images/
+    - assets/agent/

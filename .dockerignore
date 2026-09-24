@@ -1,0 +1,9 @@
+**/.venv
+**/__pycache__
+**/*.pyc
+**/target
+backend/tests
+frontend
+.git
+*.md
+!backend/README.md

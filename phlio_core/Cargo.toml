@@ -1,0 +1,43 @@
+# Phlio Core Engine — Cargo workspace
+#
+# This workspace hosts the performance- and security-critical primitives that
+# back the rest of the Phlio platform (per Phlio_Production_Architecture.md,
+# section 39: "Rust should only be introduced where profiling or security
+# requirements justify it"). Today that means deterministic ID generation,
+# HMAC signing/verification, and rule-based risk scoring — the pieces that
+# benefit most from a memory-safe, dependency-light, easily-audited engine.
+#
+# Crates:
+#   crates/common        Shared value types and error handling used by every
+#                         other crate in the workspace.
+#   crates/crypto         Signing, verification and secure ID generation.
+#   crates/risk_features   Deterministic fraud/risk scoring primitives.
+#   cli                    A thin binary that exposes the crates above as a
+#                          JSON-in / JSON-out command line tool, which the
+#                          Python backend invokes as a local sidecar process
+#                          (see backend/app/infrastructure/core_engine).
+#
+# Future crates (transaction_engine, offline_payment, serialization) are
+# intentionally left out of this initial build — they belong to Stage 5
+# (Payments) of the recommended build strategy and should be added as their
+# own workspace members without touching the crates already here.
+[workspace]
+resolver = "2"
+members = [
+    "crates/common",
+    "crates/crypto",
+    "crates/risk_features",
+    "cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Phlio Engineering"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
