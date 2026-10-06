@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.domains.book.entities import BookListing
+from app.domains.book.service import BookService
 from app.domains.rooms.entities import Room
 from app.domains.rooms.service import RoomsService
 from app.domains.shop.entities import Product
@@ -66,6 +68,18 @@ TOOL_SPECS: list[dict] = [
             },
         },
     },
+    {
+        "name": "search_listings",
+        "description": "Find bookable experiences (movies, dinners, activities) "
+        "on Phlio Book under a maximum price.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "max_price_minor_units": {"type": "integer"},
+                "limit": {"type": "integer", "default": 3},
+            },
+        },
+    },
 ]
 
 
@@ -81,6 +95,7 @@ class AgentTools:
     rooms_service: RoomsService
     shop_service: ShopService
     social_service: SocialService
+    book_service: BookService
 
     async def search_rooms(self, *, category: str | None = None, limit: int = 3) -> list[Room]:
         from app.domains.rooms.entities import RoomCategory
@@ -110,3 +125,14 @@ class AgentTools:
         if tag:
             posts = [p for p in posts if tag.lower() in p.tags] or posts[:limit]
         return posts[:limit]
+
+    async def search_listings(
+        self, *, max_price_minor_units: int | None = None, limit: int = 3
+    ) -> list[BookListing]:
+        listings, _ = await self.book_service.browse(
+            category=None,
+            max_price_minor_units=max_price_minor_units,
+            cursor=None,
+            limit=limit,
+        )
+        return listings

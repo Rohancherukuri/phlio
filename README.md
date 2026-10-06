@@ -123,7 +123,7 @@ every available flag:
 # Android emulator (10.0.2.2 reaches the host machine's localhost)
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
 
-# For ActualAndroid device 
+# For Actual Android device 
 flutter run --dart-define=API_BASE_URL=http://192.168.1.6:8000/api/v1
 ```
 

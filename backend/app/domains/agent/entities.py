@@ -16,6 +16,7 @@ class PlanItemKind(StrEnum):
     ROOM = "room"
     PRODUCT = "product"
     POST = "post"
+    BOOK = "book"
 
 
 @dataclass(slots=True, frozen=True)

@@ -71,3 +71,27 @@ async def test_comment_on_missing_post_is_404(client: AsyncClient, auth_headers:
         json={"text": "Hi"},
     )
     assert response.status_code == 404
+
+
+async def test_comment_with_sticker(client, auth_headers):
+    """Comments accept a Foxy sticker id (blueprint section 16)."""
+    response = await client.post(
+        "/api/v1/social/posts/pst_seed_1/comments",
+        json={"text": "", "sticker_id": "wave"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["sticker_id"] == "wave"
+
+    listed = await client.get("/api/v1/social/posts/pst_seed_1/comments", headers=auth_headers)
+    assert any(c["sticker_id"] == "wave" for c in listed.json()["items"])
+
+
+async def test_comment_with_unknown_sticker_rejected(client, auth_headers):
+    response = await client.post(
+        "/api/v1/social/posts/pst_seed_1/comments",
+        json={"text": "", "sticker_id": "not_a_fox"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422

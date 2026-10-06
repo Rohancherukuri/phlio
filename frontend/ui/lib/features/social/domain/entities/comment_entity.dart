@@ -8,6 +8,7 @@ class CommentEntity extends Equatable {
     required this.postId,
     required this.authorId,
     required this.text,
+    this.stickerId,
     required this.createdAt,
   });
 
@@ -15,8 +16,12 @@ class CommentEntity extends Equatable {
   final String postId;
   final String authorId;
   final String text;
+
+  /// Optional Foxy sticker (`PhlioStickers` catalog id) attached to the
+  /// comment — see blueprint section 16.
+  final String? stickerId;
   final DateTime createdAt;
 
   @override
-  List<Object?> get props => [id, postId, authorId, text, createdAt];
+  List<Object?> get props => [id, postId, authorId, text, stickerId, createdAt];
 }

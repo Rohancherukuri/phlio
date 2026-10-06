@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/result/result.dart';
+import '../../domain/entities/comment_entity.dart';
 import '../../domain/entities/post_entity.dart';
 import '../../domain/repositories/social_repository.dart';
 import '../../domain/usecases/add_comment_usecase.dart';
@@ -37,6 +38,15 @@ class FeedState {
 final socialRepositoryProvider = Provider<SocialRepository>((ref) => getIt<SocialRepository>());
 
 final feedControllerProvider = AsyncNotifierProvider<FeedController, FeedState>(FeedController.new);
+
+/// Comments for one post, fetched when the comments sheet opens. Invalidated
+/// after every successful add so the list refetches with the new comment.
+final commentsProvider = FutureProvider.autoDispose
+    .family<List<CommentEntity>, String>((ref, postId) async {
+  final repository = ref.watch(socialRepositoryProvider);
+  final result = await repository.getComments(postId);
+  return result.when(success: (page) => page.items, failure: (failure) => throw failure);
+});
 
 class FeedController extends AsyncNotifier<FeedState> {
   late final GetFeedUseCase _getFeedUseCase;
@@ -130,10 +140,15 @@ class FeedController extends AsyncNotifier<FeedState> {
     );
   }
 
-  Future<Result<void>> addComment({required String postId, required String text}) async {
-    final result = await _addCommentUseCase(postId: postId, text: text);
+  Future<Result<void>> addComment({
+    required String postId,
+    required String text,
+    String? stickerId,
+  }) async {
+    final result = await _addCommentUseCase(postId: postId, text: text, stickerId: stickerId);
     return result.when(
       success: (_) {
+        ref.invalidate(commentsProvider(postId));
         final current = state.valueOrNull;
         if (current != null) {
           final updated = [

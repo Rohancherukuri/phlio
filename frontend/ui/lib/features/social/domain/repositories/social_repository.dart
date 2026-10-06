@@ -12,7 +12,7 @@ abstract interface class SocialRepository {
 
   Future<Result<PostEntity>> toggleLike(String postId);
 
-  Future<Result<CommentEntity>> addComment({required String postId, required String text});
+  Future<Result<CommentEntity>> addComment({required String postId, required String text, String? stickerId});
 
   Future<Result<PaginatedResponse<CommentEntity>>> getComments(String postId, {String? cursor});
 }

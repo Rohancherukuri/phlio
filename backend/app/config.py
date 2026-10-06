@@ -15,6 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +48,17 @@ class Settings(BaseSettings):
     surreal_password: str = "root"
 
     redis_url: str = "redis://localhost:6379/0"
+
+    # Room file uploads stream here (see app/infrastructure/media_storage.py)
+    # and are served back under /media by StaticFiles in main.py.
+    media_root: str = "media"
+
+    social_video_database: str = 'data/social_videos.sqlite3'
+    messaging_database: str = 'data/messages.sqlite3'
+    messaging_media_root: str = 'data/dm_files'
+    calls_ice_servers: list[dict] = Field(
+        default_factory=lambda: [{'urls': 'stun:stun.l.google.com:19302'}]
+    )
 
     # --- Auth --------------------------------------------------------------
     jwt_secret: str = "dev-only-change-me-dev-only-change-me"

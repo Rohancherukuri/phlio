@@ -2,14 +2,18 @@
 // screen's plan card: a list of recommended items, an estimated total, and
 // a gradient "Book This Plan" CTA.
 //
-// The CTA is intentionally inert in this build stage (shows a "coming
-// soon" message) rather than silently doing nothing or, worse, pretending
-// to book something — payments/booking are a later build stage, and the
-// agent must never imply it took an action it didn't (see
-// `backend/app/domains/agent/service.py`'s guardrail docstring).
+// The CTA opens Phlio Book — the plan is a preview of bookable listings
+// (the backend's planner only ever assembles plans from real Book data),
+// and the actual booking confirmation happens inside the Book flow where
+// date/time/participants are chosen explicitly. The agent never books
+// anything without that step (see `backend/app/domains/agent/service.py`'s
+// guardrail docstring).
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../app/platform/phlio_platform.dart';
+import '../../../../app/shell/platform_home_screen.dart' show switchPlatform;
 import '../../../../design_system/colors.dart';
 import '../../../../design_system/radii.dart';
 import '../../../../design_system/spacing.dart';
@@ -60,11 +64,10 @@ class AgentPlanCard extends StatelessWidget {
           PhlioPrimaryButton(
             label: 'Book This Plan',
             size: PhlioButtonSize.medium,
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Booking is on the roadmap — this plan is a preview for now.'),
-              ),
-            ),
+            onPressed: () {
+              switchPlatform(context, PhlioPlatform.book);
+              context.go('/home');
+            },
           ),
         ],
       ),
@@ -81,6 +84,7 @@ class _PlanItemRow extends StatelessWidget {
         PlanItemKind.room => Icons.groups_rounded,
         PlanItemKind.product => Icons.storefront_rounded,
         PlanItemKind.post => Icons.dynamic_feed_rounded,
+        PlanItemKind.book => Icons.confirmation_number_rounded,
       };
 
   @override
@@ -93,7 +97,7 @@ class _PlanItemRow extends StatelessWidget {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(color: PhlioColors.surfaceInput, borderRadius: PhlioRadii.mdRadius),
-          child: Icon(_icon, size: 18, color: PhlioColors.brandPurple),
+          child: Icon(_icon, size: 18, color: PhlioColors.brandOrange),
         ),
         const SizedBox(width: PhlioSpacing.md),
         Expanded(

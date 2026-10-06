@@ -95,3 +95,12 @@ class SurrealIdentityRepository:
         result = await self._db.merge(record_id, _user_to_row(user))
         row = result[0] if isinstance(result, list) else result
         return _row_to_user(row)
+
+    async def search_users(self, query: str, limit: int = 30) -> list[User]:
+        rows = await self._db.query(
+            "SELECT * FROM user WHERE string::contains(string::lowercase(username), $q) "
+            "OR string::contains(string::lowercase(full_name), $q) LIMIT $limit",
+            {"q": query.lower().lstrip("@"), "limit": limit},
+        )
+        records = rows[0]["result"] if rows and rows[0].get("result") else []
+        return [_row_to_user(row) for row in records]

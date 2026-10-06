@@ -1,18 +1,16 @@
 name: phlio
 description: >
   Phlio — People. Places. Possibilities. Flutter client implementing the
-  Home, Auth, Social, Rooms, Art, and Phlio Agent surfaces on top of the
-  Phlio backend API.
+  Home, Auth, Social, Rooms, Shop, Book, Pay, Activity, and Foxy (Phlio
+  Agent) surfaces on top of the Phlio backend API.
 publish_to: "none"
 version: 0.1.0+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
 
-# NOTE for whoever runs this: `flutter pub get` needs network access to
-# pub.dev, which the sandbox this project was scaffolded in does not have.
-# Every dependency below is deliberately a well-known, actively maintained
-# package — run `flutter pub get` locally to fetch them before building.
+# Every dependency below is a well-known, actively maintained package.
+# Run `flutter pub get` once after cloning to fetch them before building.
 dependencies:
   flutter:
     sdk: flutter
@@ -35,32 +33,78 @@ dependencies:
   # -- Icons matching the reference UI's outline icon style ----------------
   cupertino_icons: ^1.0.8
 
-  # -- Rendering the Twemoji mascot asset (assets/agent/fox.svg) -----------
-  flutter_svg: ^2.0.10+1
-
   # -- Value equality for entities/state classes without code generation --
   equatable: ^2.0.5
 
-  # -- Relative timestamps ("2h ago") in feeds/rooms/agent chat -----------
+  # -- Relative timestamps ("2h ago") in feeds/rooms/activity/agent chat --
   timeago: ^3.7.0
+
+  # -- QR scanning for Phlio Pay's scan-and-pay flow (CameraX on Android) --
+  mobile_scanner: ^7.4.2
+  file_picker: ^11.0.3
+  record: ^6.2.1
+  audioplayers: ^6.7.1
+  image_picker: ^1.2.3
+  image_cropper: ^12.2.1
+  path_provider: ^2.1.6
+  flutter_webrtc: ^1.6.2+hotfix.3
+  video_player: ^2.11.1
+  pdfrx: ^2.2.24
+  archive: ^4.3.0
+  xml: ^6.6.1
+  video_player_win: ^3.3.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   # Lightweight mocking for repository/use-case unit tests (see test/) —
-  # chosen over `mockito` because it needs no code generation step, which
-  # matters here since this project was scaffolded without pub.dev access
-  # to run `build_runner`.
+  # chosen over `mockito` because it needs no code generation step.
   mocktail: ^1.0.4
 
 flutter:
   uses-material-design: true
 
-  # Populate these directories with real brand assets (the Phlio wordmark,
-  # the fox mascot in its various poses, category icons) before shipping —
-  # see assets/README.md. Left as empty, tracked directories for now so the
-  # app runs without missing-asset build errors.
+  # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker
+  # pack, the Foxy emoji/costume/text-sticker/GIF pack (sliced from the
+  # asset sheet by scripts/media/build_foxy_asset_pack.py) and looping
+  # mascot GIFs.
   assets:
     - assets/images/
+    - assets/images/foxy/
+    - assets/images/logo/
+    - assets/images/placeholders/social/
+    - assets/images/placeholders/shop/
+    - assets/images/placeholders/book/
     - assets/agent/
+    - assets/stickers/
+    - assets/emoji/
+    - assets/animations/
+    - assets/audio/
+
+  # Bundled brand typography (assets/fonts/):
+  #   Manrope   — the UI workhorse (body copy, labels, buttons)
+  #   Quicksand — rounded display face (wordmark, splash/login headlines)
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/manrope-v20-latin-regular.ttf
+          weight: 400
+        - asset: assets/fonts/manrope-v20-latin-500.ttf
+          weight: 500
+        - asset: assets/fonts/manrope-v20-latin-600.ttf
+          weight: 600
+        - asset: assets/fonts/manrope-v20-latin-700.ttf
+          weight: 700
+        - asset: assets/fonts/manrope-v20-latin-800.ttf
+          weight: 800
+    - family: Quicksand
+      fonts:
+        - asset: assets/fonts/quicksand-v37-latin-regular.ttf
+          weight: 400
+        - asset: assets/fonts/quicksand-v37-latin-500.ttf
+          weight: 500
+        - asset: assets/fonts/quicksand-v37-latin-600.ttf
+          weight: 600
+        - asset: assets/fonts/quicksand-v37-latin-700.ttf
+          weight: 700

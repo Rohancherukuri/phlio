@@ -36,4 +36,8 @@ class Comment:
     post_id: str
     author_id: str
     text: str
+    # Optional Foxy sticker (`/stickers` catalog id). Per blueprint section
+    # 16, comments support lightweight visual reactions — text stays the
+    # primary content, the sticker rides along.
+    sticker_id: str | None = None
     created_at: dt.datetime = field(default_factory=lambda: dt.datetime.now(dt.UTC))

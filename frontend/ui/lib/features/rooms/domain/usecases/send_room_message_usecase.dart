@@ -7,7 +7,12 @@ class SendRoomMessageUseCase {
 
   final RoomsRepository _repository;
 
-  Future<Result<RoomMessageEntity>> call({required String roomId, required String text}) {
-    return _repository.sendMessage(roomId: roomId, text: text);
+  Future<Result<RoomMessageEntity>> call({
+    required String roomId,
+    required String text,
+    List<OutgoingAttachment> attachments = const [],
+  }) {
+    return _repository.sendMessage(
+        roomId: roomId, text: text, attachments: attachments);
   }
 }

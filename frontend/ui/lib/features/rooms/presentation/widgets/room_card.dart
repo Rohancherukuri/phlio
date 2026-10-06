@@ -48,7 +48,8 @@ class RoomCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Icon(Icons.groups_outlined, size: 16, color: PhlioColors.textMuted),
+              const Icon(Icons.groups_outlined,
+                  size: 16, color: PhlioColors.textMuted),
               const SizedBox(height: 2),
               Text('${room.memberCount}', style: PhlioTypography.caption),
             ],

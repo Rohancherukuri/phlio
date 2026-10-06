@@ -19,8 +19,8 @@ abstract final class AppTheme {
       colorScheme: base.colorScheme.copyWith(
         brightness: Brightness.dark,
         surface: PhlioColors.surface,
-        primary: PhlioColors.brandPurple,
-        secondary: PhlioColors.brandOrange,
+        primary: PhlioColors.brandOrange,
+        secondary: PhlioColors.brandViolet,
         error: PhlioColors.danger,
       ),
       textTheme: base.textTheme.copyWith(

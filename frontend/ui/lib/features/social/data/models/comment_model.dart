@@ -6,6 +6,7 @@ class CommentModel {
     required this.postId,
     required this.authorId,
     required this.text,
+    this.stickerId,
     required this.createdAt,
   });
 
@@ -14,7 +15,8 @@ class CommentModel {
       id: json['id'] as String,
       postId: json['post_id'] as String,
       authorId: json['author_id'] as String,
-      text: json['text'] as String,
+      text: json['text'] as String? ?? '',
+      stickerId: json['sticker_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -23,8 +25,15 @@ class CommentModel {
   final String postId;
   final String authorId;
   final String text;
+  final String? stickerId;
   final DateTime createdAt;
 
-  CommentEntity toEntity() =>
-      CommentEntity(id: id, postId: postId, authorId: authorId, text: text, createdAt: createdAt);
+  CommentEntity toEntity() => CommentEntity(
+        id: id,
+        postId: postId,
+        authorId: authorId,
+        text: text,
+        stickerId: stickerId,
+        createdAt: createdAt,
+      );
 }

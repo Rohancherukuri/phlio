@@ -28,3 +28,6 @@ frontend/ui/.idea/
 .vscode/
 .idea/
 *.swp
+
+# Private messages and attachment storage
+backend/data/

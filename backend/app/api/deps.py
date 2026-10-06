@@ -13,11 +13,14 @@ from fastapi import Depends, Header, Request
 
 from app.common.exceptions import UnauthorizedError
 from app.core.container import Container
+from app.domains.activity.service import ActivityService
 from app.domains.agent.service import AgentService
 from app.domains.agent.tools import AgentTools
+from app.domains.book.service import BookService
 from app.domains.home.service import HomeService
 from app.domains.identity.entities import User
 from app.domains.identity.service import IdentityService
+from app.domains.pay.service import PayService
 from app.domains.rooms.service import RoomsService
 from app.domains.shop.service import ShopService
 from app.domains.social.service import SocialService
@@ -54,12 +57,30 @@ def get_agent_service(container: Container = Depends(get_container)) -> AgentSer
     return container.agent_service
 
 
+def get_book_service(container: Container = Depends(get_container)) -> BookService:
+    return container.book_service
+
+
+def get_pay_service(container: Container = Depends(get_container)) -> PayService:
+    return container.pay_service
+
+
+def get_activity_service(container: Container = Depends(get_container)) -> ActivityService:
+    return container.activity_service
+
+
 def get_agent_tools(
     rooms_service: RoomsService = Depends(get_rooms_service),
     shop_service: ShopService = Depends(get_shop_service),
     social_service: SocialService = Depends(get_social_service),
+    book_service: BookService = Depends(get_book_service),
 ) -> AgentTools:
-    return AgentTools(rooms_service=rooms_service, shop_service=shop_service, social_service=social_service)
+    return AgentTools(
+        rooms_service=rooms_service,
+        shop_service=shop_service,
+        social_service=social_service,
+        book_service=book_service,
+    )
 
 
 async def get_current_user(

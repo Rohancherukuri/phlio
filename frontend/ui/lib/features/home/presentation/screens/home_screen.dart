@@ -1,6 +1,8 @@
-// Home screen — mirrors the reference "2. HOME" screen: greeting, search
-// bar, quick actions grid, the Phlio Agent prompt card, and horizontal
-// "For you" strips pulled from Rooms and Shop.
+// Home screen — the Social platform's home (and Phlio's launcher): the
+// greeting, the platform quick-action grid (mirrored by the App Tray),
+// the Foxy Agent prompt card, and horizontal "For you" strips pulled from
+// Rooms and Shop. Quick actions switch the shell to that platform via
+// `currentPlatformProvider` — platforms are state, not routes.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +17,8 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../design_system/widgets/phlio_fox.dart';
 import '../../../../shared/widgets/error_view.dart';
 import '../../../../shared/widgets/shimmer_loading.dart';
+import '../../../../app/platform/phlio_platform.dart';
+import '../../../../app/shell/platform_home_screen.dart' show switchPlatform;
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../domain/entities/quick_action_entity.dart';
 import '../controllers/home_controller.dart';
@@ -23,28 +27,23 @@ import '../widgets/quick_action_grid.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
-  void _handleQuickAction(BuildContext context, QuickActionEntity action) {
+  void _switchAndGo(BuildContext context, PhlioPlatform platform) {
+    switchPlatform(context, platform);
+    context.go('/home');
+  }
+
+  void _handleQuickAction(BuildContext context, WidgetRef ref, QuickActionEntity action) {
     if (!action.isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${action.label} is coming soon.')),
       );
       return;
     }
-    switch (action.kind) {
-      case QuickActionKind.shop:
-        context.go('/shop');
-      case QuickActionKind.social:
-        context.go('/social');
-      case QuickActionKind.rooms:
-        context.go('/rooms');
-      case QuickActionKind.agent:
-        context.go('/agent');
-      case QuickActionKind.pay:
-      case QuickActionKind.book:
-      case QuickActionKind.stream:
-      case QuickActionKind.news:
-        break; // unreachable: these are always `isAvailable: false` today
-    }
+    final platform = PhlioPlatform.values.firstWhere((p) => p.name == action.kind.name);
+    switchPlatform(context, platform);
+    // The platform's home is the shell's Home tab. Tapping Social here is a
+    // no-op (already home); other platforms land on their own surface.
+    context.go('/home');
   }
 
   @override
@@ -77,7 +76,8 @@ class HomeScreen extends ConsumerWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.notifications_outlined),
-                      onPressed: () {},
+                      tooltip: 'Activity',
+                      onPressed: () => context.push('/activity'),
                     ),
                     GestureDetector(
                       onTap: () =>
@@ -108,37 +108,66 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: PhlioSpacing.xl),
                 QuickActionGrid(
                   actions: overview.quickActions,
-                  onTap: (action) => _handleQuickAction(context, action),
+                  onTap: (action) => _handleQuickAction(context, ref, action),
                 ),
                 const SizedBox(height: PhlioSpacing.xl),
-                PhlioCard(
-                  onTap: () => context.go('/agent'),
-                  child: Row(
-                    children: [
-                      const Hero(
-                          tag: 'phlio-agent-fox', child: PhlioFox(size: 56)),
-                      const SizedBox(width: PhlioSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Want me to plan tonight?',
-                                style: PhlioTypography.bodyStrong),
-                            Text('Movies, food, or something new?',
-                                style: PhlioTypography.caption),
-                          ],
-                        ),
+                // The Foxy agent prompt card — the reference home screen's
+                // signature element. A warm gradient-tinted surface with
+                // Foxy peeking in from the left.
+                GestureDetector(
+                  onTap: () => _switchAndGo(context, PhlioPlatform.agent),
+                  child: Container(
+                    padding: const EdgeInsets.all(PhlioSpacing.md),
+                    decoration: BoxDecoration(
+                      color: PhlioColors.surface,
+                      borderRadius: PhlioRadii.xlRadius,
+                      border: Border.all(color: PhlioColors.brandOrange.withValues(alpha: 0.35)),
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          PhlioColors.brandOrange.withValues(alpha: 0.12),
+                          PhlioColors.surface,
+                        ],
+                        stops: const [0.0, 0.55],
                       ),
-                      const Icon(Icons.chevron_right_rounded,
-                          color: PhlioColors.textMuted),
-                    ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Hero(
+                            tag: 'phlio-agent-fox',
+                            child: PhlioFox(size: 56, pose: PhlioFoxPose.explorer)),
+                        const SizedBox(width: PhlioSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Want me to plan tonight?',
+                                  style: PhlioTypography.bodyStrong),
+                              Text('Movies, food, or something new?',
+                                  style: PhlioTypography.caption),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: const BoxDecoration(
+                            gradient: PhlioColors.sunsetGradient,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.chevron_right_rounded,
+                              color: PhlioColors.textOnBrand, size: 20),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: PhlioSpacing.xl),
                 PhlioSectionHeader(
                   title: 'Rooms for you',
                   actionLabel: 'See all',
-                  onAction: () => context.go('/rooms'),
+                  onAction: () => _switchAndGo(context, PhlioPlatform.rooms),
                 ),
                 const SizedBox(height: PhlioSpacing.md),
                 for (final room in overview.featuredRooms) ...[
@@ -168,7 +197,7 @@ class HomeScreen extends ConsumerWidget {
                 PhlioSectionHeader(
                   title: 'From Phlio Shop',
                   actionLabel: 'See all',
-                  onAction: () => context.go('/shop'),
+                  onAction: () => _switchAndGo(context, PhlioPlatform.shop),
                 ),
                 const SizedBox(height: PhlioSpacing.md),
                 SizedBox(

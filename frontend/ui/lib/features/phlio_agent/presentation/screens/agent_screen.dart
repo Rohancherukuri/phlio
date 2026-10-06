@@ -1,6 +1,6 @@
-// Phlio Agent screen — mirrors the reference "4. PHLIO AGENT" screen: a
-// fox header with a BETA badge and tagline, a scrolling chat transcript,
-// and a message composer.
+// Phlio Agent (Foxy) screen — mirrors the reference "4. PHLIO AGENT"
+// screen: Foxy's header with a BETA badge and tagline, a scrolling chat
+// transcript, and a message composer.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,15 +75,17 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            Text('Phlio Agent', style: PhlioTypography.title),
+            const PhlioFox(size: 34, pose: PhlioFoxPose.hello, animate: false),
+            const SizedBox(width: PhlioSpacing.sm),
+            Text('Foxy', style: PhlioTypography.title),
             const SizedBox(width: PhlioSpacing.sm),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.sm, vertical: 2),
               decoration: BoxDecoration(
-                color: PhlioColors.brandPurple.withOpacity(0.2),
+                color: PhlioColors.brandOrange.withValues(alpha: 0.18),
                 borderRadius: PhlioRadii.pillRadius,
               ),
-              child: Text('BETA', style: PhlioTypography.caption.copyWith(color: PhlioColors.brandPurple)),
+              child: Text('BETA', style: PhlioTypography.caption.copyWith(color: PhlioColors.brandOrange)),
             ),
           ],
         ),
@@ -110,12 +112,12 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const PhlioFox(size: 96, pose: PhlioFoxPose.idle),
+            const PhlioFox(size: 104, pose: PhlioFoxPose.happy),
             const SizedBox(height: PhlioSpacing.lg),
             Text('Your plan, my priority.', style: PhlioTypography.headline),
             const SizedBox(height: PhlioSpacing.xs),
             Text(
-              'I can help you plan, book, shop, pay and more.',
+              "I'm Foxy — I can help you plan, book, shop and pay.",
               textAlign: TextAlign.center,
               style: PhlioTypography.body,
             ),

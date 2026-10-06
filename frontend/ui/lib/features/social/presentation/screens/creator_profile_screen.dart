@@ -1,0 +1,960 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../design_system/colors.dart';
+import '../../../../design_system/spacing.dart';
+import '../../../../design_system/typography.dart';
+import '../../../../design_system/widgets/phlio_fox.dart';
+import '../../../rooms/presentation/widgets/dm_thread.dart';
+import '../controllers/video_library.dart';
+import '../widgets/social_videos_view.dart';
+
+/// Creator profile screen — opened by tapping any creator's avatar (video
+/// cards, live rail, stories strip). A replica of the own-profile layout:
+/// @handle header, avatar + stats, display name with verified badge, bio,
+/// hashtag chips, pinned song, Follow/Message actions, Moments circles and
+/// the same six content tabs (Posts / Replies / Reposts / Schedule / Chat /
+/// Clips). The Chat tab is a real conversation — the shared [DmThread] with
+/// text, attachments, voice and Instagram-style long-press reactions.
+///
+/// Content is seeded per creator and deliberately uneven — some have no bio,
+/// song, moments, replies or posts. Unknown handles (fresh DM contacts, the
+/// signed-in user) fall back to a bare profile so the route never breaks.
+
+@immutable
+class CreatorProfile {
+  const CreatorProfile({
+    required this.handle,
+    required this.displayName,
+    required this.avatarAsset,
+    required this.verified,
+    required this.followers,
+    required this.following,
+    required this.postCount,
+    required this.hasPosts,
+    this.bio,
+    this.tags = const [],
+    this.songTitle,
+    this.moments = const [],
+    this.replies = const [],
+    this.reposts = const [],
+  });
+
+  final String handle;
+  final String displayName;
+  final String avatarAsset;
+  final bool verified;
+  final int followers;
+  final int following;
+  final int postCount;
+  final bool hasPosts;
+  final String? bio;
+  final List<String> tags;
+  final String? songTitle;
+  final List<String> moments;
+  final List<({String to, String text})> replies;
+  final List<String> reposts;
+}
+
+const _assetBase = 'assets/images/placeholders/social';
+
+const List<CreatorProfile> kCreatorProfiles = [
+  CreatorProfile(
+    handle: 'pixelpanda',
+    displayName: 'Pixel Panda',
+    avatarAsset: '$_assetBase/avatar_pixelpanda.png',
+    verified: true,
+    followers: 128400,
+    following: 342,
+    postCount: 214,
+    hasPosts: true,
+    bio: 'Top-500 grind, cozy streams, zero rage quits.',
+    tags: ['#gaming', '#retro', '#speedruns'],
+    songTitle: 'lofi_bgm_beats.mp3',
+    moments: ['Ranked', 'Arcade', 'IRL'],
+    replies: [
+      (to: 'lofinight', text: 'This mix carried my whole ranked grind tbh'),
+      (
+        to: 'devdiaries',
+        text: 'Day 12 and the rooms pane already feels premium'
+      ),
+      (to: 'artbykiara', text: 'The dusk palette in this one!'),
+    ],
+  ),
+  CreatorProfile(
+    handle: 'artbykiara',
+    displayName: 'Kiara',
+    avatarAsset: '$_assetBase/avatar_artbykiara.png',
+    verified: true,
+    followers: 45200,
+    following: 512,
+    postCount: 98,
+    hasPosts: true,
+    bio: 'Acrylic skies and pixel sunsets. Commissions open.',
+    tags: ['#art', '#painting', '#dusk'],
+    moments: ['Studio', 'Gallery'],
+  ),
+  CreatorProfile(
+    handle: 'lofinight',
+    displayName: 'Lofi Night',
+    avatarAsset: '$_assetBase/avatar_lofinight.png',
+    verified: false,
+    followers: 89000,
+    following: 89,
+    postCount: 61,
+    hasPosts: false,
+    bio: '3AM beats to relax and study to.',
+    tags: ['#music', '#lofi'],
+    songTitle: 'midnight_tape_vol4.mp3',
+  ),
+  CreatorProfile(
+    handle: 'devdiaries',
+    displayName: 'Dev Diaries',
+    avatarAsset: '$_assetBase/avatar_devdiaries.png',
+    verified: true,
+    followers: 58900,
+    following: 120,
+    postCount: 142,
+    hasPosts: true,
+    bio: 'Building Phlio in public — day 12 of 100.',
+    tags: ['#tech', '#flutter', '#buildinpublic'],
+    replies: [
+      (to: 'pixelpanda', text: 'Wait till you see the pane resize drop'),
+      (to: 'wanderfox', text: 'The Hyderabad series is unmatched'),
+    ],
+  ),
+  CreatorProfile(
+    handle: 'retroray',
+    displayName: 'Retro Ray',
+    avatarAsset: '$_assetBase/avatar_retroray.png',
+    verified: false,
+    followers: 21400,
+    following: 1187,
+    postCount: 0,
+    hasPosts: false,
+    tags: ['#gaming', '#clips'],
+  ),
+  CreatorProfile(
+    handle: 'wanderfox',
+    displayName: 'Wander Fox',
+    avatarAsset: '$_assetBase/avatar_wanderfox.png',
+    verified: false,
+    followers: 76300,
+    following: 893,
+    postCount: 156,
+    hasPosts: true,
+    bio: '48 hours everywhere. Hyderabad based.',
+    tags: ['#travel', '#food', '#streets'],
+    moments: ['Charminar', 'Goa', 'Hills'],
+    reposts: [
+      'Late night lofi + chat',
+      'Ranked grind till dawn — road to top 500'
+    ],
+  ),
+  CreatorProfile(
+    handle: 'ironarena',
+    displayName: 'Iron Arena',
+    avatarAsset: '$_assetBase/avatar_ironarena.png',
+    verified: false,
+    followers: 33800,
+    following: 210,
+    postCount: 88,
+    hasPosts: true,
+    bio: 'Push · Pull · Legs. Form over ego.',
+    tags: ['#fitness', '#gym'],
+  ),
+  CreatorProfile(
+    handle: 'chefatlas',
+    displayName: 'Chef Atlas',
+    avatarAsset: '$_assetBase/avatar_chefatlas.png',
+    verified: false,
+    followers: 512000,
+    following: 76,
+    postCount: 240,
+    hasPosts: true,
+    bio: 'Street food, home kitchen, 60-second recipes.',
+    tags: ['#food', '#recipes'],
+    moments: ['Market', 'Service'],
+    reposts: ['48 hours in Hyderabad — food street tour'],
+  ),
+];
+
+CreatorProfile? creatorProfileByHandle(String handle) {
+  for (final profile in kCreatorProfiles) {
+    if (profile.handle == handle) return profile;
+  }
+  return null;
+}
+
+/// Bare profile for handles we have nothing on (fresh DM contacts etc.) so
+/// the screen always renders.
+CreatorProfile _fallbackProfile(String handle) {
+  return CreatorProfile(
+    handle: handle,
+    displayName: handle,
+    avatarAsset: '',
+    verified: false,
+    followers: 0,
+    following: 0,
+    postCount: 0,
+    hasPosts: false,
+  );
+}
+
+/// Shared brand gradients for Moments circles and placeholder post tiles.
+const kProfileGradients = [
+  [PhlioColors.brandOrange, PhlioColors.brandViolet],
+  [PhlioColors.brandViolet, Color(0xFF3B2A63)],
+  [PhlioColors.brandPink, PhlioColors.brandOrange],
+  [PhlioColors.brandLavender, PhlioColors.brandViolet],
+];
+
+class CreatorProfileScreen extends StatefulWidget {
+  const CreatorProfileScreen({required this.username, super.key});
+
+  final String username;
+
+  @override
+  State<CreatorProfileScreen> createState() => _CreatorProfileScreenState();
+}
+
+class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
+  static const _tabs = [
+    'Posts',
+    'Replies',
+    'Reposts',
+    'Schedule',
+    'Chat',
+    'Clips'
+  ];
+  int _tab = 0; // Land on Posts, like the own-profile page.
+
+  @override
+  Widget build(BuildContext context) {
+    // Consumer child owns the ref (follow state, DM thread); the State
+    // itself stays ref-free for hot-reload safety.
+    return Consumer(
+      builder: (context, ref, _) {
+        final profile = creatorProfileByHandle(widget.username) ??
+            _fallbackProfile(widget.username);
+        final followed = ref.watch(followedCreatorsProvider);
+        final isFollowed = followed.contains(profile.handle);
+        final videos =
+            kSocialVideos.where((v) => v.creator == profile.handle).toList();
+        final clips =
+            videos.where((v) => v.kind == SocialVideoKind.clip).toList();
+        final isLive = videos.any((v) => v.kind == SocialVideoKind.live);
+
+        return Scaffold(
+          body: SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                // -- Scrollable header -------------------------------------
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: PhlioSpacing.sm),
+                        child: Row(
+                          children: [
+                            BackButton(onPressed: () => context.pop()),
+                            Expanded(
+                              child: Text(
+                                '@${profile.handle}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: PhlioTypography.headline,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'More',
+                              icon: const Icon(Icons.more_vert_rounded,
+                                  color: PhlioColors.textSecondary),
+                              onPressed: () =>
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Mute, report and block arrive with the social graph.')),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
+                            PhlioSpacing.sm, PhlioSpacing.lg, 0),
+                        child: Row(
+                          children: [
+                            _avatar(profile, 92),
+                            const SizedBox(width: PhlioSpacing.xl),
+                            Expanded(
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _stat(profile.postCount, 'posts'),
+                                  _stat(profile.followers, 'followers'),
+                                  _stat(profile.following, 'following'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
+                            PhlioSpacing.md, PhlioSpacing.lg, 0),
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                profile.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: PhlioTypography.headline,
+                              ),
+                            ),
+                            if (profile.verified) ...[
+                              const SizedBox(width: PhlioSpacing.xs),
+                              const Icon(Icons.verified_rounded,
+                                  size: 18, color: PhlioColors.brandLavender),
+                            ],
+                            if (isLive) ...[
+                              const SizedBox(width: PhlioSpacing.sm),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: PhlioColors.danger,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text('LIVE',
+                                    style: PhlioTypography.label.copyWith(
+                                        fontSize: 10,
+                                        letterSpacing: 0.6,
+                                        color: Colors.white)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
+                            PhlioSpacing.xs, PhlioSpacing.lg, 0),
+                        child: Text(
+                          profile.bio ?? 'Hasn\u2019t added a bio yet.',
+                          style: PhlioTypography.body.copyWith(
+                              color: profile.bio == null
+                                  ? PhlioColors.textMuted
+                                  : PhlioColors.textSecondary),
+                        ),
+                      ),
+                      if (profile.tags.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
+                              PhlioSpacing.sm, PhlioSpacing.lg, 0),
+                          child: Wrap(
+                            spacing: PhlioSpacing.sm,
+                            runSpacing: PhlioSpacing.sm,
+                            children: [
+                              for (final tag in profile.tags)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: PhlioColors.surfaceElevated,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(tag,
+                                      style: PhlioTypography.label.copyWith(
+                                          fontSize: 12,
+                                          color: PhlioColors.textSecondary)),
+                                ),
+                            ],
+                          ),
+                        ),
+                      if (profile.songTitle != null) ...[
+                        const SizedBox(height: PhlioSpacing.md),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: PhlioSpacing.lg),
+                          child: _songCard(profile.songTitle!),
+                        ),
+                      ],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
+                            PhlioSpacing.md, PhlioSpacing.lg, 0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  ref
+                                      .read(followedCreatorsProvider.notifier)
+                                      .update((set) {
+                                    final next = Set<String>.from(set);
+                                    if (!next.remove(profile.handle)) {
+                                      next.add(profile.handle);
+                                    }
+                                    return next;
+                                  });
+                                  ref
+                                      .read(socialVideoApiProvider)
+                                      .follow(profile.handle, !isFollowed)
+                                      .catchError((_) {});
+                                },
+                                child: Container(
+                                  height: 44,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: isFollowed
+                                        ? PhlioColors.surfaceElevated
+                                        : PhlioColors.brandViolet,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: isFollowed
+                                        ? Border.all(
+                                            color: PhlioColors.borderSubtle)
+                                        : null,
+                                  ),
+                                  child: Text(
+                                    isFollowed ? 'Following' : 'Follow',
+                                    style: PhlioTypography.label.copyWith(
+                                      color: isFollowed
+                                          ? PhlioColors.textPrimary
+                                          : Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: PhlioSpacing.sm),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    context.push('/dm/${profile.handle}'),
+                                child: Container(
+                                  height: 44,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: PhlioColors.borderSubtle),
+                                  ),
+                                  child: Text('Message',
+                                      style: PhlioTypography.label.copyWith(
+                                          color: PhlioColors.textPrimary)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (profile.moments.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                              PhlioSpacing.lg,
+                              PhlioSpacing.xl,
+                              PhlioSpacing.lg,
+                              PhlioSpacing.sm),
+                          child: Text('Moments', style: PhlioTypography.title),
+                        ),
+                        SizedBox(
+                          height: 104,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: PhlioSpacing.lg),
+                            children: [
+                              for (var i = 0; i < profile.moments.length; i++)
+                                _moment(profile.moments[i], i),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                // -- Pinned tab row (replica of the own-profile tabs) --------
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _ProfileTabBar(
+                    tabs: _tabs,
+                    selected: _tab,
+                    onChanged: (i) => setState(() => _tab = i),
+                  ),
+                ),
+                // -- Tab content ---------------------------------------------
+                if (_tab == 0)
+                  profile.hasPosts
+                      ? SliverToBoxAdapter(child: _postsGrid())
+                      : _foxyEmpty('No posts yet',
+                          'When they post, it lands here.', PhlioFoxPose.cozy)
+                else if (_tab == 1)
+                  profile.replies.isNotEmpty
+                      ? SliverToBoxAdapter(child: _replies(profile.replies))
+                      : _foxyEmpty(
+                          'No replies yet',
+                          'Replies to other posts will show up here.',
+                          PhlioFoxPose.explorer)
+                else if (_tab == 2)
+                  profile.reposts.isNotEmpty
+                      ? SliverToBoxAdapter(child: _reposts(profile.reposts))
+                      : _foxyEmpty(
+                          'Nothing reposted yet',
+                          'Videos they share will appear here.',
+                          PhlioFoxPose.explorer)
+                else if (_tab == 3)
+                  _foxyEmpty(
+                      'Nothing scheduled',
+                      'Streams and events arrive with the Events domain.',
+                      PhlioFoxPose.happy)
+                else if (_tab == 4)
+                  // A real conversation: text, images, videos, voice,
+                  // stickers, GIFs — with Instagram-style reactions.
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: MediaQuery.sizeOf(context).height * 0.62,
+                      child: DmThread(username: profile.handle, compact: true),
+                    ),
+                  )
+                else
+                  clips.isNotEmpty
+                      ? SliverToBoxAdapter(child: _videosGrid(clips))
+                      : _foxyEmpty(
+                          'No clips yet',
+                          'Their best moments will be clipped here.',
+                          PhlioFoxPose.cozy),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // -- Pieces -------------------------------------------------------------------
+
+  Widget _foxyEmpty(String title, String subtitle, PhlioFoxPose pose) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          children: [
+            PhlioFox(size: 88, pose: pose),
+            const SizedBox(height: PhlioSpacing.md),
+            Text(title, style: PhlioTypography.title),
+            const SizedBox(height: PhlioSpacing.xs),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style:
+                  PhlioTypography.body.copyWith(color: PhlioColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _replies(List<({String to, String text})> replies) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
+      child: Column(
+        children: [
+          for (final reply in replies)
+            Container(
+              margin: const EdgeInsets.only(bottom: PhlioSpacing.md),
+              padding: const EdgeInsets.all(PhlioSpacing.md),
+              decoration: BoxDecoration(
+                color: PhlioColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: PhlioColors.borderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(reply.text, style: PhlioTypography.body),
+                  const SizedBox(height: PhlioSpacing.xs),
+                  Text('Replying to @${reply.to}',
+                      style: PhlioTypography.caption
+                          .copyWith(color: PhlioColors.textMuted)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reposts(List<String> titles) {
+    final videos = [
+      for (final title in titles)
+        if (kSocialVideos.any((v) => v.title == title))
+          kSocialVideos.firstWhere((v) => v.title == title),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
+      child: Column(
+        children: [
+          for (final video in videos)
+            Container(
+              margin: const EdgeInsets.only(bottom: PhlioSpacing.md),
+              padding: const EdgeInsets.all(PhlioSpacing.sm),
+              decoration: BoxDecoration(
+                color: PhlioColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: PhlioColors.borderSubtle),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      video.thumbAsset,
+                      width: 72,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 72,
+                        height: 44,
+                        color: PhlioColors.surfaceElevated,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: PhlioSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(video.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PhlioTypography.label),
+                        const SizedBox(height: 2),
+                        Text('@${video.creator} · ${video.metric}',
+                            style: PhlioTypography.caption
+                                .copyWith(color: PhlioColors.textMuted)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.repeat_rounded,
+                      size: 18, color: PhlioColors.brandLavender),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _avatar(CreatorProfile profile, double size) {
+    return ClipOval(
+      child: Image.asset(
+        profile.avatarAsset,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: size,
+          height: size,
+          color: PhlioColors.brandViolet.withValues(alpha: 0.25),
+          alignment: Alignment.center,
+          child: Text(
+            profile.handle[0].toUpperCase(),
+            style: PhlioTypography.headline
+                .copyWith(color: PhlioColors.brandLavender),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _stat(int value, String label) {
+    return Column(
+      children: [
+        Text(_compact(value), style: PhlioTypography.headline),
+        const SizedBox(height: 2),
+        Text(label,
+            style: PhlioTypography.caption
+                .copyWith(color: PhlioColors.textSecondary)),
+      ],
+    );
+  }
+
+  Widget _songCard(String fileName) {
+    return Container(
+      padding: const EdgeInsets.all(PhlioSpacing.md),
+      decoration: BoxDecoration(
+        color: PhlioColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: PhlioColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'Demo song — profile audio lands with the social graph.')),
+            ),
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: const BoxDecoration(
+                gradient: PhlioColors.sunsetGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.play_arrow_rounded,
+                  color: Colors.white, size: 26),
+            ),
+          ),
+          const SizedBox(width: PhlioSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PhlioTypography.label),
+                const SizedBox(height: 2),
+                Text('Pinned song · from their profile · 60 s preview',
+                    style: PhlioTypography.caption
+                        .copyWith(color: PhlioColors.textMuted)),
+              ],
+            ),
+          ),
+          const Icon(Icons.music_note_rounded,
+              color: PhlioColors.brandOrange, size: 22),
+        ],
+      ),
+    );
+  }
+
+  Widget _moment(String label, int index) {
+    final colors = kProfileGradients[index % kProfileGradients.length];
+    return Padding(
+      padding: const EdgeInsets.only(right: PhlioSpacing.lg),
+      child: Column(
+        children: [
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: colors,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label.characters.take(2).toString().toUpperCase(),
+              style: PhlioTypography.label.copyWith(
+                fontSize: 15,
+                letterSpacing: 1,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: PhlioSpacing.xs),
+          Text(label,
+              style: PhlioTypography.caption
+                  .copyWith(color: PhlioColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _postsGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+      ),
+      itemCount: 9,
+      itemBuilder: (context, index) {
+        final colors = kProfileGradients[index % kProfileGradients.length];
+        return GestureDetector(
+          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Placeholder posts — demo profile content.')),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: colors,
+              ),
+            ),
+            child: const Icon(Icons.image_outlined,
+                color: Colors.white24, size: 28),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _videosGrid(List<SocialVideo> videos) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+      ),
+      itemCount: videos.length,
+      itemBuilder: (context, index) {
+        final video = videos[index];
+        return GestureDetector(
+          onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(video.kind == SocialVideoKind.live
+                ? 'Demo stream — real live playback lands with the Stream platform.'
+                : 'Demo video — upload one to get real playback.'),
+          )),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                video.thumbAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Container(color: PhlioColors.surfaceElevated),
+              ),
+              if (video.kind == SocialVideoKind.live)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: PhlioColors.danger,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text('LIVE',
+                        style: PhlioTypography.label.copyWith(
+                            fontSize: 9,
+                            letterSpacing: 0.6,
+                            color: Colors.white)),
+                  ),
+                ),
+              Positioned(
+                bottom: 6,
+                left: 6,
+                child: Text(
+                  video.metric,
+                  style: PhlioTypography.caption
+                      .copyWith(fontSize: 10, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static String _compact(int n) {
+    if (n >= 1000000) {
+      final m = n / 1000000;
+      return '${m.toStringAsFixed(m == m.roundToDouble() ? 0 : 1)}M';
+    }
+    if (n >= 1000) {
+      final k = n / 1000;
+      return '${k.toStringAsFixed(k == k.roundToDouble() ? 0 : 1)}K';
+    }
+    return '$n';
+  }
+}
+
+/// Pinned tab bar replicating the own-profile tabs (Posts…Clips). Horizontal
+/// scrolling keeps six labels safe on narrow screens.
+class _ProfileTabBar extends SliverPersistentHeaderDelegate {
+  const _ProfileTabBar({
+    required this.tabs,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<String> tabs;
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  @override
+  double get minExtent => 46;
+
+  @override
+  double get maxExtent => 46;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg),
+        child: Row(
+          children: [
+            for (var i = 0; i < tabs.length; i++)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(i),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        tabs[i],
+                        style: PhlioTypography.label.copyWith(
+                          fontSize: 13,
+                          color: selected == i
+                              ? PhlioColors.textPrimary
+                              : PhlioColors.textSecondary,
+                          fontWeight:
+                              selected == i ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: 30,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: selected == i
+                              ? PhlioColors.brandOrange
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _ProfileTabBar oldDelegate) =>
+      oldDelegate.selected != selected || oldDelegate.tabs != tabs;
+}

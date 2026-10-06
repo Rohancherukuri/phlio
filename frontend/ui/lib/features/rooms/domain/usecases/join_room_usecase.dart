@@ -7,5 +7,6 @@ class JoinRoomUseCase {
 
   final RoomsRepository _repository;
 
-  Future<Result<RoomEntity>> call(String roomId) => _repository.joinRoom(roomId);
+  Future<Result<RoomEntity>> call(String roomId) =>
+      _repository.joinRoom(roomId);
 }

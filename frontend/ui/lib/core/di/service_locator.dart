@@ -15,12 +15,21 @@
 
 import 'package:get_it/get_it.dart';
 
+import '../../features/activity/data/datasources/activity_remote_datasource.dart';
+import '../../features/activity/data/repositories/activity_repository_impl.dart';
+import '../../features/activity/domain/repositories/activity_repository.dart';
 import '../../features/authentication/data/datasources/auth_remote_datasource.dart';
 import '../../features/authentication/data/repositories/auth_repository_impl.dart';
 import '../../features/authentication/domain/repositories/auth_repository.dart';
+import '../../features/book/data/datasources/book_remote_datasource.dart';
+import '../../features/book/data/repositories/book_repository_impl.dart';
+import '../../features/book/domain/repositories/book_repository.dart';
 import '../../features/home/data/datasources/home_remote_datasource.dart';
 import '../../features/home/data/repositories/home_repository_impl.dart';
 import '../../features/home/domain/repositories/home_repository.dart';
+import '../../features/pay/data/datasources/pay_remote_datasource.dart';
+import '../../features/pay/data/repositories/pay_repository_impl.dart';
+import '../../features/pay/domain/repositories/pay_repository.dart';
 import '../../features/phlio_agent/data/datasources/agent_remote_datasource.dart';
 import '../../features/phlio_agent/data/repositories/agent_repository_impl.dart';
 import '../../features/phlio_agent/domain/repositories/agent_repository.dart';
@@ -86,6 +95,22 @@ void setupServiceLocator() {
   // -- Home (aggregates the above) ---------------------------------------
   getIt.registerLazySingleton<HomeRemoteDataSource>(() => HomeRemoteDataSource(getIt<ApiClient>()));
   getIt.registerLazySingleton<HomeRepository>(() => HomeRepositoryImpl(getIt<HomeRemoteDataSource>()));
+
+  // -- Book ------------------------------------------------------------------
+  getIt.registerLazySingleton<BookRemoteDataSource>(() => BookRemoteDataSource(getIt<ApiClient>()));
+  getIt.registerLazySingleton<BookRepository>(() => BookRepositoryImpl(getIt<BookRemoteDataSource>()));
+
+  // -- Pay ---------------------------------------------------------------------
+  getIt.registerLazySingleton<PayRemoteDataSource>(() => PayRemoteDataSource(getIt<ApiClient>()));
+  getIt.registerLazySingleton<PayRepository>(() => PayRepositoryImpl(getIt<PayRemoteDataSource>()));
+
+  // -- Activity (cross-domain feed) ----------------------------------------
+  getIt.registerLazySingleton<ActivityRemoteDataSource>(
+    () => ActivityRemoteDataSource(getIt<ApiClient>()),
+  );
+  getIt.registerLazySingleton<ActivityRepository>(
+    () => ActivityRepositoryImpl(getIt<ActivityRemoteDataSource>()),
+  );
 
   _logger.info('Service locator ready — all repositories registered.');
 }

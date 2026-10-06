@@ -1,5 +1,5 @@
-// Room detail/chat screen — mirrors the reference Rooms screen's message
-// thread (e.g. "#general"): a scrollable message list plus a composer bar.
+// Room detail/chat screen — mirrors the Rooms two-pane thread style:
+// thread (e.g. "#general"): Discord-style full-width rows + a composer bar.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +15,7 @@ import '../../../../shared/widgets/error_view.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../controllers/room_chat_controller.dart';
+import '../widgets/message_attachments.dart';
 
 class RoomDetailScreen extends ConsumerStatefulWidget {
   const RoomDetailScreen({required this.roomId, super.key});
@@ -39,7 +40,9 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
     setState(() => _isSending = true);
-    final result = await ref.read(roomChatControllerProvider(widget.roomId).notifier).sendMessage(text);
+    final result = await ref
+        .read(roomChatControllerProvider(widget.roomId).notifier)
+        .sendMessage(text);
     if (!mounted) return;
     result.when(
       success: (_) => _messageController.clear(),
@@ -54,7 +57,8 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
     final currentUserId = ref.watch(authControllerProvider).valueOrNull?.id;
 
     return Scaffold(
-      appBar: AppBar(title: Text('# ${widget.roomId}', style: PhlioTypography.title)),
+      appBar: AppBar(
+          title: Text('# ${widget.roomId}', style: PhlioTypography.title)),
       body: Column(
         children: [
           Expanded(
@@ -62,7 +66,8 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
               loading: () => const PhlioLoadingIndicator(),
               error: (error, _) => PhlioErrorView(
                 failure: error is Failure ? error : const Failure.unknown(),
-                onRetry: () => ref.invalidate(roomChatControllerProvider(widget.roomId)),
+                onRetry: () =>
+                    ref.invalidate(roomChatControllerProvider(widget.roomId)),
               ),
               data: (messages) => ListView.builder(
                 reverse: false,
@@ -71,32 +76,82 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                 itemBuilder: (context, index) {
                   final message = messages[index];
                   final isMine = message.authorId == currentUserId;
+                  // Long-press to react with Foxy — same as the two-pane.
+                  Future<void> react(String kind, String value) async {
+                    final result = await ref
+                        .read(
+                            roomChatControllerProvider(widget.roomId).notifier)
+                        .toggleReaction(
+                            messageId: message.id, kind: kind, value: value);
+                    if (result.isFailure && mounted) {
+                      showErrorSnackBar(
+                          context,
+                          result.when(
+                            success: (_) => const Failure.unknown(),
+                            failure: (failure) => failure,
+                          ));
+                    }
+                  }
+
+                  // Discord-style: every message is a full-width row from
+                  // the left edge — own messages keep the same alignment,
+                  // the name carries the color instead of a bubble split.
                   return Padding(
                     padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
                       children: [
-                        if (!isMine) ...[
-                          PhlioAvatar(name: message.authorId, size: 32),
-                          const SizedBox(width: PhlioSpacing.sm),
-                        ],
-                        Flexible(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: PhlioSpacing.md,
-                              vertical: PhlioSpacing.sm,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isMine ? PhlioColors.brandPurple.withOpacity(0.25) : PhlioColors.surfaceElevated,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                        PhlioAvatar(name: message.authorId, size: 32),
+                        const SizedBox(width: PhlioSpacing.sm),
+                        Expanded(
+                          child: GestureDetector(
+                            onLongPress: () => showReactionPickerAndReact(
+                                context,
+                                onReact: react),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(message.text, style: PhlioTypography.bodyLarge),
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        message.authorId,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: PhlioTypography.label.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: isMine
+                                              ? PhlioColors.brandOrange
+                                              : PhlioColors.brandLavender,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: PhlioSpacing.xs),
+                                    Text(
+                                      timeago.format(message.createdAt),
+                                      style: PhlioTypography.caption
+                                          .copyWith(fontSize: 10),
+                                    ),
+                                  ],
+                                ),
                                 const SizedBox(height: 2),
-                                Text(timeago.format(message.createdAt), style: PhlioTypography.caption),
+                                if (message.text.isNotEmpty)
+                                  Text(message.text,
+                                      style: PhlioTypography.body),
+                                if (message.attachments.isNotEmpty) ...[
+                                  const SizedBox(height: PhlioSpacing.xs),
+                                  MessageAttachmentView(
+                                    attachments: message.attachments,
+                                    reactions: message.reactions,
+                                    onReact: react,
+                                  ),
+                                ] else if (message.reactions.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  ReactionChipsRow(
+                                    reactions: message.reactions,
+                                    onReact: react,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -116,7 +171,8 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                 children: [
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: PhlioSpacing.lg),
                       decoration: BoxDecoration(
                         color: PhlioColors.surfaceInput,
                         borderRadius: BorderRadius.circular(24),
@@ -135,8 +191,12 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                   const SizedBox(width: PhlioSpacing.sm),
                   IconButton(
                     icon: _isSending
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.send_rounded, color: PhlioColors.brandPurple),
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.send_rounded,
+                            color: PhlioColors.brandPurple),
                     onPressed: _isSending ? null : _send,
                   ),
                 ],

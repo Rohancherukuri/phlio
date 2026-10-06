@@ -99,26 +99,54 @@ class RuleBasedPlanner:
                 )
             )
 
-        # 2. A product within budget, leaving headroom for the other items.
-        product_budget = max(int(intent.budget_minor_units * 0.6), 0)
-        products = await tools.search_products(max_price_minor_units=product_budget, limit=1)
-        if products:
-            product = products[0]
+        # 2. Bookable experiences within the remaining budget — the heart of
+        # a Phlio plan (movie → dinner → hangout, per the reference flows).
+        # Each listing consumes its min price from the running budget so the
+        # plan can never exceed what the user asked for.
+        remaining = intent.budget_minor_units
+        listings = await tools.search_listings(
+            max_price_minor_units=remaining, limit=6
+        )
+        for listing in listings[:3]:
+            if listing.price_min_minor_units > remaining:
+                continue
+            subtitle = listing.venue
+            if listing.location_note:
+                subtitle = f"{listing.venue} · {listing.location_note}"
             items.append(
                 PlanItem(
-                    kind=PlanItemKind.PRODUCT,
-                    ref_id=product.id,
-                    title=product.title,
-                    subtitle=f"From Phlio Shop · {product.description[:60]}",
-                    image_url=product.image_urls[0] if product.image_urls else None,
-                    price_minor_units=product.price_minor_units,
-                    currency=product.currency,
+                    kind=PlanItemKind.BOOK,
+                    ref_id=listing.id,
+                    title=listing.title,
+                    subtitle=subtitle,
+                    price_minor_units=listing.price_min_minor_units,
+                    currency=listing.currency,
                 )
             )
-            total_min += product.price_minor_units
-            total_max += product.price_minor_units
+            total_min += listing.price_min_minor_units
+            total_max += listing.price_max_minor_units
+            remaining -= listing.price_min_minor_units
 
-        # 3. A social post for inspiration / something to do together.
+        # 3. A product within what's left, so discovery stays part of the plan.
+        if remaining > 0:
+            products = await tools.search_products(max_price_minor_units=remaining, limit=1)
+            if products:
+                product = products[0]
+                items.append(
+                    PlanItem(
+                        kind=PlanItemKind.PRODUCT,
+                        ref_id=product.id,
+                        title=product.title,
+                        subtitle=f"From Phlio Shop · {product.description[:60]}",
+                        image_url=product.image_urls[0] if product.image_urls else None,
+                        price_minor_units=product.price_minor_units,
+                        currency=product.currency,
+                    )
+                )
+                total_min += product.price_minor_units
+                total_max += product.price_minor_units
+
+        # 4. A social post for inspiration / something to do together.
         posts = await tools.search_posts(limit=1)
         if posts:
             post = posts[0]
@@ -175,8 +203,9 @@ class AnthropicPlanner:
         try:
             summary = await self._llm_client.complete(
                 system_prompt=(
-                    "You are the Phlio Agent, a friendly planning assistant represented by a fox "
-                    "character. You narrate plans; you never invent facts or authorize purchases."
+                    "You are Foxy, the Phlio Agent — a warm, curious fox who helps people plan "
+                    "things together. You narrate plans; you never invent facts or authorize "
+                    "purchases."
                 ),
                 user_message=prompt,
                 max_tokens=120,

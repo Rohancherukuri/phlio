@@ -3,6 +3,7 @@
 // share action row.
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../../../design_system/colors.dart';
@@ -34,18 +35,28 @@ class PostCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              PhlioAvatar(name: authorName, size: 40),
+              GestureDetector(
+                // Author profile from the post's avatar/name.
+                onTap: () => context.push('/creator/${post.authorId}'),
+                child: PhlioAvatar(name: authorName, size: 40),
+              ),
               const SizedBox(width: PhlioSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(authorName, style: PhlioTypography.bodyStrong),
-                    Text(timeago.format(post.createdAt), style: PhlioTypography.caption),
+                    GestureDetector(
+                      onTap: () => context.push('/creator/${post.authorId}'),
+                      child:
+                          Text(authorName, style: PhlioTypography.bodyStrong),
+                    ),
+                    Text(timeago.format(post.createdAt),
+                        style: PhlioTypography.caption),
                   ],
                 ),
               ),
-              const Icon(Icons.more_horiz_rounded, color: PhlioColors.textMuted),
+              const Icon(Icons.more_horiz_rounded,
+                  color: PhlioColors.textMuted),
             ],
           ),
           const SizedBox(height: PhlioSpacing.md),
@@ -55,7 +66,9 @@ class PostCard extends StatelessWidget {
             Wrap(
               spacing: PhlioSpacing.xs,
               children: post.tags
-                  .map((tag) => Text('#$tag', style: PhlioTypography.label.copyWith(color: PhlioColors.brandPurple)))
+                  .map((tag) => Text('#$tag',
+                      style: PhlioTypography.label
+                          .copyWith(color: PhlioColors.brandPurple)))
                   .toList(),
             ),
           ],
@@ -63,8 +76,11 @@ class PostCard extends StatelessWidget {
           Row(
             children: [
               _ActionButton(
-                icon: post.likedByMe ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                iconColor: post.likedByMe ? PhlioColors.danger : PhlioColors.textMuted,
+                icon: post.likedByMe
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                iconColor:
+                    post.likedByMe ? PhlioColors.danger : PhlioColors.textMuted,
                 label: '${post.likeCount}',
                 onTap: onToggleLike,
               ),
@@ -75,7 +91,8 @@ class PostCard extends StatelessWidget {
                 onTap: onOpenComments,
               ),
               const Spacer(),
-              const Icon(Icons.bookmark_border_rounded, color: PhlioColors.textMuted, size: 20),
+              const Icon(Icons.bookmark_border_rounded,
+                  color: PhlioColors.textMuted, size: 20),
             ],
           ),
         ],
@@ -85,7 +102,11 @@ class PostCard extends StatelessWidget {
 }
 
 class _ActionButton extends StatelessWidget {
-  const _ActionButton({required this.icon, required this.label, required this.onTap, this.iconColor});
+  const _ActionButton(
+      {required this.icon,
+      required this.label,
+      required this.onTap,
+      this.iconColor});
 
   final IconData icon;
   final String label;

@@ -7,7 +7,11 @@ class AddCommentUseCase {
 
   final SocialRepository _repository;
 
-  Future<Result<CommentEntity>> call({required String postId, required String text}) {
-    return _repository.addComment(postId: postId, text: text);
+  Future<Result<CommentEntity>> call({
+    required String postId,
+    required String text,
+    String? stickerId,
+  }) {
+    return _repository.addComment(postId: postId, text: text, stickerId: stickerId);
   }
 }

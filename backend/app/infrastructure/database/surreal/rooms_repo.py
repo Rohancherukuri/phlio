@@ -22,13 +22,21 @@ Table shape (see `data/surrealdb/schema/rooms.surql`):
     DEFINE FIELD author_id ON room_message TYPE record<user>;
     DEFINE FIELD text      ON room_message TYPE string;
     DEFINE FIELD created_at ON room_message TYPE datetime DEFAULT time::now();
+    DEFINE FIELD attachments ON room_message TYPE array DEFAULT [];
+    DEFINE FIELD reactions   ON room_message TYPE array DEFAULT [];
 """
 
 from __future__ import annotations
 
 from surrealdb import Surreal
 
-from app.domains.rooms.entities import Room, RoomCategory, RoomMessage
+from app.domains.rooms.entities import (
+    MessageAttachment,
+    MessageReaction,
+    Room,
+    RoomCategory,
+    RoomMessage,
+)
 
 _ROOMS = "room"
 _MESSAGES = "room_message"
@@ -53,6 +61,26 @@ def _row_to_room(row: dict) -> Room:
     )
 
 
+def _row_to_attachment(data: dict) -> MessageAttachment:
+    return MessageAttachment(
+        id=data.get("id", ""),
+        kind=data.get("kind", "document"),
+        name=data.get("name", "file"),
+        size=int(data.get("size") or 0),
+        mime=data.get("mime", ""),
+        url=data.get("url", ""),
+        value=data.get("value", ""),
+    )
+
+
+def _row_to_reaction(data: dict) -> MessageReaction:
+    return MessageReaction(
+        kind=data.get("kind", "emoji"),
+        value=data.get("value", ""),
+        user_id=_strip_prefix(data["user_id"]) if data.get("user_id") else "",
+    )
+
+
 def _row_to_message(row: dict) -> RoomMessage:
     return RoomMessage(
         id=_strip_prefix(row["id"]),
@@ -60,6 +88,8 @@ def _row_to_message(row: dict) -> RoomMessage:
         author_id=_strip_prefix(row["author_id"]),
         text=row["text"],
         created_at=row["created_at"],
+        attachments=[_row_to_attachment(a) for a in row.get("attachments", [])],
+        reactions=[_row_to_reaction(r) for r in row.get("reactions", [])],
     )
 
 
@@ -154,8 +184,50 @@ class SurrealRoomsRepository:
                 "author_id": f"user:{message.author_id}",
                 "text": message.text,
                 "created_at": message.created_at,
+                "attachments": [
+                    {
+                        "id": a.id,
+                        "kind": a.kind,
+                        "name": a.name,
+                        "size": a.size,
+                        "mime": a.mime,
+                        "url": a.url,
+                        "value": a.value,
+                    }
+                    for a in message.attachments
+                ],
+                "reactions": [
+                    {
+                        "kind": r.kind,
+                        "value": r.value,
+                        "user_id": f"user:{r.user_id}" if r.user_id else None,
+                    }
+                    for r in message.reactions
+                ],
             },
         )
+        return _row_to_message(row[0] if isinstance(row, list) else row)
+
+    async def get_message(self, room_id: str, message_id: str) -> RoomMessage | None:
+        row = await self._db.select(f"{_MESSAGES}:{message_id}")
+        if not row:
+            return None
+        message = _row_to_message(row[0] if isinstance(row, list) else row)
+        if message.room_id != room_id:
+            return None
+        return message
+
+    async def update_message(self, message: RoomMessage) -> RoomMessage:
+        row = await self._db.merge(f"{_MESSAGES}:{message.id}", {
+            "reactions": [
+                {
+                    "kind": r.kind,
+                    "value": r.value,
+                    "user_id": f"user:{r.user_id}" if r.user_id else None,
+                }
+                for r in message.reactions
+            ],
+        })
         return _row_to_message(row[0] if isinstance(row, list) else row)
 
     async def list_messages(

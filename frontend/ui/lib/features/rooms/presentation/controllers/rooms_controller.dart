@@ -37,3 +37,19 @@ final myRoomsProvider =
 
 final joinRoomProvider = Provider<JoinRoomUseCase>(
     (ref) => JoinRoomUseCase(ref.watch(roomsRepositoryProvider)));
+
+final roomsDirectoryProvider =
+    FutureProvider.autoDispose<List<RoomEntity>>((ref) async {
+  final repository = ref.watch(roomsRepositoryProvider);
+  final rooms = <RoomEntity>[];
+  String? cursor;
+  do {
+    final result = await repository.discover(cursor: cursor);
+    final page =
+        result.when(success: (value) => value, failure: (error) => throw error);
+    rooms.addAll(page.items);
+    if (!page.hasMore || page.nextCursor == cursor) break;
+    cursor = page.nextCursor;
+  } while (cursor != null);
+  return rooms;
+});

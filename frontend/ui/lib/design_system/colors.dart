@@ -1,10 +1,11 @@
 // Phlio design system — color tokens.
 //
-// Values are lifted directly from the reference screens (deep, near-black
-// navy surfaces; a purple → pink → orange brand gradient shared by the
-// logo, the fox mascot's accents, and every primary call-to-action). Every
-// other part of the app should reference these tokens rather than hardcode
-// a color literal, so a future rebrand is a one-file change.
+// Values are lifted directly from the brand reference sheets: near-black
+// navy surfaces warmed by Foxy's fur — a sunset gradient (violet → peach)
+// shared by the logo mark, the fox mascot's accents, and every primary
+// call-to-action. Every other part of the app should reference these tokens
+// rather than hardcode a color literal, so a future rebrand is a one-file
+// change.
 
 import 'package:flutter/material.dart';
 
@@ -19,39 +20,61 @@ import 'package:flutter/material.dart';
 /// `Brightness` itself.
 abstract final class PhlioColors {
   // -- Surfaces, darkest to lightest --------------------------------------
-  static const Color background = Color(0xFF0A0B14);
-  static const Color surface = Color(0xFF13141F);
-  static const Color surfaceElevated = Color(0xFF1B1D2B);
-  static const Color surfaceInput = Color(0xFF191B28);
-  static const Color border = Color(0xFF272A3B);
-  static const Color borderSubtle = Color(0xFF1E2030);
+  static const Color background = Color(0xFF0A0E14);
+  static const Color surface = Color(0xFF12151F);
+  static const Color surfaceElevated = Color(0xFF1A1F2E);
+  static const Color surfaceInput = Color(0xFF161B26);
+  static const Color border = Color(0xFF262D3D);
+  static const Color borderSubtle = Color(0xFF1C2230);
+
+  // Rooms uses a charcoal conversation and a lighter, sliding room panel.
+  static const Color roomsChat = Color(0xFF24262B);
+  static const Color roomsRail = Color(0xFF202127);
+  static const Color roomsInput = Color(0xFF383A40);
+  static const Color roomsSidebar = Color(0xFF303238);
 
   // -- Text -----------------------------------------------------------------
-  static const Color textPrimary = Color(0xFFF5F6FA);
-  static const Color textSecondary = Color(0xFFA6A9BD);
-  static const Color textMuted = Color(0xFF6E7186);
-  static const Color textOnBrand = Color(0xFF150E24); // for text atop the gradient
+  static const Color textPrimary = Color(0xFFF5F5F4);
+  static const Color textSecondary = Color(0xFFA8B0C2);
+  static const Color textMuted = Color(0xFF6B7280);
+  static const Color textOnBrand = Color(0xFF1A0F08); // text atop the gradient
 
-  // -- Brand gradient (logo, primary buttons, the Agent's accents) --------
-  static const Color brandBlue = Color(0xFF5C8DF6);
-  static const Color brandPurple = Color(0xFF8B6CF6);
-  static const Color brandPink = Color(0xFFDD6FC4);
-  static const Color brandOrange = Color(0xFFFFA45C);
+  // -- Brand (Foxy's palette: ember orange + dusk violet) -------------------
+  static const Color brandOrange = Color(0xFFFF8A4C);
+  static const Color brandPeach = Color(0xFFFFB27A);
+  static const Color brandViolet = Color(0xFF8B5CF6);
+  static const Color brandLavender = Color(0xFFA78BFA);
+  static const Color brandPink = Color(0xFFE879A6);
 
-  static const LinearGradient brandGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [brandBlue, brandPurple, brandPink, brandOrange],
-    stops: [0.0, 0.4, 0.7, 1.0],
+  /// Primary CTA gradient — violet melting into peach, left to right
+  /// (the "Continue" pill from the reference screens).
+  static const LinearGradient sunsetGradient = LinearGradient(
+    colors: [brandLavender, brandOrange],
   );
 
-  /// A softer, two-stop version of [brandGradient] for large surfaces
-  /// (banners, the Agent's header) where the full four-stop gradient would
-  /// be too busy.
+  /// Reverse ember gradient — orange → pink → violet (the "Book This Plan"
+  /// pill). Use for highlights where the CTA should feel warmer.
+  static const LinearGradient emberGradient = LinearGradient(
+    colors: [brandOrange, brandPink, brandLavender],
+  );
+
+  /// Legacy alias kept for existing call sites (logo shading, avatars):
+  /// the full sunset ramp used by the wordmark and mascot accents.
+  static const LinearGradient brandGradient = sunsetGradient;
+
+  // -- Legacy aliases -------------------------------------------------------
+  // Older call sites referenced the first-pass palette by name. They resolve
+  // to the closest new token so nothing breaks, but new code should prefer
+  // the brand tokens above.
+  static const Color brandPurple = brandViolet;
+  static const Color brandBlue = Color(0xFF4C8DFF);
+
+  /// A softer, two-stop version for large surfaces (banners, the Agent's
+  /// header) where a hard gradient would be too busy.
   static const LinearGradient brandGradientSoft = LinearGradient(
+    colors: [Color(0xFF2A2340), Color(0xFF3A2A28)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [brandPurple, brandOrange],
   );
 
   // -- Domain accent colors -------------------------------------------------
@@ -65,7 +88,7 @@ abstract final class PhlioColors {
   static const Color domainShop = Color(0xFFFF9F45);
   static const Color domainStream = Color(0xFFB57BFF);
   static const Color domainNews = Color(0xFF33C481);
-  static const Color domainAgent = Color(0xFFDD6FC4);
+  static const Color domainAgent = Color(0xFFFF8A4C);
   // Retained as an alias: the Shop domain's Art & Handmade category reuses
   // this color for its imagery accent (see `product_card.dart`), distinct
   // from the domain-level `domainShop` used on the Home grid.
@@ -75,10 +98,10 @@ abstract final class PhlioColors {
   static const Color success = Color(0xFF3ECF8E);
   static const Color warning = Color(0xFFF6B93B);
   static const Color danger = Color(0xFFF5636B);
-  static const Color info = brandBlue;
+  static const Color info = Color(0xFF4C8DFF);
 
   // -- Overlays -------------------------------------------------------------
   static const Color scrim = Color(0xB3000000); // 70% black, for sheets/dialogs
-  static const Color shimmerBase = Color(0xFF191B28);
-  static const Color shimmerHighlight = Color(0xFF24273A);
+  static const Color shimmerBase = Color(0xFF161B26);
+  static const Color shimmerHighlight = Color(0xFF232A3B);
 }

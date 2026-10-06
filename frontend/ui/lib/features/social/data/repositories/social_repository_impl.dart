@@ -50,9 +50,9 @@ class SocialRepositoryImpl implements SocialRepository {
   }
 
   @override
-  Future<Result<CommentEntity>> addComment({required String postId, required String text}) async {
+  Future<Result<CommentEntity>> addComment({required String postId, required String text, String? stickerId}) async {
     try {
-      final comment = await _remoteDataSource.addComment(postId: postId, text: text);
+      final comment = await _remoteDataSource.addComment(postId: postId, text: text, stickerId: stickerId);
       return Result.success(comment.toEntity());
     } on DioException catch (e) {
       return Result.failure(mapDioErrorToFailure(e));

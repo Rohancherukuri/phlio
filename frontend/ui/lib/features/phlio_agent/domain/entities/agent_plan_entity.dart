@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum PlanItemKind { room, product, post }
+enum PlanItemKind { room, product, post, book }
 
 class PlanItemEntity extends Equatable {
   const PlanItemEntity({

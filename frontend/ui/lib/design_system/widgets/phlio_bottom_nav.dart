@@ -1,10 +1,11 @@
 // Phlio design system — bottom navigation.
 //
-// Matches the reference screens' five-item bar: Home, Explore, a raised
-// gradient "create" button in the center, Activity, and Profile. The
-// center button is deliberately not part of the `NavigationBar`/`BottomNavigationBar`
-// item set — it triggers a distinct "create" action sheet rather than
-// navigating to a fifth tab, exactly as in the reference UI.
+// Matches the reference screens' five-slot bar: Home, Explore, a raised
+// gradient "create" button in the center, Profile, and the App Tray (the
+// 3x3 grid that opens the platform switcher). The create and tray slots
+// are deliberately not part of the selected-item set — create triggers an
+// action sheet, tray triggers the platform switcher sheet, and neither is
+// ever "selected".
 
 import 'package:flutter/material.dart';
 import '../colors.dart';
@@ -18,14 +19,12 @@ class PhlioBottomNavItem {
   final String label;
 }
 
+/// Home, Explore, Profile — the three *selectable* tabs. The center create
+/// button and the trailing app-tray slot are handled via callbacks in
+/// [PhlioBottomNav] and never render as selected.
 const List<PhlioBottomNavItem> phlioBottomNavItems = [
   PhlioBottomNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
   PhlioBottomNavItem(icon: Icons.search_outlined, activeIcon: Icons.search_rounded, label: 'Explore'),
-  PhlioBottomNavItem(
-    icon: Icons.notifications_outlined,
-    activeIcon: Icons.notifications_rounded,
-    label: 'Activity',
-  ),
   PhlioBottomNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile'),
 ];
 
@@ -35,13 +34,24 @@ class PhlioBottomNav extends StatelessWidget {
     required this.onTap,
     super.key,
     this.onCreateTap,
+    this.onTrayTap,
+    this.createIcon = Icons.add_rounded,
+    this.profileAvatar,
   });
 
-  /// Index into [phlioBottomNavItems] (0-3). The center create button is
-  /// handled separately via [onCreateTap] and never "selected".
+  /// Index into [phlioBottomNavItems] (0-2). The center create button and
+  /// trailing tray slot are handled separately and never "selected".
   final int currentIndex;
   final ValueChanged<int> onTap;
   final VoidCallback? onCreateTap;
+  final VoidCallback? onTrayTap;
+
+  /// The center button's glyph — Phlio Pay swaps the plus for a QR scanner.
+  final IconData createIcon;
+
+  /// Optional avatar widget rendered in place of the Profile icon (the
+  /// user's picture once they upload one).
+  final Widget? profileAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +70,7 @@ class PhlioBottomNav extends StatelessWidget {
               _navItem(1),
               _createButton(),
               _navItem(2),
-              _navItem(3),
+              _trayButton(),
             ],
           ),
         ),
@@ -71,7 +81,7 @@ class PhlioBottomNav extends StatelessWidget {
   Widget _navItem(int index) {
     final item = phlioBottomNavItems[index];
     final selected = index == currentIndex;
-    final color = selected ? PhlioColors.brandPurple : PhlioColors.textMuted;
+    final color = selected ? PhlioColors.brandOrange : PhlioColors.textMuted;
     return Expanded(
       child: InkWell(
         onTap: () => onTap(index),
@@ -88,7 +98,9 @@ class PhlioBottomNav extends StatelessWidget {
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutBack,
               builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
-              child: Icon(selected ? item.activeIcon : item.icon, color: color, size: 24),
+              child: (index == 2 && profileAvatar != null)
+                  ? _ringedAvatar(profileAvatar!)
+                  : Icon(selected ? item.activeIcon : item.icon, color: color, size: 24),
             ),
             const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
@@ -103,13 +115,25 @@ class PhlioBottomNav extends StatelessWidget {
               width: selected ? 14 : 0,
               height: 3,
               decoration: BoxDecoration(
-                color: PhlioColors.brandPurple,
+                color: PhlioColors.brandOrange,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// The user's avatar with an animated ring when Profile is selected.
+  Widget _ringedAvatar(Widget avatar) {
+    return Container(
+      padding: const EdgeInsets.all(1.5),
+      decoration: const BoxDecoration(shape: BoxShape.circle),
+      foregroundDecoration: const ShapeDecoration(
+        shape: CircleBorder(side: BorderSide(color: PhlioColors.brandOrange, width: 2)),
+      ),
+      child: SizedBox(width: 24, height: 24, child: ClipOval(child: avatar)),
     );
   }
 
@@ -122,11 +146,30 @@ class PhlioBottomNav extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: const BoxDecoration(
-              gradient: PhlioColors.brandGradient,
+              gradient: PhlioColors.sunsetGradient,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.add_rounded, color: PhlioColors.textOnBrand, size: 26),
+            child: Icon(createIcon, color: PhlioColors.textOnBrand, size: 26),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// The App Tray slot — Phlio's platform switcher (the reference screens'
+  /// 3x3 grid button). Never renders as selected.
+  Widget _trayButton() {
+    return Expanded(
+      child: InkWell(
+        onTap: onTrayTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.grid_view_outlined, color: PhlioColors.textMuted, size: 24),
+            const SizedBox(height: 2),
+            Text('Tray', style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted)),
+            const SizedBox(height: 5),
+          ],
         ),
       ),
     );

@@ -65,7 +65,8 @@ class PostResponse(BaseModel):
 
 
 class CreateCommentRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=1000)
+    text: str = Field(default="", max_length=1000)
+    sticker_id: str | None = Field(default=None, max_length=40)
 
 
 class CommentResponse(BaseModel):
@@ -73,6 +74,7 @@ class CommentResponse(BaseModel):
     post_id: str
     author_id: str
     text: str
+    sticker_id: str | None = None
     created_at: dt.datetime
 
     @classmethod
@@ -82,6 +84,7 @@ class CommentResponse(BaseModel):
             post_id=comment.post_id,
             author_id=comment.author_id,
             text=comment.text,
+            sticker_id=comment.sticker_id,
             created_at=comment.created_at,
         )
 
@@ -145,7 +148,9 @@ async def add_comment(
     social_service: SocialService = Depends(get_social_service),
     current_user: User = Depends(get_current_user),
 ) -> CommentResponse:
-    comment = await social_service.add_comment(post_id=post_id, author_id=current_user.id, text=body.text)
+    comment = await social_service.add_comment(
+        post_id=post_id, author_id=current_user.id, text=body.text, sticker_id=body.sticker_id
+    )
     return CommentResponse.from_entity(comment)
 
 

@@ -20,4 +20,17 @@ abstract final class AppConfig {
     'ENABLE_REQUEST_LOGGING',
     defaultValue: true,
   );
+
+  /// Origin the API is served from (apiBaseUrl minus the `/api/v1` prefix).
+  /// Uploaded room files come back as origin-relative `/media/...` urls;
+  /// join them here before handing them to image loaders.
+  static String get apiOrigin {
+    final base = apiBaseUrl.endsWith('/')
+        ? apiBaseUrl.substring(0, apiBaseUrl.length - 1)
+        : apiBaseUrl;
+    return base.replaceAll(RegExp(r'/api/v1$'), '');
+  }
+
+  static String mediaUrl(String relativeUrl) =>
+      relativeUrl.startsWith('http') ? relativeUrl : '$apiOrigin$relativeUrl';
 }

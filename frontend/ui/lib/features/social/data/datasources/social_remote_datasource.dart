@@ -27,8 +27,18 @@ class SocialRemoteDataSource {
     return PostModel.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<CommentModel> addComment({required String postId, required String text}) async {
-    final response = await _apiClient.dio.post('/social/posts/$postId/comments', data: {'text': text});
+  Future<CommentModel> addComment({
+    required String postId,
+    required String text,
+    String? stickerId,
+  }) async {
+    final response = await _apiClient.dio.post(
+      '/social/posts/$postId/comments',
+      data: {
+        'text': text,
+        if (stickerId != null) 'sticker_id': stickerId,
+      },
+    );
     return CommentModel.fromJson(response.data as Map<String, dynamic>);
   }
 

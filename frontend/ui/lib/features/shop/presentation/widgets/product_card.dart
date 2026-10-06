@@ -18,6 +18,21 @@ class ProductCard extends StatelessWidget {
   final VoidCallback onToggleFavorite;
   final VoidCallback? onTap;
 
+  /// Branded placeholder shots (`assets/images/placeholders/shop/`) until
+  /// real seller photography exists. Picked deterministically from the
+  /// product id so the same product always shows the same image.
+  static const _placeholderImages = [
+    'assets/images/placeholders/shop/product_lamp.png',
+    'assets/images/placeholders/shop/product_painting.png',
+    'assets/images/placeholders/shop/product_lantern.png',
+    'assets/images/placeholders/shop/product_ceramics.png',
+    'assets/images/placeholders/shop/product_jewelry.png',
+    'assets/images/placeholders/shop/product_print.png',
+  ];
+
+  String get _image =>
+      _placeholderImages[product.id.hashCode.abs() % _placeholderImages.length];
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -31,35 +46,43 @@ class ProductCard extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 1,
-              child: Hero(
-                tag: 'product-image-${product.id}',
-                child: Stack(
+              child: Stack(
                   children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: PhlioRadii.xlRadius,
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            PhlioColors.domainArt.withOpacity(0.55),
-                            PhlioColors.brandOrange.withOpacity(0.35),
-                          ],
+                    ClipRRect(
+                      borderRadius: PhlioRadii.xlRadius,
+                      child: Image.asset(
+                        _image,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.low,
+                        errorBuilder: (_, __, ___) => Container(
+                          decoration: BoxDecoration(
+                            borderRadius: PhlioRadii.xlRadius,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                PhlioColors.domainArt.withValues(alpha: 0.55),
+                                PhlioColors.brandOrange.withValues(alpha: 0.35),
+                              ],
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child:
+                              const Icon(Icons.image_outlined, color: Colors.white70, size: 28),
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.image_outlined, color: Colors.white70, size: 28),
                     ),
-                    Positioned(
-                      top: PhlioSpacing.sm,
-                      right: PhlioSpacing.sm,
-                      child: _AnimatedFavoriteButton(
-                        isFavorited: product.favoritedByMe,
-                        onTap: onToggleFavorite,
-                      ),
+                  Positioned(
+                    top: PhlioSpacing.sm,
+                    right: PhlioSpacing.sm,
+                    child: _AnimatedFavoriteButton(
+                      isFavorited: product.favoritedByMe,
+                      onTap: onToggleFavorite,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: PhlioSpacing.sm),
