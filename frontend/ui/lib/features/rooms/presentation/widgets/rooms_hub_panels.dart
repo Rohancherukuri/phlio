@@ -162,7 +162,11 @@ class _RoomsFriendsPanelState extends ConsumerState<RoomsFriendsPanel> {
             padding: const EdgeInsets.all(12),
             child: Column(children: [
               Row(children: [
-                PhlioAvatar(name: peer['full_name'] as String, size: 36),
+                PhlioAvatar(
+                    profileId: peer['id'] as String,
+                    imageUrl: peer['avatar_url'] as String?,
+                    name: peer['full_name'] as String,
+                    size: 36),
                 const SizedBox(width: 12),
                 Expanded(
                     child: Column(
@@ -312,6 +316,8 @@ class _RoomsSearchPanelState extends ConsumerState<RoomsSearchPanel> {
                               final peer = item['peer'] as Map;
                               return ListTile(
                                   leading: PhlioAvatar(
+                                      profileId: peer['id'] as String,
+                                      imageUrl: peer['avatar_url'] as String?,
                                       name: peer['full_name'] as String,
                                       size: 40),
                                   title: Text(peer['full_name'] as String),

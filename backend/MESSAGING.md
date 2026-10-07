@@ -46,3 +46,14 @@ People returns public names/handles only. Pins searches existing room pinned
 descriptions. Up to 100 content results are returned, with a refine-search hint.
 Explore groups public rooms into interest communities and lists public lobbies.
 These are discovery views over the existing room membership model.
+
+
+## Social Chat and private Messages
+
+- Profile **Chat** is public creator chat stored separately in SQLite `public_chat`. It accepts text, known bundled GIFs and predefined stickers only. Private DM history is never queried for it.
+- Profile **Message** and the Messages inbox open private DMs. New uploads allow images/GIFs up to 8,000,000 bytes each and audio/video up to 25,000,000 bytes each, with up to ten attachments. Documents and archives are rejected by the picker, upload API and send API. Existing message history remains readable. Rooms retains its separate document upload policy.
+- These limits follow the [CM.com Instagram Messaging documentation](https://developers.cm.com/messaging/docs/instagram-messaging); they are a comparable Phlio policy, not a claim about every Instagram consumer-app build.
+- Image edits (center square crop, rotation, monochrome and stickers) export a new PNG on-device. The original file remains unchanged. Edited images are checked against the image cap.
+- Video editing supports trim, mute and quarter-turn rotation. Edits are exported to H.264/AAC MP4 on the backend and checked against the output limit. Local API environments need `ffmpeg` and `ffprobe` on PATH; the Docker image includes them. Unsupported codecs or export failures return an actionable error and preserve the staged draft.
+- Long-press a DM to react or decorate your own sent message. Sticker positions and sizes are normalized, persisted separately, and visible to both participants. Only the sender can change these overlays. Double-tap a message for a heart reaction; drag a sticker to move, double-tap to resize, hold to remove.
+- Restart the API to register `/social/creators/{creator}/chat` and the DM overlays route. Tables are created without deleting existing messages.

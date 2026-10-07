@@ -34,6 +34,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   Timer? _pollTimer;
   Timer? _clock;
   final List<RTCIceCandidate> _pending = [];
+  String? _peerId;
   bool _busy = false;
   bool _closing = false;
   bool _finished = false;
@@ -148,6 +149,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     try {
       final call = await _api.call(widget.callId, _cursor);
       if (_closing || _finished) return;
+      if (_peerId == null && mounted) {
+        setState(() => _peerId =
+            call[widget.incoming ? 'caller_id' : 'recipient_id'] as String?);
+      }
       _networkFailures = 0;
       final status = call['status'] as String;
       if (['ended', 'declined', 'missed'].contains(status)) {
@@ -281,7 +286,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          PhlioAvatar(name: widget.name, size: 100),
+                          PhlioAvatar(
+                              profileId: _peerId, name: widget.name, size: 100),
                           const SizedBox(height: 24),
                           Text(widget.name,
                               textAlign: TextAlign.center,

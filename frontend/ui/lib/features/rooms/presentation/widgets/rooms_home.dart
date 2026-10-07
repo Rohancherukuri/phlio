@@ -252,7 +252,10 @@ class _RoomsHomeState extends ConsumerState<RoomsHome> {
                                 borderRadius: BorderRadius.circular(20)),
                             child: Column(children: [
                               PhlioAvatar(
-                                  name: peer['full_name'] as String, size: 46),
+                                  profileId: peer['id'] as String,
+                                  imageUrl: peer['avatar_url'] as String?,
+                                  name: peer['full_name'] as String,
+                                  size: 46),
                               const SizedBox(height: 8),
                               Text(
                                   (peer['full_name'] as String)
@@ -289,8 +292,11 @@ class _RoomsHomeState extends ConsumerState<RoomsHome> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18)),
                   onTap: () => _dm(peer),
-                  leading:
-                      PhlioAvatar(name: peer['full_name'] as String, size: 44),
+                  leading: PhlioAvatar(
+                      profileId: peer['id'] as String,
+                      imageUrl: peer['avatar_url'] as String?,
+                      name: peer['full_name'] as String,
+                      size: 44),
                   title: Text(peer['full_name'] as String,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

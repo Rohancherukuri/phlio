@@ -101,7 +101,10 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        PhlioAvatar(name: message.authorId, size: 32),
+                        PhlioAvatar(
+                            profileId: message.authorId,
+                            name: message.authorId,
+                            size: 32),
                         const SizedBox(width: PhlioSpacing.sm),
                         Expanded(
                           child: GestureDetector(

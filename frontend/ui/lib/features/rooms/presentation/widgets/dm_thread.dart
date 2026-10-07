@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../../../design_system/colors.dart';
@@ -14,12 +13,12 @@ import '../../domain/entities/room_message_entity.dart';
 import '../controllers/messaging_controller.dart';
 import '../widgets/attachment_preview.dart';
 import '../widgets/chat_composer.dart';
+import 'chat_policy.dart';
+import 'message_sticker_canvas.dart';
 
-/// The conversation core shared by the pushed DM screen and the creator
-/// profile's Chat tab: the polling history, the send/upload pipeline
+/// Private conversation core for the pushed DM screen: the polling history, the send/upload pipeline
 /// (text, files, voice, Foxy stickers/GIFs via the composer) and
-/// Instagram-style long-press reactions (quick emoji bar anchored above the
-/// message, toggle-on-tap, reaction chips under the message).
+/// Long-press reactions, double-tap hearts, and editable sticker overlays.
 class DmThread extends ConsumerStatefulWidget {
   const DmThread({
     required this.username,
@@ -44,19 +43,18 @@ class _DmThreadState extends ConsumerState<DmThread> {
   static const _quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '🔥'];
 
   final ScrollController _scroll = ScrollController();
-  final Map<String, LayerLink> _links = {};
   int _lastCount = -1;
-  OverlayEntry? _reactionOverlay;
 
   @override
   void dispose() {
-    _dismissReactionBar();
     _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _send(String text,
-      {List<Map<String, dynamic>> attachments = const []}) async {
+  Future<void> _send(
+    String text, {
+    List<Map<String, dynamic>> attachments = const [],
+  }) async {
     await ref
         .read(messagingApiProvider)
         .send(widget.username, text, attachments: attachments);
@@ -69,16 +67,26 @@ class _DmThreadState extends ConsumerState<DmThread> {
     final api = ref.read(messagingApiProvider);
     final paths = [
       for (final f in files)
-        if (f.path != null) f.path!
+        if (f.path != null) f.path!,
     ];
     final uploaded = paths.isEmpty
         ? <Map<String, dynamic>>[]
-        : await api.upload(widget.username, paths);
-    await _send(text, attachments: [
-      ...uploaded,
-      for (final f in files)
-        if (f.isPackItem) {'kind': f.kind, 'name': f.name, 'value': f.packId}
-    ]);
+        : await api.upload(
+            widget.username,
+            paths,
+            edits: [
+              for (final f in files)
+                if (f.path != null) f.videoEdits,
+            ],
+          );
+    await _send(
+      text,
+      attachments: [
+        ...uploaded,
+        for (final f in files)
+          if (f.isPackItem) {'kind': f.kind, 'name': f.name, 'value': f.packId},
+      ],
+    );
   }
 
   Future<void> _react(String messageId, String value) async {
@@ -91,50 +99,96 @@ class _DmThreadState extends ConsumerState<DmThread> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not react. Try again.')));
+          const SnackBar(content: Text('Could not react. Try again.')),
+        );
       }
     }
   }
 
   // -- Instagram-style reaction bar -------------------------------------------
 
-  void _dismissReactionBar() {
-    _reactionOverlay?.remove();
-    _reactionOverlay = null;
-  }
-
-  void _showReactionBar(String messageId) {
-    _dismissReactionBar();
-    _reactionOverlay = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          // Tap anywhere else to dismiss without reacting.
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _dismissReactionBar,
-              child: const SizedBox.expand(),
-            ),
+  Future<void> _showReactionBar(Map<String, dynamic> message, bool mine) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final emoji in _quickEmojis)
+                    IconButton(
+                      tooltip: 'React $emoji',
+                      onPressed: () => Navigator.pop(context, emoji),
+                      icon: Text(emoji, style: const TextStyle(fontSize: 26)),
+                    ),
+                ],
+              ),
+              if (mine)
+                ListTile(
+                  leading: const Icon(Icons.add_reaction_outlined),
+                  title: const Text('Add or edit stickers'),
+                  onTap: () => Navigator.pop(context, 'decorate'),
+                ),
+            ],
           ),
-          CompositedTransformFollower(
-            link: _links.putIfAbsent(messageId, LayerLink.new),
-            targetAnchor: Alignment.topLeft,
-            followerAnchor: Alignment.bottomLeft,
-            showWhenUnlinked: false,
-            offset: const Offset(0, -10),
-            child: _ReactionBar(
-              active: _quickEmojis,
-              onPick: (emoji) {
-                _dismissReactionBar();
-                _react(messageId, emoji);
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
-    Overlay.of(context, rootOverlay: true).insert(_reactionOverlay!);
+    if (!mounted || action == null) return;
+    if (action != 'decorate') {
+      await _react(message['id'] as String, action);
+      return;
+    }
+    final overlays = await editMessageStickers(
+      context,
+      child: _messageBody(message, mine),
+      initial: _overlays(message),
+    );
+    if (!mounted || overlays == null) return;
+    try {
+      await ref
+          .read(messagingApiProvider)
+          .setOverlays(widget.username, message['id'] as String, overlays);
+      if (mounted) ref.invalidate(dmHistoryProvider(widget.username));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save stickers. Try again.'),
+          ),
+        );
+      }
+    }
   }
+
+  List<Map<String, dynamic>> _overlays(Map<String, dynamic> message) => [
+        for (final v in message['overlays'] as List? ?? [])
+          Map<String, dynamic>.from(v as Map),
+      ];
+
+  Widget _messageBody(Map<String, dynamic> message, bool mine) =>
+      ConstrainedBox(
+        constraints:
+            const BoxConstraints(minHeight: 60, minWidth: double.infinity),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if ((message['text'] as String).isNotEmpty)
+              Text(message['text'] as String, style: PhlioTypography.body),
+            for (final raw in message['attachments'] as List)
+              _PrivateAttachment(
+                key: ValueKey((raw as Map)['id']),
+                data: Map<String, dynamic>.from(raw),
+                mine: mine,
+              ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -161,8 +215,10 @@ class _DmThreadState extends ConsumerState<DmThread> {
               final messages = query.isEmpty
                   ? all
                   : all
-                      .where((m) =>
-                          (m['text'] as String).toLowerCase().contains(query))
+                      .where(
+                        (m) =>
+                            (m['text'] as String).toLowerCase().contains(query),
+                      )
                       .toList();
               if (all.isEmpty) return _empty(name);
               if (messages.isEmpty) {
@@ -187,71 +243,73 @@ class _DmThreadState extends ConsumerState<DmThread> {
                 itemBuilder: (_, i) {
                   final message = messages[i];
                   final id = message['id'] as String;
-                  final mine = message['sender_id'] != peer?['id'];
+                  final mine = message['sender_id'] == me;
                   final reactions = [
                     for (final raw in (message['reactions'] as List? ?? []))
                       Map<String, dynamic>.from(raw as Map),
                   ];
                   return Padding(
-                    padding: EdgeInsets.only(bottom: widget.compact ? 12 : 20),
-                    child: CompositedTransformTarget(
-                      link: _links.putIfAbsent(id, LayerLink.new),
-                      child: GestureDetector(
-                        // Long-press any message: Instagram-style reaction bar.
-                        onLongPress: () => _showReactionBar(id),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Align(
+                      alignment:
+                          mine ? Alignment.centerRight : Alignment.centerLeft,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * .82,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: mine
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
                           children: [
                             GestureDetector(
-                              // The peer's avatar opens their profile page.
-                              onTap: mine
-                                  ? null
-                                  : () => context
-                                      .push('/creator/${widget.username}'),
-                              child: PhlioAvatar(
-                                  name: mine ? 'You' : name,
-                                  size: widget.compact ? 30 : 36),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Wrap(
-                                    spacing: 8,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      Text(mine ? 'You' : name,
-                                          style: PhlioTypography.bodyStrong
-                                              .copyWith(
-                                            color: mine
-                                                ? PhlioColors.brandOrange
-                                                : PhlioColors.brandLavender,
-                                          )),
-                                      Text(
-                                          timeago.format(DateTime.parse(
-                                              message['created_at'] as String)),
-                                          style: PhlioTypography.caption
-                                              .copyWith(fontSize: 10)),
-                                    ],
-                                  ),
-                                  if ((message['text'] as String).isNotEmpty)
-                                    Text(message['text'] as String,
-                                        style: PhlioTypography.body),
-                                  for (final raw
-                                      in message['attachments'] as List)
-                                    _PrivateAttachment(
-                                      key: ValueKey((raw as Map)['id']),
-                                      data: Map<String, dynamic>.from(raw),
-                                      mine: mine,
+                              onLongPress: () =>
+                                  _showReactionBar(message, mine),
+                              onDoubleTap: () => _react(id, '❤️'),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: mine
+                                      ? PhlioColors.brandViolet
+                                          .withValues(alpha: .65)
+                                      : PhlioColors.surfaceElevated,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(20),
+                                    topRight: const Radius.circular(20),
+                                    bottomLeft: Radius.circular(
+                                      mine ? 20 : 5,
                                     ),
-                                  if (reactions.isNotEmpty)
-                                    _ReactionChips(
-                                        reactions: reactions, myId: me),
-                                ],
+                                    bottomRight: Radius.circular(
+                                      mine ? 5 : 20,
+                                    ),
+                                  ),
+                                ),
+                                child: MessageStickerCanvas(
+                                  overlays: _overlays(message),
+                                  child: _messageBody(
+                                    message,
+                                    mine,
+                                  ),
+                                ),
                               ),
                             ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                timeago.format(
+                                  DateTime.parse(
+                                    message['created_at'] as String,
+                                  ),
+                                ),
+                                style: PhlioTypography.caption
+                                    .copyWith(fontSize: 10),
+                              ),
+                            ),
+                            if (reactions.isNotEmpty)
+                              _ReactionChips(
+                                reactions: reactions,
+                                myId: me,
+                              ),
                           ],
                         ),
                       ),
@@ -263,6 +321,7 @@ class _DmThreadState extends ConsumerState<DmThread> {
           ),
         ),
         ChatComposer(
+          audience: ChatAudience.directMessage,
           hint: 'Message @${widget.username}',
           surfaceColor: PhlioColors.roomsInput,
           onSendText: _send,
@@ -292,75 +351,44 @@ class _DmThreadState extends ConsumerState<DmThread> {
         ),
       );
     }
-    return ListView(padding: const EdgeInsets.all(24), children: [
-      const SizedBox(height: 48),
-      Align(
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const SizedBox(height: 48),
+        Align(
           alignment: Alignment.centerLeft,
-          child: PhlioAvatar(name: name, size: 96)),
-      const SizedBox(height: 24),
-      Text(name, style: PhlioTypography.displayMedium),
-      Text('@${widget.username}', style: PhlioTypography.bodyLarge),
-      const SizedBox(height: 16),
-      Text('This is the beginning of your conversation with $name.',
-          style: PhlioTypography.bodyLarge),
-      const SizedBox(height: 48),
-      const Center(child: PhlioFox(size: 96, pose: PhlioFoxPose.happy)),
-      const SizedBox(height: 16),
-      Center(
+          child: PhlioAvatar(profileId: widget.username, name: name, size: 96),
+        ),
+        const SizedBox(height: 24),
+        Text(name, style: PhlioTypography.displayMedium),
+        Text('@${widget.username}', style: PhlioTypography.bodyLarge),
+        const SizedBox(height: 16),
+        Text(
+          'This is the beginning of your conversation with $name.',
+          style: PhlioTypography.bodyLarge,
+        ),
+        const SizedBox(height: 48),
+        const Center(child: PhlioFox(size: 96, pose: PhlioFoxPose.happy)),
+        const SizedBox(height: 16),
+        Center(
           child: FilledButton(
-              onPressed: () async {
-                try {
-                  await _send('👋');
-                } catch (_) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Could not send your wave. Try again.')));
-                  }
+            onPressed: () async {
+              try {
+                await _send('👋');
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not send your wave. Try again.'),
+                    ),
+                  );
                 }
-              },
-              child: Text('Wave to $name'))),
-    ]);
-  }
-}
-
-/// Floating quick-reaction pill anchored above the long-pressed message.
-class _ReactionBar extends StatelessWidget {
-  const _ReactionBar({required this.active, required this.onPick});
-
-  final List<String> active;
-  final ValueChanged<String> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: PhlioColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: PhlioColors.borderSubtle),
-          boxShadow: const [
-            BoxShadow(
-                color: Colors.black26, blurRadius: 18, offset: Offset(0, 6))
-          ],
+              }
+            },
+            child: Text('Wave to $name'),
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < active.length; i++) ...[
-              if (i > 0) const SizedBox(width: 2),
-              GestureDetector(
-                onTap: () => onPick(active[i]),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Text(active[i], style: const TextStyle(fontSize: 26)),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
@@ -396,9 +424,10 @@ class _ReactionChips extends StatelessWidget {
                     : PhlioColors.surfaceElevated,
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                    color: mine.contains(entry.key)
-                        ? PhlioColors.brandViolet.withValues(alpha: 0.5)
-                        : PhlioColors.borderSubtle),
+                  color: mine.contains(entry.key)
+                      ? PhlioColors.brandViolet.withValues(alpha: 0.5)
+                      : PhlioColors.borderSubtle,
+                ),
               ),
               child: Text(
                 entry.key + (entry.value > 1 ? '  ${entry.value}' : ''),
@@ -420,22 +449,22 @@ class _PrivateAttachment extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: AttachmentPreview(
-          attachment: MessageAttachmentEntity(
-            id: data['id'] as String,
-            kind: data['kind'] as String,
-            name: data['name'] as String,
-            size: (data['size'] as num?)?.toInt() ?? 0,
-            mime: data['mime'] as String? ?? '',
-            url: data['url'] as String? ?? '',
-            value: data['value'] as String? ?? '',
-          ),
-          loadPrivateFile: (data['url'] as String? ?? '').isEmpty
-              ? null
-              : () => ref
-                  .read(messagingApiProvider)
-                  .localFile(data['url'] as String),
-        ));
+      padding: const EdgeInsets.only(top: 8),
+      child: AttachmentPreview(
+        attachment: MessageAttachmentEntity(
+          id: data['id'] as String,
+          kind: data['kind'] as String,
+          name: data['name'] as String,
+          size: (data['size'] as num?)?.toInt() ?? 0,
+          mime: data['mime'] as String? ?? '',
+          url: data['url'] as String? ?? '',
+          value: data['value'] as String? ?? '',
+        ),
+        loadPrivateFile: (data['url'] as String? ?? '').isEmpty
+            ? null
+            : () =>
+                ref.read(messagingApiProvider).localFile(data['url'] as String),
+      ),
+    );
   }
 }

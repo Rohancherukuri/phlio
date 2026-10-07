@@ -102,7 +102,10 @@ class _DirectMessagesPanelState extends ConsumerState<_DirectMessagesPanel> {
                       final peer = item['peer'] as Map;
                       return ListTile(
                         leading: PhlioAvatar(
-                            name: peer['full_name'] as String, size: 40),
+                            profileId: peer['id'] as String,
+                            imageUrl: peer['avatar_url'] as String?,
+                            name: peer['full_name'] as String,
+                            size: 40),
                         title: Text(peer['full_name'] as String,
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(

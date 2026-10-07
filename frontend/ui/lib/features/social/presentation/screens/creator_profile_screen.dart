@@ -6,7 +6,9 @@ import '../../../../design_system/colors.dart';
 import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_fox.dart';
-import '../../../rooms/presentation/widgets/dm_thread.dart';
+import '../widgets/creator_chat.dart';
+import '../../../profile/presentation/widgets/profile_posts.dart';
+import '../../../../design_system/widgets/phlio_card.dart';
 import '../controllers/video_library.dart';
 import '../widgets/social_videos_view.dart';
 
@@ -15,12 +17,10 @@ import '../widgets/social_videos_view.dart';
 /// @handle header, avatar + stats, display name with verified badge, bio,
 /// hashtag chips, pinned song, Follow/Message actions, Moments circles and
 /// the same six content tabs (Posts / Replies / Reposts / Schedule / Chat /
-/// Clips). The Chat tab is a real conversation — the shared [DmThread] with
-/// text, attachments, voice and Instagram-style long-press reactions.
+/// Clips). Chat is public; the Message action opens a separate private DM.
 ///
-/// Content is seeded per creator and deliberately uneven — some have no bio,
-/// song, moments, replies or posts. Unknown handles (fresh DM contacts, the
-/// signed-in user) fall back to a bare profile so the route never breaks.
+/// Account identity and posts come from the API. Bundled demo creators retain
+/// their sample moments and profile details when no account is available.
 
 @immutable
 class CreatorProfile {
@@ -34,6 +34,7 @@ class CreatorProfile {
     required this.postCount,
     required this.hasPosts,
     this.bio,
+    this.avatarUrl,
     this.tags = const [],
     this.songTitle,
     this.moments = const [],
@@ -50,6 +51,7 @@ class CreatorProfile {
   final int postCount;
   final bool hasPosts;
   final String? bio;
+  final String? avatarUrl;
   final List<String> tags;
   final String? songTitle;
   final List<String> moments;
@@ -187,25 +189,10 @@ CreatorProfile? creatorProfileByHandle(String handle) {
   return null;
 }
 
-/// Bare profile for handles we have nothing on (fresh DM contacts etc.) so
-/// the screen always renders.
-CreatorProfile _fallbackProfile(String handle) {
-  return CreatorProfile(
-    handle: handle,
-    displayName: handle,
-    avatarAsset: '',
-    verified: false,
-    followers: 0,
-    following: 0,
-    postCount: 0,
-    hasPosts: false,
-  );
-}
-
 /// Shared brand gradients for Moments circles and placeholder post tiles.
 const kProfileGradients = [
   [PhlioColors.brandOrange, PhlioColors.brandViolet],
-  [PhlioColors.brandViolet, Color(0xFF3B2A63)],
+  [PhlioColors.brandViolet, PhlioColors.surfaceElevated],
   [PhlioColors.brandPink, PhlioColors.brandOrange],
   [PhlioColors.brandLavender, PhlioColors.brandViolet],
 ];
@@ -228,6 +215,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     'Chat',
     'Clips'
   ];
+  ProfilePostType _postType = ProfilePostType.articles;
   int _tab = 0; // Land on Posts, like the own-profile page.
 
   @override
@@ -236,8 +224,41 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     // itself stays ref-free for hot-reload safety.
     return Consumer(
       builder: (context, ref, _) {
-        final profile = creatorProfileByHandle(widget.username) ??
-            _fallbackProfile(widget.username);
+        final seed = creatorProfileByHandle(widget.username);
+        final remote = ref.watch(publicProfileProvider(widget.username));
+        if (seed == null && !remote.hasValue) {
+          return Scaffold(
+              appBar: AppBar(),
+              body: remote.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (_, __) => Center(
+                    child: TextButton(
+                        onPressed: () => ref
+                            .invalidate(publicProfileProvider(widget.username)),
+                        child: const Text('Profile unavailable. Retry'))),
+                data: (_) => const SizedBox.shrink(),
+              ));
+        }
+        final data = remote.valueOrNull;
+        final profile = data == null
+            ? seed!
+            : CreatorProfile(
+                handle: data['username'] as String,
+                displayName: data['full_name'] as String,
+                avatarAsset: seed?.avatarAsset ?? '',
+                avatarUrl: data['avatar_url'] as String?,
+                verified: data['is_verified'] == true,
+                followers: seed?.followers ?? 0,
+                following: seed?.following ?? 0,
+                postCount: seed?.postCount ?? 0,
+                hasPosts: true,
+                bio: data['bio'] as String?,
+                tags: (data['interests'] as List? ?? []).cast<String>(),
+                moments: seed?.moments ?? const [],
+                replies: seed?.replies ?? const [],
+                reposts: seed?.reposts ?? const [],
+                songTitle: seed?.songTitle,
+              );
         final followed = ref.watch(followedCreatorsProvider);
         final isFollowed = followed.contains(profile.handle);
         final videos =
@@ -286,23 +307,35 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
                             PhlioSpacing.sm, PhlioSpacing.lg, 0),
-                        child: Row(
-                          children: [
-                            _avatar(profile, 92),
-                            const SizedBox(width: PhlioSpacing.xl),
-                            Expanded(
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
+                        child: LayoutBuilder(builder: (context, constraints) {
+                          final stats = [
+                            _stat(profile.postCount, 'posts'),
+                            _stat(profile.followers, 'followers'),
+                            _stat(profile.following, 'following'),
+                          ];
+                          if (constraints.maxWidth < 500 ||
+                              MediaQuery.textScalerOf(context).scale(14) > 20) {
+                            return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _stat(profile.postCount, 'posts'),
-                                  _stat(profile.followers, 'followers'),
-                                  _stat(profile.following, 'following'),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                                  _avatar(profile, 92),
+                                  const SizedBox(height: 16),
+                                  Wrap(
+                                      spacing: 24,
+                                      runSpacing: 12,
+                                      children: stats),
+                                ]);
+                          }
+                          return Row(children: [
+                            _avatar(profile, 92),
+                            const SizedBox(width: 24),
+                            Expanded(
+                                child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceEvenly,
+                                    children: stats))
+                          ]);
+                        }),
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
@@ -483,16 +516,23 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   pinned: true,
                   delegate: _ProfileTabBar(
                     tabs: _tabs,
+                    postType: _postType,
+                    extent: MediaQuery.textScalerOf(context).scale(20) + 40,
+                    onPostType: (value) => setState(() {
+                      _postType = value;
+                      _tab = 0;
+                    }),
                     selected: _tab,
                     onChanged: (i) => setState(() => _tab = i),
                   ),
                 ),
                 // -- Tab content ---------------------------------------------
                 if (_tab == 0)
-                  profile.hasPosts
-                      ? SliverToBoxAdapter(child: _postsGrid())
-                      : _foxyEmpty('No posts yet',
-                          'When they post, it lands here.', PhlioFoxPose.cozy)
+                  SliverToBoxAdapter(
+                      child: SizedBox(
+                          height: MediaQuery.sizeOf(context).height * 0.65,
+                          child: ProfilePosts(
+                              author: profile.handle, type: _postType)))
                 else if (_tab == 1)
                   profile.replies.isNotEmpty
                       ? SliverToBoxAdapter(child: _replies(profile.replies))
@@ -513,12 +553,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                       'Streams and events arrive with the Events domain.',
                       PhlioFoxPose.happy)
                 else if (_tab == 4)
-                  // A real conversation: text, images, videos, voice,
-                  // stickers, GIFs — with Instagram-style reactions.
+                  // Public creator chat never reads private DM history.
                   SliverToBoxAdapter(
                     child: SizedBox(
                       height: MediaQuery.sizeOf(context).height * 0.62,
-                      child: DmThread(username: profile.handle, compact: true),
+                      child: CreatorChat(username: profile.handle),
                     ),
                   )
                 else
@@ -654,6 +693,10 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   }
 
   Widget _avatar(CreatorProfile profile, double size) {
+    if (profile.avatarUrl != null || profile.avatarAsset.isEmpty) {
+      return PhlioAvatar(
+          name: profile.displayName, imageUrl: profile.avatarUrl, size: size);
+    }
     return ClipOval(
       child: Image.asset(
         profile.avatarAsset,
@@ -773,41 +816,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  Widget _postsGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
-          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-      ),
-      itemCount: 9,
-      itemBuilder: (context, index) {
-        final colors = kProfileGradients[index % kProfileGradients.length];
-        return GestureDetector(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Placeholder posts — demo profile content.')),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: colors,
-              ),
-            ),
-            child: const Icon(Icons.image_outlined,
-                color: Colors.white24, size: 28),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _videosGrid(List<SocialVideo> videos) {
     return GridView.builder(
       shrinkWrap: true,
@@ -891,17 +899,23 @@ class _ProfileTabBar extends SliverPersistentHeaderDelegate {
     required this.tabs,
     required this.selected,
     required this.onChanged,
+    required this.postType,
+    required this.extent,
+    required this.onPostType,
   });
 
   final List<String> tabs;
   final int selected;
   final ValueChanged<int> onChanged;
+  final ProfilePostType postType;
+  final double extent;
+  final ValueChanged<ProfilePostType> onPostType;
 
   @override
-  double get minExtent => 46;
+  double get minExtent => extent;
 
   @override
-  double get maxExtent => 46;
+  double get maxExtent => extent;
 
   @override
   Widget build(
@@ -922,17 +936,24 @@ class _ProfileTabBar extends SliverPersistentHeaderDelegate {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        tabs[i],
-                        style: PhlioTypography.label.copyWith(
-                          fontSize: 13,
-                          color: selected == i
-                              ? PhlioColors.textPrimary
-                              : PhlioColors.textSecondary,
-                          fontWeight:
-                              selected == i ? FontWeight.w700 : FontWeight.w500,
+                      if (i == 0)
+                        ProfilePostsMenu(
+                            selected: postType,
+                            onOpened: () => onChanged(0),
+                            onSelected: onPostType)
+                      else
+                        Text(
+                          tabs[i],
+                          style: PhlioTypography.label.copyWith(
+                            fontSize: 13,
+                            color: selected == i
+                                ? PhlioColors.textPrimary
+                                : PhlioColors.textSecondary,
+                            fontWeight: selected == i
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 4),
                       Container(
                         width: 30,
@@ -956,5 +977,8 @@ class _ProfileTabBar extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant _ProfileTabBar oldDelegate) =>
-      oldDelegate.selected != selected || oldDelegate.tabs != tabs;
+      oldDelegate.selected != selected ||
+      oldDelegate.tabs != tabs ||
+      oldDelegate.postType != postType ||
+      oldDelegate.extent != extent;
 }

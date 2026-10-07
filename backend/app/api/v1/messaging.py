@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
-import mimetypes
+import json
 import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from starlette.responses import FileResponse
 
 from app.api.deps import get_container, get_current_user
 from app.api.v1.rooms import AttachmentIn
 from app.core.container import Container
 from app.domains.identity.entities import User
+from app.domains.messaging.media_policy import (
+    VideoEdit,
+    edit_video,
+    media_type,
+    validate_pack,
+    validate_signature,
+    validate_size,
+)
 from app.infrastructure.media_storage import MediaStorage
 
 router = APIRouter(prefix="/messaging", tags=["messaging"])
@@ -106,6 +114,7 @@ async def send(
     target = await resolve_peer(peer, c)
     for a in body.attachments:
         if a.kind in ("sticker", "gif") and not a.url:
+            validate_pack(a.kind, a.value)
             continue
         prefix = f"{c.settings.api_v1_prefix}/messaging/files/"
         if not a.url.startswith(prefix):
@@ -113,7 +122,9 @@ async def send(
         uploaded = c.messaging_service.file(a.url.removeprefix(prefix), user.id)
         if uploaded["owner"] != user.id or uploaded["peer"] != target.id:
             raise HTTPException(403, "File belongs to another conversation.")
+        kind, _ = media_type(uploaded["name"])
         a.size = Path(uploaded["path"]).stat().st_size
+        validate_size(kind, a.size)
         a.name = uploaded["name"]
         a.mime = uploaded["mime"]
         a.kind = a.mime.split("/")[0] if a.mime.startswith(("image/", "video/", "audio/")) else "document"
@@ -137,34 +148,100 @@ async def react_message(
 async def files(
     peer: str,
     files: list[UploadFile] = File(...),
+    edits: str = Form(default="[]"),
     user: User = Depends(get_current_user),
     c: Container = Depends(get_container),
 ):
     target = await resolve_peer(peer, c)
-    if len(files) > 10:
-        raise HTTPException(422, "Attach up to ten files.")
+    if not 1 <= len(files) <= 10:
+        raise HTTPException(422, "Attach up to ten media files.")
+    try:
+        parsed = json.loads(edits)
+        if not isinstance(parsed, list) or len(parsed) > len(files):
+            raise ValueError()
+        editing = [VideoEdit.model_validate(v) if v is not None else None for v in parsed]
+        editing += [None] * (len(files) - len(editing))
+    except (ValueError, TypeError, ValidationError) as exc:
+        raise HTTPException(422, "Invalid video edits.") from exc
     root = Path(c.settings.messaging_media_root).resolve()
     root.mkdir(parents=True, exist_ok=True)
+    created = []
+    records = []
     result = []
-    for file in files:
-        mime = mimetypes.guess_type(file.filename or "file")[0] or "application/octet-stream"
-        kind = mime.split("/")[0] if mime.startswith(("image/", "video/", "audio/")) else "document"
-        file_id = uuid.uuid4().hex
-        path = root / file_id
-        name = MediaStorage.safe_name(file.filename or "file")
+    try:
+        for index, file in enumerate(files):
+            kind, mime = media_type(file.filename or "")
+            if file.size is not None:
+                validate_size(kind, file.size)
+            file_id = uuid.uuid4().hex
+            path = root / file_id
+            created.append(path)
+            name = MediaStorage.safe_name(file.filename or "media")
 
-        def copy(destination=path, source=file.file):
-            import shutil
+            def copy(destination=path, source=file.file, category=kind):
+                size = 0
+                with destination.open("wb") as out:
+                    while chunk := source.read(1024 * 1024):
+                        size += len(chunk)
+                        validate_size(category, size)
+                        out.write(chunk)
+                validate_size(category, size)
 
-            with destination.open("wb") as out:
-                shutil.copyfileobj(source, out, 1024 * 1024)
-
-        await run_in_threadpool(copy)
-        size = path.stat().st_size
-        c.messaging_service.store_file(file_id, user.id, target.id, str(path), name, mime)
-        url = f"{c.settings.api_v1_prefix}/messaging/files/{file_id}"
-        result.append(dict(kind=kind, name=file.filename or "file", mime=mime, url=url, size=size))
+            await run_in_threadpool(copy)
+            validate_signature(path, mime)
+            if editing[index] is not None:
+                if kind != "video":
+                    raise HTTPException(422, "Video edits require a video attachment.")
+                edited = root / (file_id + ".mp4")
+                created.append(edited)
+                await run_in_threadpool(edit_video, path, edited, editing[index])
+                path.unlink()
+                path = edited
+                name = Path(name).stem + ".mp4"
+                mime = "video/mp4"
+            size = path.stat().st_size
+            records.append((file_id, user.id, target.id, str(path), name, mime))
+            url = f"{c.settings.api_v1_prefix}/messaging/files/{file_id}"
+            result.append(dict(kind=kind, name=name, mime=mime, url=url, size=size))
+        for record in records:
+            c.messaging_service.store_file(*record)
+    except BaseException:
+        for path in created:
+            path.unlink(missing_ok=True)
+        raise
     return result
+
+
+class StickerOverlay(BaseModel):
+    value: str = Field(min_length=1, max_length=120)
+    x: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    y: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    scale: float = Field(default=1, ge=0.5, le=2, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def known_sticker(self):
+        validate_pack("sticker", self.value)
+        return self
+
+
+class OverlaysIn(BaseModel):
+    overlays: list[StickerOverlay] = Field(max_length=12)
+
+
+@router.put("/peers/{peer}/messages/{message_id}/overlays")
+async def set_overlays(
+    peer: str,
+    message_id: str,
+    body: OverlaysIn,
+    user: User = Depends(get_current_user),
+    c: Container = Depends(get_container),
+):
+    target = await resolve_peer(peer, c)
+    return {
+        "overlays": c.messaging_service.overlays(
+            message_id, user.id, target.id, [v.model_dump() for v in body.overlays]
+        )
+    }
 
 
 @router.get("/files/{file_id}")

@@ -41,6 +41,8 @@ def _row_to_user(row: dict) -> User:
         interests=row.get("interests", []),
         created_at=row.get("created_at") or dt.datetime.now(dt.UTC),
         is_verified=row.get("is_verified", False),
+        phone_number=row.get("phone_number"),
+        date_of_birth=dt.date.fromisoformat(row["date_of_birth"]) if row.get("date_of_birth") else None,
     )
 
 
@@ -55,6 +57,8 @@ def _user_to_row(user: User) -> dict:
         "interests": user.interests,
         "is_verified": user.is_verified,
         "created_at": user.created_at,
+        "phone_number": user.phone_number,
+        "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
     }
 
 
@@ -86,6 +90,13 @@ class SurrealIdentityRepository:
         rows = await self._db.query(
             f"SELECT * FROM {_TABLE} WHERE email = $email LIMIT 1",
             {"email": email},
+        )
+        records = rows[0]["result"] if rows and rows[0].get("result") else []
+        return _row_to_user(records[0]) if records else None
+
+    async def get_by_phone(self, phone_number: str) -> User | None:
+        rows = await self._db.query(
+            f"SELECT * FROM {_TABLE} WHERE phone_number = $phone LIMIT 1", {"phone": phone_number}
         )
         records = rows[0]["result"] if rows and rows[0].get("result") else []
         return _row_to_user(records[0]) if records else None

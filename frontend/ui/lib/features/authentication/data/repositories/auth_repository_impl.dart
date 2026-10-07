@@ -33,6 +33,8 @@ class AuthRepositoryImpl implements AuthRepository {
     required String email,
     required String password,
     required List<String> interests,
+    String? dateOfBirth,
+    String? phoneNumber,
   }) async {
     try {
       final response = await _remoteDataSource.register(
@@ -41,6 +43,8 @@ class AuthRepositoryImpl implements AuthRepository {
         email: email,
         password: password,
         interests: interests,
+        dateOfBirth: dateOfBirth,
+        phoneNumber: phoneNumber,
       );
       await _persistTokens(response.tokens);
       return Result.success((response.user.toEntity(), response.tokens));
@@ -55,7 +59,8 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      final response = await _remoteDataSource.login(identifier: identifier, password: password);
+      final response = await _remoteDataSource.login(
+          identifier: identifier, password: password);
       await _persistTokens(response.tokens);
       return Result.success((response.user.toEntity(), response.tokens));
     } on DioException catch (e) {
@@ -81,7 +86,8 @@ class AuthRepositoryImpl implements AuthRepository {
 
   Future<void> _persistTokens(AuthTokensEntity tokens) {
     return _tokenStorage.saveTokens(
-      storage.AuthTokens(accessToken: tokens.accessToken, refreshToken: tokens.refreshToken),
+      storage.AuthTokens(
+          accessToken: tokens.accessToken, refreshToken: tokens.refreshToken),
     );
   }
 }

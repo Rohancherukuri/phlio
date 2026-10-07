@@ -3,8 +3,7 @@
 // again!" speech bubble, identifier + password fields, a gradient
 // "Continue" button, labeled social sign-in chips (Google / Apple /
 // Passkey — wired to a "coming soon" snackbar since OAuth providers are
-// out of scope for this build stage), and a mountain-silhouette footer
-// carrying the tagline.
+// out of scope for this build stage).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,15 +61,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: PhlioColors.backgroundDeep,
       body: Form(
         key: _formKey,
         child: Column(
           children: [
             Expanded(
               child: SafeArea(
-                bottom: false,
+                bottom: true,
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.xxl),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: PhlioSpacing.xxl),
                   children: [
                     const SizedBox(height: PhlioSpacing.lg),
                     // Logo lockup.
@@ -83,7 +84,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               'assets/images/logo/logo_mark.png',
                               fit: BoxFit.contain,
                               filterQuality: FilterQuality.high,
-                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
                             ),
                           ),
                           const SizedBox(height: PhlioSpacing.sm),
@@ -93,11 +95,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               'assets/images/logo/logo_wordmark.png',
                               fit: BoxFit.contain,
                               filterQuality: FilterQuality.high,
-                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
                             ),
                           ),
                           const SizedBox(height: PhlioSpacing.xs),
-                          Text('PEOPLE. PLACES. POSSIBILITIES.', style: PhlioTypography.tagline),
+                          Text('PEOPLE. PLACES. POSSIBILITIES.',
+                              style: PhlioTypography.tagline),
                         ],
                       ),
                     ),
@@ -106,11 +110,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const PhlioFoxAnimation(size: 104, animation: PhlioFoxLoop.wave),
-                        Transform.translate(
+                        const PhlioFoxAnimation(
+                            size: 104, animation: PhlioFoxLoop.wave),
+                        Flexible(
+                            child: Transform.translate(
                           offset: const Offset(0, -14),
                           child: _speechBubble(context),
-                        ),
+                        )),
                       ],
                     ),
                     const SizedBox(height: PhlioSpacing.huge),
@@ -123,7 +129,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.username],
                       validator: (value) =>
-                          (value == null || value.trim().isEmpty) ? 'Enter your email or phone number' : null,
+                          (value == null || value.trim().isEmpty)
+                              ? 'Enter your email or phone number'
+                              : null,
                     ),
                     const SizedBox(height: PhlioSpacing.md),
                     PhlioTextField(
@@ -135,19 +143,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textInputAction: TextInputAction.done,
                       autofillHints: const [AutofillHints.password],
                       onChanged: (_) => setState(() => _formError = null),
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Enter your password' : null,
+                      validator: (value) => (value == null || value.isEmpty)
+                          ? 'Enter your password'
+                          : null,
                     ),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: () {}, // Out of scope for this build stage.
-                        child: Text('Forgot password?', style: PhlioTypography.label),
+                        child: Text('Forgot password?',
+                            style: PhlioTypography.label),
                       ),
                     ),
                     if (_formError != null) ...[
                       const SizedBox(height: PhlioSpacing.xs),
-                      Text(_formError!, style: PhlioTypography.caption.copyWith(color: PhlioColors.danger)),
+                      Text(_formError!,
+                          style: PhlioTypography.caption
+                              .copyWith(color: PhlioColors.danger)),
                     ],
                     const SizedBox(height: PhlioSpacing.sm),
                     PhlioPrimaryButton(
@@ -171,16 +183,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: PhlioSpacing.xl),
                     Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      child: Wrap(
+                        alignment: WrapAlignment.center,
                         children: [
                           Text('New to Phlio? ', style: PhlioTypography.body),
                           GestureDetector(
                             onTap: () => context.go('/signup'),
                             child: Text(
                               'Create an account',
-                              style:
-                                  PhlioTypography.bodyStrong.copyWith(color: PhlioColors.brandOrange),
+                              style: PhlioTypography.bodyStrong
+                                  .copyWith(color: PhlioColors.brandBlue),
                             ),
                           ),
                         ],
@@ -191,8 +203,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
-            // Mountain silhouette footer carrying the tagline.
-            const _MountainFooter(),
           ],
         ),
       ),
@@ -201,7 +211,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Widget _speechBubble(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+          horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.sm),
       decoration: BoxDecoration(
         color: PhlioColors.surfaceElevated,
         borderRadius: BorderRadius.circular(16),
@@ -216,10 +227,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Row(
       children: [
         const Expanded(child: Divider(color: PhlioColors.borderSubtle)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.md),
-          child: Text('or continue with', style: PhlioTypography.caption),
-        ),
+        Flexible(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.md),
+              child: Text('or continue with',
+                  textAlign: TextAlign.center, style: PhlioTypography.caption),
+            )),
         const Expanded(child: Divider(color: PhlioColors.borderSubtle)),
       ],
     );
@@ -259,64 +273,4 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
   }
-}
-
-/// Layered mountain silhouettes with the tagline on top — the reference
-/// login's quiet footer.
-class _MountainFooter extends StatelessWidget {
-  const _MountainFooter();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 96,
-      width: double.infinity,
-      child: CustomPaint(
-        painter: _MountainPainter(),
-        child: Center(
-          child: Text(
-            'PEOPLE    PLACES    POSSIBILITIES',
-            style: PhlioTypography.tagline.copyWith(fontSize: 10, letterSpacing: 4),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MountainPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Back range.
-    final backPaint = Paint()..color = const Color(0xFF141824);
-    final back = Path()
-      ..moveTo(0, size.height * 0.75)
-      ..lineTo(size.width * 0.18, size.height * 0.30)
-      ..lineTo(size.width * 0.34, size.height * 0.62)
-      ..lineTo(size.width * 0.52, size.height * 0.18)
-      ..lineTo(size.width * 0.72, size.height * 0.58)
-      ..lineTo(size.width * 0.88, size.height * 0.32)
-      ..lineTo(size.width, size.height * 0.62)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(back, backPaint);
-
-    // Front range (darker, lower).
-    final frontPaint = Paint()..color = const Color(0xFF0E1119);
-    final front = Path()
-      ..moveTo(0, size.height * 0.92)
-      ..lineTo(size.width * 0.22, size.height * 0.58)
-      ..lineTo(size.width * 0.44, size.height * 0.88)
-      ..lineTo(size.width * 0.66, size.height * 0.52)
-      ..lineTo(size.width * 0.86, size.height * 0.84)
-      ..lineTo(size.width, size.height * 0.66)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(front, frontPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _MountainPainter oldDelegate) => false;
 }

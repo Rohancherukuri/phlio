@@ -335,8 +335,8 @@ class _SocialVideosViewState extends State<SocialVideosView> {
               PhlioSpacing.lg, PhlioSpacing.sm, PhlioSpacing.sm, 0),
           child: Row(
             children: [
-              Text('Following', style: PhlioTypography.headline),
-              const Spacer(),
+              Expanded(
+                  child: Text('Following', style: PhlioTypography.headline)),
               IconButton(
                 tooltip: 'Open a video from your device',
                 icon: const Icon(Icons.video_library_outlined,

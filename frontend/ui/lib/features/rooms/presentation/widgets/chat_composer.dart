@@ -1,23 +1,12 @@
-// Chat composer with the full messaging toolkit, matching the reference
-// Discord-style composer:
-//
-//   [+] plain plus (no circle) — attach multiple documents, any size
-//   [ text field "Message @user" ]
-//   [😊] Foxy tray (unicode + emoji/stickers/GIFs)  [🎤] voice message
-//
-// Attachments are multi-picked by path (file_picker withData:false — Dio
-// streams the upload later, so documents of large size work without
-// ballooning memory). Stickers and GIFs come from the bundled Foxy pack
-// and ride as pack attachments — no bytes, just the pack value id.
-//
-// Sending is pluggable: the caller receives text / files / voice events.
-// Rooms uploads the files then posts the message; DMs keep the local
-// paths for preview until a backend DM domain exists.
+// Shared composer with audience-specific attachment menus and validation.
+// Public creator chat supports text and pack GIFs/stickers; private Messages
+// supports media and editing; Rooms retains documents and archives.
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:record/record.dart';
@@ -29,6 +18,8 @@ import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/foxy_pack.dart';
 import '../../domain/entities/room_message_entity.dart';
 import 'attachment_preview.dart';
+import 'chat_policy.dart';
+import 'message_media_editor.dart';
 
 /// Telegram/Slack-style supported attachment set (blueprint section 8:
 /// Rooms supports heavier files than Social).
@@ -78,6 +69,7 @@ class StagedAttachment {
     this.path,
     this.size = 0,
     this.packId,
+    this.videoEdits,
   });
 
   /// image | video | audio | document | sticker | gif
@@ -90,6 +82,7 @@ class StagedAttachment {
 
   /// Foxy pack value id for sticker/gif attachments.
   final String? packId;
+  final Map<String, dynamic>? videoEdits;
 
   bool get isPackItem => packId != null;
 
@@ -110,33 +103,36 @@ class StagedAttachment {
 /// Attachment categories offered by the + menu — Telegram/Slack-style type
 /// picking: pick the kind first, then the files.
 const List<({String label, IconData icon, Color color})> kAttachmentTypes = [
-  (label: 'Image', icon: Icons.image_outlined, color: Color(0xFF6E7CFF)),
-  (label: 'Video', icon: Icons.videocam_outlined, color: Color(0xFFB57BFF)),
-  (label: 'Audio', icon: Icons.headset_outlined, color: Color(0xFF3DC9B0)),
-  (label: 'GIF', icon: Icons.gif_box_outlined, color: Color(0xFFFF8A4C)),
+  (label: 'Image', icon: Icons.image_outlined, color: PhlioColors.brandBlue),
+  (label: 'Video', icon: Icons.videocam_outlined, color: PhlioColors.brandPurple),
+  (label: 'Audio', icon: Icons.headset_outlined, color: PhlioColors.success),
+  (label: 'GIF', icon: Icons.gif_box_outlined, color: PhlioColors.brandPeach),
   (
     label: 'Document',
     icon: Icons.description_outlined,
-    color: Color(0xFF4C8DFF)
+    color: PhlioColors.brandBlue
   ),
-  (label: 'PDF', icon: Icons.picture_as_pdf_outlined, color: Color(0xFFF5636B)),
-  (label: 'Excel', icon: Icons.table_view_outlined, color: Color(0xFF33C481)),
-  (label: 'Word', icon: Icons.article_outlined, color: Color(0xFF4C8DFF)),
-  (label: 'PPT', icon: Icons.slideshow_outlined, color: Color(0xFFFF9F45)),
+  (label: 'PDF', icon: Icons.picture_as_pdf_outlined, color: PhlioColors.danger),
+  (label: 'Excel', icon: Icons.table_view_outlined, color: PhlioColors.success),
+  (label: 'Word', icon: Icons.article_outlined, color: PhlioColors.brandBlue),
+  (label: 'PPT', icon: Icons.slideshow_outlined, color: PhlioColors.brandPeach),
   (
     label: 'Text/JSON',
     icon: Icons.data_object_outlined,
-    color: Color(0xFFA8B0C2)
+    color: PhlioColors.textSecondary
   ),
   (
     label: 'Sticker',
     icon: Icons.emoji_emotions_outlined,
-    color: Color(0xFFFF8A4C)
+    color: PhlioColors.brandPeach
   ),
-  (label: 'Archive', icon: Icons.folder_zip_outlined, color: Color(0xFFDDC35A)),
+  (label: 'Archive', icon: Icons.folder_zip_outlined, color: PhlioColors.brandPeach),
 ];
 
-Future<String?> showAttachmentTypeMenu(BuildContext context) {
+Future<String?> showAttachmentTypeMenu(
+  BuildContext context, {
+  ChatAudience audience = ChatAudience.rooms,
+}) {
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -159,7 +155,14 @@ Future<String?> showAttachmentTypeMenu(BuildContext context) {
               crossAxisSpacing: 8,
               childAspectRatio: 0.85,
               children: [
-                for (final type in kAttachmentTypes)
+                for (final type in kAttachmentTypes.where(
+                  (t) =>
+                      audience == ChatAudience.rooms ||
+                      (audience == ChatAudience.publicChat
+                              ? ['Sticker', 'GIF']
+                              : ['Image', 'Video', 'Audio', 'GIF', 'Sticker'])
+                          .contains(t.label),
+                ))
                   GestureDetector(
                     onTap: () => Navigator.of(sheetContext).pop(type.label),
                     child: Column(
@@ -238,6 +241,7 @@ class ChatComposer extends StatefulWidget {
     required this.onSendVoice,
     super.key,
     this.compact = false,
+    this.audience = ChatAudience.rooms,
     this.surfaceColor = PhlioColors.surfaceInput,
   });
 
@@ -248,7 +252,7 @@ class ChatComposer extends StatefulWidget {
 
   /// One or more staged attachments (picked files and/or Foxy pack items)
   /// plus any caption text. The callback does the actual delivery
-  /// (upload + post for rooms, in-memory append for DMs); the composer
+  /// (upload + post for Rooms and private Messages); the composer
   /// awaits it to show the sending state.
   final Future<void> Function(List<StagedAttachment> files, String text)
       onSendFiles;
@@ -259,6 +263,7 @@ class ChatComposer extends StatefulWidget {
 
   /// Tighter paddings for the two-pane room layout.
   final bool compact;
+  final ChatAudience audience;
   final Color surfaceColor;
 
   @override
@@ -298,13 +303,40 @@ class _ChatComposerState extends State<ChatComposer> {
       final duration = _formatDuration(_recordSeconds);
       final path = await _stopRecording();
       try {
+        if (widget.audience == ChatAudience.publicChat) return;
+        if (path != null && widget.audience == ChatAudience.directMessage) {
+          final error = dmMediaError(path, await File(path).length());
+          if (error != null) {
+            _mediaError(error);
+            return;
+          }
+        }
         await widget.onSendVoice(duration, path);
-      } catch (_) {
-        _showSendError();
+      } catch (error) {
+        _showSendError(error);
       }
       return;
     }
     if (_staged.isNotEmpty) {
+      if (_staged.length > 10) {
+        _mediaError('Attach up to ten items.');
+        return;
+      }
+      for (final attachment in _staged) {
+        if (widget.audience == ChatAudience.publicChat &&
+            !attachment.isPackItem) {
+          _mediaError('Chat supports text, GIFs and predefined stickers only.');
+          return;
+        }
+        if (widget.audience == ChatAudience.directMessage &&
+            attachment.path != null) {
+          final error = dmMediaError(attachment.name, attachment.size);
+          if (error != null) {
+            _mediaError(error);
+            return;
+          }
+        }
+      }
       setState(() => _isSending = true);
       try {
         await widget.onSendFiles(
@@ -317,8 +349,8 @@ class _ChatComposerState extends State<ChatComposer> {
           _textController.clear();
           _showEmojiTray = false;
         });
-      } catch (_) {
-        _showSendError();
+      } catch (error) {
+        _showSendError(error);
       } finally {
         if (mounted) setState(() => _isSending = false);
       }
@@ -332,23 +364,58 @@ class _ChatComposerState extends State<ChatComposer> {
       if (!mounted) return;
       _textController.clear();
       setState(() => _showEmojiTray = false);
-    } catch (_) {
-      _showSendError();
+    } catch (error) {
+      _showSendError(error);
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
   }
 
-  void _showSendError() {
-    if (mounted)
+  void _showSendError([Object? error]) {
+    final detail = error is DioException && error.response?.data is Map
+        ? (error.response!.data as Map)['detail']
+        : null;
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not send your message. Please try again.')),
+        SnackBar(
+          content: Text(
+            detail is String
+                ? detail
+                : 'Could not send your message. Please try again.',
+          ),
+        ),
       );
+    }
+  }
+
+  void _mediaError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _editAttachment(int index) async {
+    if (_isSending) return;
+    final original = _staged[index];
+    final edited = await Navigator.of(context).push<StagedAttachment>(
+      MaterialPageRoute(
+        builder: (_) => MessageMediaEditor(attachment: original),
+      ),
+    );
+    if (!mounted || edited == null) return;
+    final error = dmMediaError(edited.name, edited.size);
+    if (error != null) {
+      _mediaError(error);
+      return;
+    }
+    final current = _staged.indexOf(original);
+    if (current >= 0) setState(() => _staged[current] = edited);
   }
 
   Future<void> _pickAttachments() async {
-    final pickedType = await showAttachmentTypeMenu(context);
+    final pickedType =
+        await showAttachmentTypeMenu(context, audience: widget.audience);
     if (pickedType == null) return; // sheet dismissed
 
     // Stickers and GIFs come from the bundled Foxy pack — no file system.
@@ -362,11 +429,13 @@ class _ChatComposerState extends State<ChatComposer> {
       );
       if (item == null || !mounted) return;
       setState(() {
-        _staged.add(StagedAttachment(
-          kind: pickedType == 'GIF' ? 'gif' : 'sticker',
-          name: item.label,
-          packId: item.id,
-        ));
+        _staged.add(
+          StagedAttachment(
+            kind: item.kind == FoxyReactionKind.gif ? 'gif' : 'sticker',
+            name: item.label,
+            packId: item.id,
+          ),
+        );
       });
       return;
     }
@@ -405,17 +474,30 @@ class _ChatComposerState extends State<ChatComposer> {
       if (picked.isEmpty || !mounted) return;
       setState(() {
         for (final file in picked) {
-          _staged.add(StagedAttachment(
-            kind: switch (pickedType) {
-              'Image' => 'image',
-              'Video' => 'video',
-              'Audio' => 'audio',
-              _ => attachmentKindForName(file.name),
-            },
-            name: file.name,
-            path: file.path,
-            size: file.size,
-          ));
+          if (_staged.length >= 10) {
+            _mediaError('Attach up to ten items.');
+            break;
+          }
+          if (widget.audience == ChatAudience.directMessage) {
+            final error = dmMediaError(file.name, file.size);
+            if (error != null) {
+              _mediaError(error);
+              continue;
+            }
+          }
+          _staged.add(
+            StagedAttachment(
+              kind: switch (pickedType) {
+                'Image' => 'image',
+                'Video' => 'video',
+                'Audio' => 'audio',
+                _ => attachmentKindForName(file.name),
+              },
+              name: file.name,
+              path: file.path,
+              size: file.size,
+            ),
+          );
         }
       });
     } on MissingPluginException {
@@ -437,15 +519,20 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   Future<void> _startRecording() async {
-    if (_isRecording || _isSending) return;
+    if (_isRecording ||
+        _isSending ||
+        widget.audience == ChatAudience.publicChat) {
+      return;
+    }
     try {
       final hasPermission = await _recorder.hasPermission();
       if (!hasPermission) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content:
-                  Text('Microphone permission is needed for voice messages.')),
+            content:
+                Text('Microphone permission is needed for voice messages.'),
+          ),
         );
         return;
       }
@@ -561,6 +648,12 @@ class _ChatComposerState extends State<ChatComposer> {
                 final staged = _staged[index];
                 return _StagedChip(
                   staged: staged,
+                  onEdit: widget.audience == ChatAudience.directMessage &&
+                          staged.path != null &&
+                          ['image', 'video'].contains(staged.kind) &&
+                          !staged.name.toLowerCase().endsWith('.gif')
+                      ? () => _editAttachment(index)
+                      : null,
                   onRemove: () => setState(() => _staged.removeAt(index)),
                 );
               },
@@ -571,8 +664,11 @@ class _ChatComposerState extends State<ChatComposer> {
               padding: const EdgeInsets.only(top: 2, left: PhlioSpacing.xs),
               child: Row(
                 children: [
-                  const Icon(Icons.cloud_upload_outlined,
-                      size: 12, color: PhlioColors.brandOrange),
+                  const Icon(
+                    Icons.cloud_upload_outlined,
+                    size: 12,
+                    color: PhlioColors.brandOrange,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Large file — the upload streams in the background',
@@ -608,14 +704,24 @@ class _ChatComposerState extends State<ChatComposer> {
           // Segmented switch: unicode emoji / the Foxy pack.
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                PhlioSpacing.sm, PhlioSpacing.xs, PhlioSpacing.sm, 0),
+              PhlioSpacing.sm,
+              PhlioSpacing.xs,
+              PhlioSpacing.sm,
+              0,
+            ),
             child: Row(
               children: [
-                _trayToggle('Emoji', !_foxyTrayTab,
-                    () => setState(() => _foxyTrayTab = false)),
+                _trayToggle(
+                  'Emoji',
+                  !_foxyTrayTab,
+                  () => setState(() => _foxyTrayTab = false),
+                ),
                 const SizedBox(width: PhlioSpacing.xs),
-                _trayToggle('Foxy', _foxyTrayTab,
-                    () => setState(() => _foxyTrayTab = true)),
+                _trayToggle(
+                  'Foxy',
+                  _foxyTrayTab,
+                  () => setState(() => _foxyTrayTab = true),
+                ),
                 const Spacer(),
                 Text(
                   _foxyTrayTab ? 'Tap to attach' : 'Tap to add',
@@ -643,8 +749,10 @@ class _ChatComposerState extends State<ChatComposer> {
                           );
                         },
                         child: Center(
-                          child: Text(kEmojiSet[index],
-                              style: const TextStyle(fontSize: 22)),
+                          child: Text(
+                            kEmojiSet[index],
+                            style: const TextStyle(fontSize: 22),
+                          ),
                         ),
                       );
                     },
@@ -661,11 +769,13 @@ class _ChatComposerState extends State<ChatComposer> {
                       final item = FoxyPack.emoji[index];
                       return GestureDetector(
                         onTap: () => setState(() {
-                          _staged.add(StagedAttachment(
-                            kind: 'sticker',
-                            name: item.label,
-                            packId: item.id,
-                          ));
+                          _staged.add(
+                            StagedAttachment(
+                              kind: 'sticker',
+                              name: item.label,
+                              packId: item.id,
+                            ),
+                          );
                         }),
                         child: Padding(
                           padding: const EdgeInsets.all(2),
@@ -717,16 +827,20 @@ class _ChatComposerState extends State<ChatComposer> {
   Widget _inputRow() {
     return Row(
       children: [
-        // Plain + (no circle) — attach documents.
+        // Attachments follow the conversation policy.
         GestureDetector(
           onTap: _isSending ? null : _pickAttachments,
-          child: const Icon(Icons.add_rounded,
-              size: 26, color: PhlioColors.textSecondary),
+          child: const Icon(
+            Icons.add_rounded,
+            size: 26,
+            color: PhlioColors.textSecondary,
+          ),
         ),
         Expanded(
           child: TextField(
             minLines: 1,
             maxLines: 4,
+            maxLength: 4000,
             textInputAction: TextInputAction.send,
             controller: _textController,
             focusNode: _focusNode,
@@ -736,6 +850,7 @@ class _ChatComposerState extends State<ChatComposer> {
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               hintText: widget.hint,
+              counterText: '',
               hintStyle:
                   PhlioTypography.body.copyWith(color: PhlioColors.textMuted),
               border: InputBorder.none,
@@ -760,12 +875,16 @@ class _ChatComposerState extends State<ChatComposer> {
         ),
         const SizedBox(width: PhlioSpacing.sm),
         // Mic — voice message recording.
-        GestureDetector(
-          onLongPress: _startRecording,
-          onTap: _startRecording,
-          child: const Icon(Icons.mic_none_rounded,
-              size: 22, color: PhlioColors.textSecondary),
-        ),
+        if (widget.audience != ChatAudience.publicChat)
+          GestureDetector(
+            onLongPress: _startRecording,
+            onTap: _startRecording,
+            child: const Icon(
+              Icons.mic_none_rounded,
+              size: 22,
+              color: PhlioColors.textSecondary,
+            ),
+          ),
         const SizedBox(width: PhlioSpacing.xs),
         // Send — submits text, staged attachments or the recorded voice note.
         GestureDetector(
@@ -802,8 +921,11 @@ class _ChatComposerState extends State<ChatComposer> {
   Widget _recordingRow() {
     return Row(
       children: [
-        const Icon(Icons.graphic_eq_rounded,
-            size: 20, color: PhlioColors.danger),
+        const Icon(
+          Icons.graphic_eq_rounded,
+          size: 20,
+          color: PhlioColors.danger,
+        ),
         const SizedBox(width: PhlioSpacing.sm),
         Expanded(
           child: Text(
@@ -815,8 +937,11 @@ class _ChatComposerState extends State<ChatComposer> {
           onTap: () async {
             await _stopRecording(); // discarded — file dropped
           },
-          child: const Icon(Icons.close_rounded,
-              size: 20, color: PhlioColors.textSecondary),
+          child: const Icon(
+            Icons.close_rounded,
+            size: 20,
+            color: PhlioColors.textSecondary,
+          ),
         ),
         const SizedBox(width: PhlioSpacing.sm),
         GestureDetector(
@@ -828,8 +953,11 @@ class _ChatComposerState extends State<ChatComposer> {
               gradient: PhlioColors.sunsetGradient,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.send_rounded,
-                color: PhlioColors.textOnBrand, size: 16),
+            child: const Icon(
+              Icons.send_rounded,
+              color: PhlioColors.textOnBrand,
+              size: 16,
+            ),
           ),
         ),
       ],
@@ -840,10 +968,15 @@ class _ChatComposerState extends State<ChatComposer> {
 /// One staged attachment chip in the composer: doc-type icon or the Foxy
 /// pack art, name · size, removable.
 class _StagedChip extends StatelessWidget {
-  const _StagedChip({required this.staged, required this.onRemove});
+  const _StagedChip({
+    required this.staged,
+    required this.onRemove,
+    this.onEdit,
+  });
 
   final StagedAttachment staged;
   final VoidCallback onRemove;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -851,48 +984,76 @@ class _StagedChip extends StatelessWidget {
       width: 180,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-          color: PhlioColors.roomsInput,
-          borderRadius: PhlioRadii.mdRadius,
-          border: Border.all(color: PhlioColors.borderSubtle)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(
-            child: Stack(children: [
-          Positioned.fill(
-              child: AttachmentPreview(
-            key: ValueKey(staged.path ?? staged.packId),
-            compact: true,
-            attachment: MessageAttachmentEntity(
-                id: staged.path ?? staged.packId ?? staged.name,
-                kind: staged.kind,
-                name: staged.name,
-                size: staged.size,
-                localPath: staged.path,
-                value: staged.packId ?? ''),
-          )),
-          Positioned(
-              top: 0,
-              right: 0,
-              child: IconButton.filledTonal(
-                  tooltip: 'Remove ${staged.name}',
-                  onPressed: onRemove,
-                  constraints:
-                      const BoxConstraints.tightFor(width: 28, height: 28),
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.close_rounded, size: 16))),
-        ])),
-        Padding(
+        color: PhlioColors.roomsInput,
+        borderRadius: PhlioRadii.mdRadius,
+        border: Border.all(color: PhlioColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: AttachmentPreview(
+                    key: ValueKey(staged.path ?? staged.packId),
+                    compact: true,
+                    attachment: MessageAttachmentEntity(
+                      id: staged.path ?? staged.packId ?? staged.name,
+                      kind: staged.kind,
+                      name: staged.name,
+                      size: staged.size,
+                      localPath: staged.path,
+                      value: staged.packId ?? '',
+                    ),
+                  ),
+                ),
+                if (onEdit != null)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    child: IconButton.filledTonal(
+                      tooltip: 'Edit media',
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit, size: 18),
+                    ),
+                  ),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IconButton.filledTonal(
+                    tooltip: 'Remove ${staged.name}',
+                    onPressed: onRemove,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 28, height: 28),
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.fromLTRB(6, 4, 6, 2),
-            child: Text(staged.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11))),
-        Padding(
+            child: Text(
+              staged.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(
-                staged.isPackItem ? 'Foxy pack' : attachmentSize(staged.size),
-                style: const TextStyle(
-                    fontSize: 10, color: PhlioColors.textSecondary))),
-      ]),
+              staged.isPackItem ? 'Foxy pack' : attachmentSize(staged.size),
+              style: const TextStyle(
+                fontSize: 10,
+                color: PhlioColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

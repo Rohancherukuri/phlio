@@ -9,9 +9,8 @@ import '../../data/datasources/messaging_api.dart';
 import '../controllers/messaging_controller.dart';
 import '../widgets/dm_thread.dart';
 
-/// Pushed 1:1 conversation: peer header with voice/video calls and search,
-/// over the shared [DmThread] (the same thread the creator profile's Chat
-/// tab embeds — reactions, attachments and voice all live there).
+/// Private conversation with media, voice/video calls and message reactions.
+/// Profile Chat uses its own public creator channel.
 class DmScreen extends ConsumerStatefulWidget {
   const DmScreen({required this.username, super.key});
   final String username;

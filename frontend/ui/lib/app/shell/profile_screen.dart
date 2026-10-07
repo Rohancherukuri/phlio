@@ -8,11 +8,11 @@
 //   Posts (Articles/Videos/Pics) · Replies · Reposts · Schedule · Chat ·
 //   Clips
 //
-// Uploads beyond posts (videos, clips, articles, schedules) are honest
-// empty states — those domains land with Stream/Moments/Experiences.
+// Posts load by author and filter text articles, pictures, and uploaded videos.
 // Logout lives in the dashboard overflow for this stage.
 
 import 'dart:async';
+import '../../features/profile/presentation/widgets/profile_posts.dart';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -26,8 +26,8 @@ import '../../../design_system/spacing.dart';
 import '../../../design_system/typography.dart';
 import '../../../design_system/widgets/phlio_card.dart';
 import '../../../design_system/widgets/phlio_fox.dart';
-import '../../../features/rooms/presentation/controllers/messaging_controller.dart';
-import '../../../features/social/presentation/controllers/feed_controller.dart';
+import '../../features/social/presentation/widgets/creator_chat.dart';
+import '../../features/rooms/presentation/widgets/direct_messages_panel.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 
@@ -43,7 +43,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   late final TabController _tabController =
       TabController(length: _tabs.length, vsync: this);
 
-  static const _tabs = ['Posts', 'Replies', 'Reposts', 'Schedule', 'Chat', 'Clips'];
+  static const _tabs = [
+    'Posts',
+    'Replies',
+    'Reposts',
+    'Schedule',
+    'Chat',
+    'Clips'
+  ];
 
   // Profile song playback (a bundled ambient loop, or the user's song).
   final AudioPlayer _songPlayer = AudioPlayer();
@@ -51,7 +58,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   bool _songPlaying = false;
 
   // Posts sub-tab (X-style dropdown): Articles / Videos / Pics.
-  String _postsSubTab = 'Articles';
+  ProfilePostType _postsSubTab = ProfilePostType.articles;
 
   @override
   void dispose() {
@@ -75,7 +82,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         // Loop inside the selected section, Instagram-style.
         final start = song.songStart;
         final end = song.songEnd > start ? song.songEnd : start + 60;
-        if (start > 0) await _songPlayer.seek(Duration(milliseconds: (start * 1000).round()));
+        if (start > 0)
+          await _songPlayer
+              .seek(Duration(milliseconds: (start * 1000).round()));
         _songPositionSub?.cancel();
         _songPositionSub = _songPlayer.onPositionChanged.listen((position) {
           final pos = position.inMilliseconds / 1000;
@@ -121,8 +130,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ),
             if (ref.read(avatarProvider).hasAvatar)
               ListTile(
-                leading:
-                    const Icon(Icons.delete_outline_rounded, color: PhlioColors.danger),
+                leading: const Icon(Icons.delete_outline_rounded,
+                    color: PhlioColors.danger),
                 title: const Text('Remove photo'),
                 onTap: () => Navigator.of(sheetContext).pop('remove'),
               ),
@@ -173,14 +182,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   height: 150,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg),
                     children: [
                       for (var i = 0; i < kAvatarFilters.length; i++)
                         GestureDetector(
                           onTap: () =>
                               ref.read(avatarProvider.notifier).setFilter(i),
                           child: Padding(
-                            padding: const EdgeInsets.only(right: PhlioSpacing.md),
+                            padding:
+                                const EdgeInsets.only(right: PhlioSpacing.md),
                             child: Column(
                               children: [
                                 Container(
@@ -265,7 +276,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               onTap: () => Navigator.of(sheetContext).pop('device'),
             ),
             ListTile(
-              leading: const Icon(Icons.album_rounded, color: PhlioColors.brandViolet),
+              leading: const Icon(Icons.album_rounded,
+                  color: PhlioColors.brandViolet),
               title: const Text('Spotify'),
               subtitle: const Text('Connect your account'),
               onTap: () => Navigator.of(sheetContext).pop('spotify'),
@@ -311,7 +323,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         setState(() {}); // refresh title even if cancelled
         return;
       }
-      await ref.read(avatarProvider.notifier).setSongSection(section.$1, section.$2);
+      await ref
+          .read(avatarProvider.notifier)
+          .setSongSection(section.$1, section.$2);
       setState(() {}); // refresh title/subtitle
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile song updated.')),
@@ -335,17 +349,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final user = ref.watch(authControllerProvider).valueOrNull;
     if (user == null) return const SizedBox.shrink();
 
-    final feedAsync = ref.watch(feedControllerProvider);
-    final myPosts = (feedAsync.valueOrNull?.posts ?? [])
-        .where((post) => post.authorId == user.id)
-        .toList();
-    final dmConversations =
-        (ref.watch(dmConversationsProvider).valueOrNull ?? []).map((c) => (c['peer'] as Map)['id'] as String).toList(growable: false);
+    final myPosts =
+        ref.watch(profilePostsProvider(user.username)).valueOrNull ?? [];
 
     return Scaffold(
       appBar: AppBar(
         title: Text('@${user.username}', style: PhlioTypography.title),
         actions: [
+          IconButton(
+              tooltip: 'Messages',
+              icon: const Icon(Icons.chat_bubble_outline),
+              onPressed: () => showDirectMessagesPanel(context)),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Log out',
@@ -355,7 +369,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
-          PhlioSpacing.lg, PhlioSpacing.sm, PhlioSpacing.lg, PhlioSpacing.xxl,
+          PhlioSpacing.lg,
+          PhlioSpacing.sm,
+          PhlioSpacing.lg,
+          PhlioSpacing.xxl,
         ),
         children: [
           // -- Identity row: avatar + stats --------------------------------
@@ -403,7 +420,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             children: [
               Flexible(
                 child: Text(user.fullName,
-                    style: PhlioTypography.headline, overflow: TextOverflow.ellipsis),
+                    style: PhlioTypography.headline,
+                    overflow: TextOverflow.ellipsis),
               ),
               const SizedBox(width: 6),
               const Icon(Icons.verified_rounded,
@@ -435,8 +453,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
           // -- Profile song ----------------------------------------------------
           PhlioCard(
-            padding:
-                const EdgeInsets.symmetric(horizontal: PhlioSpacing.md, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+                horizontal: PhlioSpacing.md, vertical: 10),
             child: Row(
               children: [
                 GestureDetector(
@@ -449,7 +467,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      _songPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      _songPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
                       size: 20,
                       color: PhlioColors.textOnBrand,
                     ),
@@ -484,7 +504,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
           // -- Dashboard button --------------------------------------------------
           GestureDetector(
-            onTap: () => context.push('/profile-dashboard', extra: myPosts.length),
+            onTap: () =>
+                context.push('/profile-dashboard', extra: myPosts.length),
             child: Container(
               padding: const EdgeInsets.all(PhlioSpacing.lg),
               decoration: BoxDecoration(
@@ -494,13 +515,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.insights_rounded, color: PhlioColors.brandOrange),
+                  const Icon(Icons.insights_rounded,
+                      color: PhlioColors.brandOrange),
                   const SizedBox(width: PhlioSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Your dashboard', style: PhlioTypography.bodyStrong),
+                        Text('Your dashboard',
+                            style: PhlioTypography.bodyStrong),
                         Text(
                           'Views, likes and how your content is doing.',
                           style: PhlioTypography.caption,
@@ -508,7 +531,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded, color: PhlioColors.textMuted),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: PhlioColors.textMuted),
                 ],
               ),
             ),
@@ -524,9 +548,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: PhlioColors.border),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: PhlioRadii.mdRadius),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: PhlioRadii.mdRadius),
                   ),
-                  child: Text('Edit profile', style: PhlioTypography.bodyStrong),
+                  child:
+                      Text('Edit profile', style: PhlioTypography.bodyStrong),
                 ),
               ),
               const SizedBox(width: PhlioSpacing.md),
@@ -536,9 +562,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: PhlioColors.border),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: PhlioRadii.mdRadius),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: PhlioRadii.mdRadius),
                   ),
-                  child: Text('Share profile', style: PhlioTypography.bodyStrong),
+                  child:
+                      Text('Share profile', style: PhlioTypography.bodyStrong),
                 ),
               ),
             ],
@@ -595,102 +623,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // Posts with the X-style dropdown: "Posts + arrow" opens
-                // Articles / Videos / Pics; the selected one fills the tab.
-                Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: PopupMenuButton<String>(
-                        initialValue: _postsSubTab,
-                        color: PhlioColors.surfaceElevated,
-                        shape: RoundedRectangleBorder(borderRadius: PhlioRadii.lgRadius),
-                        onSelected: (value) => setState(() => _postsSubTab = value),
-                        itemBuilder: (context) => [
-                          for (final option in const ['Articles', 'Videos', 'Pics'])
-                            PopupMenuItem(
-                              value: option,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    switch (option) {
-                                      'Articles' => Icons.article_outlined,
-                                      'Videos' => Icons.videocam_outlined,
-                                      _ => Icons.photo_outlined,
-                                    },
-                                    size: 18,
-                                    color: PhlioColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(option, style: PhlioTypography.bodyStrong),
-                                  const Spacer(),
-                                  if (option == _postsSubTab)
-                                    const Icon(Icons.check_rounded,
-                                        size: 18, color: PhlioColors.brandOrange),
-                                ],
-                              ),
-                            ),
-                        ],
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: PhlioSpacing.xs, vertical: PhlioSpacing.sm,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Posts', style: PhlioTypography.headline),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.keyboard_arrow_down_rounded,
-                                  color: PhlioColors.textSecondary),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      height: 330,
-                      child: switch (_postsSubTab) {
-                        'Videos' => _emptyContent(
-                            icon: Icons.videocam_outlined,
-                            message: 'No videos yet',
-                            hint: 'Video uploads arrive with Phlio Stream.',
-                          ),
-                        'Pics' => myPosts.isEmpty
-                            ? _emptyContent(
-                                icon: Icons.photo_outlined,
-                                message: 'No pictures yet',
-                                hint: 'Post from the Home composer - your pics land here.',
-                              )
-                            : GridView.builder(
-                                padding: const EdgeInsets.only(top: PhlioSpacing.md),
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 3,
-                                  mainAxisSpacing: 2,
-                                  crossAxisSpacing: 2,
-                                ),
-                                itemCount: myPosts.length,
-                                itemBuilder: (context, index) => Container(
-                                  color: PhlioColors.surfaceElevated,
-                                  alignment: Alignment.center,
-                                  padding: const EdgeInsets.all(8),
-                                  child: Text(
-                                    myPosts[index].text,
-                                    style: PhlioTypography.caption,
-                                    maxLines: 4,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                        _ => _emptyContent(
-                            icon: Icons.article_outlined,
-                            message: 'No articles yet',
-                            hint: 'Long-form writing arrives with Phlio News.',
-                          ),
-                      },
-                    ),
-                  ],
-                ),
+                ProfilePosts(author: user.username, type: _postsSubTab),
                 _emptyContent(
                   icon: Icons.reply_outlined,
                   message: 'No replies yet',
@@ -706,26 +639,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   message: 'Nothing scheduled',
                   hint: 'Scheduling arrives with Phlio Stream.',
                 ),
-                // Chat: real DM conversations from this session.
-                dmConversations.isEmpty
-                    ? _emptyContent(
-                        icon: Icons.chat_bubble_outline_rounded,
-                        message: 'No conversations yet',
-                        hint: 'Tap a member in a room to start chatting.',
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.only(top: PhlioSpacing.md),
-                        children: [
-                          for (final username in dmConversations)
-                            ListTile(
-                              leading: PhlioAvatar(name: username, size: 42),
-                              title: Text(username, style: PhlioTypography.bodyStrong),
-                              subtitle: Text('Direct message',
-                                  style: PhlioTypography.caption, maxLines: 1),
-                              onTap: () => context.push('/dm/$username'),
-                            ),
-                        ],
-                      ),
+                CreatorChat(username: user.username),
                 _emptyContent(
                   icon: Icons.content_cut_rounded,
                   message: 'No clips yet',
@@ -768,7 +682,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 shape: BoxShape.circle,
                 border: Border.all(color: PhlioColors.border, width: 1.5),
               ),
-              child: const Icon(Icons.add_rounded, color: PhlioColors.textSecondary),
+              child: const Icon(Icons.add_rounded,
+                  color: PhlioColors.textSecondary),
             ),
             const SizedBox(height: PhlioSpacing.xs),
             Text('New', style: PhlioTypography.caption),
@@ -790,7 +705,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       unselectedLabelColor: PhlioColors.textMuted,
       labelStyle: PhlioTypography.label.copyWith(fontWeight: FontWeight.w700),
       unselectedLabelStyle: PhlioTypography.label,
-      tabs: [for (final tab in _tabs) Tab(text: tab)],
+      tabs: [
+        Tab(
+            height: MediaQuery.textScalerOf(context).scale(18) + 28,
+            child: ProfilePostsMenu(
+                selected: _postsSubTab,
+                onOpened: () => _tabController.animateTo(0),
+                onSelected: (value) => setState(() {
+                      _postsSubTab = value;
+                      _tabController.animateTo(0);
+                    }))),
+        for (final tab in _tabs.skip(1)) Tab(text: tab),
+      ],
     );
   }
 
@@ -814,7 +740,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 }
 
-
 /// Instagram-style song trim sheet: full-song waveform strip with a
 /// draggable 60-second selection window, times, and preview playback.
 class _SongTrimSheet extends StatefulWidget {
@@ -834,7 +759,8 @@ class _SongTrimSheetState extends State<_SongTrimSheet> {
   double _offsetFraction = 0; // where the selection window starts (0..1)
   double _windowFraction = 1; // window length as a fraction of the song
 
-  late double _sectionLength = _duration < _maxSection ? _duration : _maxSection;
+  late double _sectionLength =
+      _duration < _maxSection ? _duration : _maxSection;
   final AudioPlayer _previewPlayer = AudioPlayer();
   bool _previewing = false;
 
@@ -860,7 +786,8 @@ class _SongTrimSheetState extends State<_SongTrimSheet> {
     }
     try {
       await _previewPlayer.play(DeviceFileSource(widget.filePath));
-      await _previewPlayer.seek(Duration(milliseconds: (_start * 1000).round()));
+      await _previewPlayer
+          .seek(Duration(milliseconds: (_start * 1000).round()));
       if (mounted) setState(() => _previewing = true);
       _previewPlayer.onPositionChanged.listen((position) {
         final pos = position.inMilliseconds / 1000;
@@ -881,7 +808,8 @@ class _SongTrimSheetState extends State<_SongTrimSheet> {
   Widget build(BuildContext context) {
     final bars = List<double>.generate(
       72,
-      (i) => 0.25 +
+      (i) =>
+          0.25 +
           0.6 *
               (0.5 + 0.5 * _pseudoWave(i + widget.filePath.hashCode.abs() % 7)),
     );
@@ -902,8 +830,7 @@ class _SongTrimSheetState extends State<_SongTrimSheet> {
                   Text('New song', style: PhlioTypography.headline),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () =>
-                        Navigator.of(context).pop((_start, _end)),
+                    onTap: () => Navigator.of(context).pop((_start, _end)),
                     child: Text('Done',
                         style: PhlioTypography.bodyStrong
                             .copyWith(color: PhlioColors.brandOrange)),
@@ -974,7 +901,9 @@ class _SongTrimSheetState extends State<_SongTrimSheet> {
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        _previewing ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                        _previewing
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
                         color: PhlioColors.textOnBrand,
                       ),
                     ),

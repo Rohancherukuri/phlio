@@ -35,8 +35,61 @@ class MessagingService:
             "CREATE TABLE IF NOT EXISTS reactions (message_id TEXT, user_id TEXT, kind TEXT, value TEXT, "
             "PRIMARY KEY(message_id, user_id, kind, value))"
         )
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS public_chat (id TEXT PRIMARY KEY, creator TEXT, sender TEXT, "
+            "username TEXT, text TEXT, attachments TEXT, created_at TEXT)"
+        )
+        self.db.execute("CREATE INDEX IF NOT EXISTS public_chat_creator ON public_chat(creator, created_at)")
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS message_overlays (message_id TEXT PRIMARY KEY, overlays TEXT)"
+        )
         self.db.commit()
         self.calls: dict[str, dict] = {}
+
+    def public_history(self, creator: str):
+        rows = self.db.execute(
+            "SELECT * FROM public_chat WHERE creator=? ORDER BY created_at DESC LIMIT 100", (creator,)
+        ).fetchall()
+        return [
+            dict(
+                id=r["id"],
+                sender_id=r["sender"],
+                username=r["username"],
+                text=r["text"],
+                attachments=json.loads(r["attachments"]),
+                created_at=r["created_at"],
+            )
+            for r in reversed(rows)
+        ]
+
+    def public_send(self, creator: str, user: str, username: str, text: str, attachments: list):
+        mid = uuid.uuid4().hex
+        self.db.execute(
+            "INSERT INTO public_chat VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                mid,
+                creator,
+                user,
+                username,
+                text.strip(),
+                json.dumps(attachments),
+                dt.datetime.now(dt.UTC).isoformat(),
+            ),
+        )
+        self.db.commit()
+        return {"id": mid}
+
+    def overlays(self, message_id: str, user: str, peer: str, overlays: list):
+        row = self.db.execute(
+            "SELECT * FROM messages WHERE id=? AND sender=? AND recipient=?", (message_id, user, peer)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Sent message not found.")
+        self.db.execute(
+            "INSERT OR REPLACE INTO message_overlays VALUES (?, ?)", (message_id, json.dumps(overlays))
+        )
+        self.db.commit()
+        return overlays
 
     def friends(self, user: str) -> list[dict]:
         return [
@@ -128,12 +181,12 @@ class MessagingService:
                 (message_id, user, kind, value),
             )
         else:
-            count = self.db.execute("SELECT COUNT(*) FROM reactions WHERE message_id=?", (message_id,)).fetchone()[0]
+            count = self.db.execute(
+                "SELECT COUNT(*) FROM reactions WHERE message_id=?", (message_id,)
+            ).fetchone()[0]
             if count >= 60:
                 raise HTTPException(422, "Too many reactions on this message.")
-            self.db.execute(
-                "INSERT INTO reactions VALUES (?, ?, ?, ?)", (message_id, user, kind, value)
-            )
+            self.db.execute("INSERT INTO reactions VALUES (?, ?, ?, ?)", (message_id, user, kind, value))
         self.db.commit()
         return self._reactions_for([message_id])[message_id]
 
@@ -181,6 +234,10 @@ class MessagingService:
         reactions = self._reactions_for([m["id"] for m in messages])
         for m in messages:
             m["reactions"] = reactions[m["id"]]
+            overlay = self.db.execute(
+                "SELECT overlays FROM message_overlays WHERE message_id=?", (m["id"],)
+            ).fetchone()
+            m["overlays"] = json.loads(overlay["overlays"]) if overlay else []
         return messages
 
     def peers(self, user: str) -> list[str]:

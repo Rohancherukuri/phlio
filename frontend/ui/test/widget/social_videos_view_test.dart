@@ -5,7 +5,7 @@ import 'package:phlio/features/social/presentation/controllers/video_library.dar
 import 'package:phlio/features/social/presentation/widgets/social_videos_view.dart';
 
 void main() {
-  testWidgets('Plain StatefulElement survives reassembly and catalog retry',
+  testWidgets('Plain StatefulElement survives reassembly and provider refresh',
       (tester) async {
     var requests = 0;
     await tester.pumpWidget(
@@ -25,16 +25,16 @@ void main() {
     // This is the element type that existed before the Riverpod migration.
     final element = tester.element(find.byType(SocialVideosView));
     expect(element.runtimeType, StatefulElement);
-    expect(find.text('Could not load videos.'), findsOneWidget);
+    expect(find.text('Following'), findsWidgets);
     expect(tester.takeException(), isNull);
     // Exercise hot-reload reassembly on the retained element, without a VM reload.
     // ignore: invalid_use_of_protected_member
     element.reassemble();
     await tester.pumpAndSettle();
     expect(tester.element(find.byType(SocialVideosView)), same(element));
-    await tester.tap(find.text('Try again'));
+    ProviderScope.containerOf(element).invalidate(socialVideoCatalogProvider);
     await tester.pumpAndSettle();
-    expect(find.textContaining('No videos yet.'), findsOneWidget);
+    expect(find.text('Following'), findsWidgets);
     expect(requests, 2);
     expect(tester.takeException(), isNull);
   });

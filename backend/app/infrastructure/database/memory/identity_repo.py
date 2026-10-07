@@ -32,6 +32,9 @@ class InMemoryIdentityRepository:
         user_id = self._by_email.get(email)
         return self._by_id.get(user_id) if user_id else None
 
+    async def get_by_phone(self, phone_number: str) -> User | None:
+        return next((u for u in self._by_id.values() if u.phone_number == phone_number), None)
+
     async def search_users(self, query: str, limit: int = 30) -> list[User]:
         q = query.casefold().lstrip("@")
         return [u for u in self._by_id.values() if q in u.username.casefold() or q in u.full_name.casefold()][

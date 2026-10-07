@@ -7,6 +7,7 @@
 // consistent across five different feature teams' screens.
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../colors.dart';
 import '../radii.dart';
 import '../spacing.dart';
@@ -61,11 +62,15 @@ class PhlioAvatar extends StatelessWidget {
     required this.name,
     super.key,
     this.imageUrl,
+    this.profileId,
     this.size = 40,
   });
 
   final String name;
   final String? imageUrl;
+
+  /// Stable user ID or handle, never a display name.
+  final String? profileId;
   final double size;
 
   // A small, fixed palette of gradient pairs, picked by a hash of the
@@ -81,6 +86,21 @@ class PhlioAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final avatar = _picture();
+    if (profileId == null || profileId!.isEmpty) return avatar;
+    return Semantics(
+      button: true,
+      label: 'View $name profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () =>
+            context.push('/creator/${Uri.encodeComponent(profileId!)}'),
+        child: avatar,
+      ),
+    );
+  }
+
+  Widget _picture() {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       return ClipOval(
         child: Image.network(
@@ -103,12 +123,16 @@ class PhlioAvatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(colors: palette, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+            colors: palette,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
       ),
       alignment: Alignment.center,
       child: Text(
         initial,
-        style: PhlioTypography.bodyStrong.copyWith(fontSize: size * 0.4, color: Colors.white),
+        style: PhlioTypography.bodyStrong
+            .copyWith(fontSize: size * 0.4, color: Colors.white),
       ),
     );
   }
@@ -140,7 +164,8 @@ class PhlioSectionHeader extends StatelessWidget {
             onTap: onAction,
             child: Text(
               actionLabel!,
-              style: PhlioTypography.label.copyWith(color: PhlioColors.brandPurple),
+              style: PhlioTypography.label
+                  .copyWith(color: PhlioColors.brandPurple),
             ),
           ),
       ],

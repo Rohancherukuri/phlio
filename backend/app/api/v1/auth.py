@@ -11,9 +11,10 @@ conversion, so the mapping is defined once and can't drift between routes.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.api.deps import get_container, get_current_user, get_identity_service
 from app.core.container import Container
@@ -30,10 +31,29 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     interests: list[str] = Field(default_factory=list, max_length=20)
+    date_of_birth: dt.date | None = None
+    phone_number: str | None = None
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def valid_birthday(cls, value):
+        if value is not None and not dt.date(1900, 1, 1) <= value < dt.datetime.now(dt.UTC).date():
+            raise ValueError("Choose a date of birth in the past, from 1900 onward.")
+        return value
+
+    @field_validator("phone_number")
+    @classmethod
+    def valid_phone(cls, value):
+        if value is None:
+            return None
+        value = re.sub(r"[\s()\-]", "", value)
+        if not re.fullmatch(r"\+[1-9][0-9]{7,14}", value):
+            raise ValueError("Enter a phone number with country code, for example +919876543210.")
+        return value
 
 
 class LoginRequest(BaseModel):
-    identifier: str = Field(description="Username or email.")
+    identifier: str = Field(description="Username, email, or international phone number.")
     password: str
 
 
@@ -51,6 +71,8 @@ class UserResponse(BaseModel):
     interests: list[str]
     is_verified: bool
     created_at: dt.datetime
+    date_of_birth: dt.date | None = None
+    phone_number: str | None = None
 
     @classmethod
     def from_entity(cls, user: User) -> UserResponse:
@@ -64,6 +86,8 @@ class UserResponse(BaseModel):
             interests=user.interests,
             is_verified=user.is_verified,
             created_at=user.created_at,
+            date_of_birth=user.date_of_birth,
+            phone_number=user.phone_number,
         )
 
 
@@ -98,6 +122,8 @@ async def register(
         email=body.email,
         password=body.password,
         interests=body.interests,
+        date_of_birth=body.date_of_birth,
+        phone_number=body.phone_number,
     )
     return AuthResponse(user=UserResponse.from_entity(user), tokens=TokenResponse.from_token_pair(tokens))
 

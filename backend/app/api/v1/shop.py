@@ -56,6 +56,7 @@ class ProductResponse(BaseModel):
 
 class SellerResponse(BaseModel):
     id: str
+    user_id: str
     display_name: str
     handle: str
     specialty: str
@@ -66,6 +67,7 @@ class SellerResponse(BaseModel):
     def from_entity(cls, seller: Seller) -> SellerResponse:
         return cls(
             id=seller.id,
+            user_id=seller.user_id,
             display_name=seller.display_name,
             handle=seller.handle,
             specialty=seller.specialty,
@@ -130,8 +132,6 @@ async def featured_sellers(
 
 
 @router.get("/sellers/{seller_id}", response_model=SellerResponse)
-async def get_seller(
-    seller_id: str, shop_service: ShopService = Depends(get_shop_service)
-) -> SellerResponse:
+async def get_seller(seller_id: str, shop_service: ShopService = Depends(get_shop_service)) -> SellerResponse:
     seller = await shop_service.get_seller_or_raise(seller_id)
     return SellerResponse.from_entity(seller)

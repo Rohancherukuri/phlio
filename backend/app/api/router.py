@@ -9,6 +9,7 @@ from app.api.v1 import (
     agent,
     auth,
     book,
+    creator_chat,
     home,
     messaging,
     pay,
@@ -35,3 +36,5 @@ api_router.include_router(activity.router)
 api_router.include_router(stickers.router)
 
 api_router.include_router(messaging.router)
+
+api_router.include_router(creator_chat.router)

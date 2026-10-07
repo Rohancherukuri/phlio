@@ -68,7 +68,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           gradient: RadialGradient(
             center: Alignment(0, -0.55),
             radius: 1.1,
-            colors: [Color(0xFF1A1426), PhlioColors.background],
+            colors: [PhlioColors.backgroundDeep, PhlioColors.background],
             stops: [0.0, 0.7],
           ),
         ),

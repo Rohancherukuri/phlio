@@ -147,6 +147,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/creator/:username',
+        redirect: (context, state) {
+          final me = ref.read(authControllerProvider).valueOrNull;
+          final target = state.pathParameters['username'];
+          return me != null && (target == me.id || target == me.username)
+              ? '/profile'
+              : null;
+        },
         pageBuilder: (context, state) => _fadeThroughPage(
           CreatorProfileScreen(username: state.pathParameters['username']!),
         ),

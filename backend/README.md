@@ -29,3 +29,15 @@ repositories — no external database required to explore the API.
 ```bash
 uv run pytest
 ```
+
+
+### Account details
+
+New signup clients collect a birthday and an international phone number. These
+are returned only by authenticated account endpoints, never public profiles.
+Older accounts may omit them. Phone numbers are normalized to `+` and digits,
+are unique, and can be used with a password to log in; this does not verify
+ownership of the number (SMS verification is not implemented).
+For existing SurrealDB schemafull deployments, apply
+`migrations/20261007_account_details.surql` before deploying. The default memory
+backend remains ephemeral, including these fields, as with other account data.

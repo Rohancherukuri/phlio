@@ -16,6 +16,8 @@ class RegisterUseCase {
     required String email,
     required String password,
     required List<String> interests,
+    String? dateOfBirth,
+    String? phoneNumber,
   }) {
     return _repository.register(
       fullName: fullName,
@@ -23,6 +25,8 @@ class RegisterUseCase {
       email: email,
       password: password,
       interests: interests,
+      dateOfBirth: dateOfBirth,
+      phoneNumber: phoneNumber,
     );
   }
 }

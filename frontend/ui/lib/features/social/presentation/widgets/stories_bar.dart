@@ -60,12 +60,6 @@ const List<({String name, String avatarAsset})> kStoryUsers = [
   ),
 ];
 
-void _comingSoon(BuildContext context, String name) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text("$name's stories are coming soon.")),
-  );
-}
-
 /// Creator circles open the creator's profile page; story playback itself
 /// stays a coming-soon until the Stories domain lands.
 void _openCreator(BuildContext context, String name) {
@@ -92,7 +86,7 @@ class StoriesStrip extends ConsumerWidget {
         children: [
           _StripItem(
             label: 'Your story',
-            onTap: () => _comingSoon(context, 'Your'),
+            onTap: () => context.push('/profile'),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -376,7 +370,7 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                               height: size,
                               child: index == 0
                                   ? GestureDetector(
-                                      onTap: () => _comingSoon(context, 'Your'),
+                                      onTap: () => context.push('/profile'),
                                       child: Stack(
                                           clipBehavior: Clip.none,
                                           children: [

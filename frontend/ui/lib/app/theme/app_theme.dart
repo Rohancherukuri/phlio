@@ -19,8 +19,20 @@ abstract final class AppTheme {
       colorScheme: base.colorScheme.copyWith(
         brightness: Brightness.dark,
         surface: PhlioColors.surface,
-        primary: PhlioColors.brandOrange,
-        secondary: PhlioColors.brandViolet,
+        primary: PhlioColors.brandPurple,
+        onPrimary: PhlioColors.backgroundDeep,
+        onSecondary: PhlioColors.backgroundDeep,
+        onSurface: PhlioColors.textPrimary,
+        onSurfaceVariant: PhlioColors.textSecondary,
+        surfaceContainerLowest: PhlioColors.backgroundDeep,
+        surfaceContainerLow: PhlioColors.background,
+        surfaceContainer: PhlioColors.surface,
+        surfaceContainerHigh: PhlioColors.surfaceInput,
+        surfaceContainerHighest: PhlioColors.surfaceElevated,
+        outline: PhlioColors.border,
+        outlineVariant: PhlioColors.border,
+        secondary: PhlioColors.brandBlue,
+        tertiary: PhlioColors.success,
         error: PhlioColors.danger,
       ),
       textTheme: base.textTheme.copyWith(
@@ -39,6 +51,34 @@ abstract final class AppTheme {
         elevation: 0,
         titleTextStyle: PhlioTypography.headline,
       ),
+      disabledColor: PhlioColors.textDisabled,
+      iconTheme: const IconThemeData(color: PhlioColors.textSecondary),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: PhlioColors.surfaceInput,
+        hintStyle: const TextStyle(color: PhlioColors.textMuted),
+        border: OutlineInputBorder(
+          borderRadius: PhlioRadii.lgRadius,
+          borderSide: const BorderSide(color: PhlioColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: PhlioRadii.lgRadius,
+          borderSide: const BorderSide(color: PhlioColors.border),
+        ),
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: PhlioColors.surfaceElevated,
+        surfaceTintColor: Colors.transparent,
+      ),
+      cardTheme: const CardThemeData(
+        color: PhlioColors.surface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: PhlioColors.brandPurple,
+        selectionColor: PhlioColors.brandPurple.withValues(alpha: 0.3),
+        selectionHandleColor: PhlioColors.brandPurple,
+      ),
       dividerColor: PhlioColors.borderSubtle,
       splashFactory: InkRipple.splashFactory,
       pageTransitionsTheme: const PageTransitionsTheme(
@@ -49,14 +89,16 @@ abstract final class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: PhlioColors.surfaceElevated,
-        contentTextStyle: PhlioTypography.body.copyWith(color: PhlioColors.textPrimary),
+        contentTextStyle:
+            PhlioTypography.body.copyWith(color: PhlioColors.textPrimary),
         shape: RoundedRectangleBorder(borderRadius: PhlioRadii.mdRadius),
         behavior: SnackBarBehavior.floating,
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: PhlioColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(PhlioRadii.xxl)),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(PhlioRadii.xxl)),
         ),
       ),
     );

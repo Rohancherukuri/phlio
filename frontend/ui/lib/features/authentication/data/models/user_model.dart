@@ -18,6 +18,8 @@ class UserModel {
     required this.isVerified,
     required this.createdAt,
     this.avatarUrl,
+    this.dateOfBirth,
+    this.phoneNumber,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -27,6 +29,8 @@ class UserModel {
       fullName: json['full_name'] as String,
       email: json['email'] as String,
       avatarUrl: json['avatar_url'] as String?,
+      dateOfBirth: DateTime.tryParse(json['date_of_birth'] as String? ?? ''),
+      phoneNumber: json['phone_number'] as String?,
       bio: json['bio'] as String? ?? '',
       interests: (json['interests'] as List<dynamic>? ?? []).cast<String>(),
       isVerified: json['is_verified'] as bool? ?? false,
@@ -39,6 +43,8 @@ class UserModel {
   final String fullName;
   final String email;
   final String? avatarUrl;
+  final DateTime? dateOfBirth;
+  final String? phoneNumber;
   final String bio;
   final List<String> interests;
   final bool isVerified;
@@ -50,6 +56,8 @@ class UserModel {
         fullName: fullName,
         email: email,
         avatarUrl: avatarUrl,
+        dateOfBirth: dateOfBirth,
+        phoneNumber: phoneNumber,
         bio: bio,
         interests: interests,
         isVerified: isVerified,

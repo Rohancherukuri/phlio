@@ -30,7 +30,8 @@ class ShopScreen extends ConsumerWidget {
     final selectedCategory = ref.watch(selectedShopCategoryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text('Phlio Shop', style: PhlioTypography.displayMedium)),
+      appBar: AppBar(
+          title: Text('Phlio Shop', style: PhlioTypography.displayMedium)),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(productsControllerProvider);
@@ -41,7 +42,9 @@ class ShopScreen extends ConsumerWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(PhlioSpacing.xl),
-              decoration: BoxDecoration(gradient: PhlioColors.brandGradientSoft, borderRadius: PhlioRadii.xxlRadius),
+              decoration: BoxDecoration(
+                  gradient: PhlioColors.brandGradientSoft,
+                  borderRadius: PhlioRadii.xxlRadius),
               child: Row(
                 children: [
                   Expanded(
@@ -50,12 +53,14 @@ class ShopScreen extends ConsumerWidget {
                       children: [
                         Text(
                           'Art lives here.',
-                          style: PhlioTypography.displayMedium.copyWith(color: Colors.white),
+                          style: PhlioTypography.displayMedium
+                              .copyWith(color: Colors.white),
                         ),
                         const SizedBox(height: PhlioSpacing.xs),
                         Text(
                           'Real creators. Real stories. From art to everyday finds.',
-                          style: PhlioTypography.body.copyWith(color: Colors.white70),
+                          style: PhlioTypography.body
+                              .copyWith(color: Colors.white70),
                         ),
                       ],
                     ),
@@ -72,14 +77,18 @@ class ShopScreen extends ConsumerWidget {
                   PhlioChipButton(
                     label: 'All',
                     selected: selectedCategory == null,
-                    onPressed: () => ref.read(selectedShopCategoryProvider.notifier).state = null,
+                    onPressed: () => ref
+                        .read(selectedShopCategoryProvider.notifier)
+                        .state = null,
                   ),
                   const SizedBox(width: PhlioSpacing.sm),
                   for (final category in ShopCategory.values) ...[
                     PhlioChipButton(
                       label: category.label,
                       selected: selectedCategory == category,
-                      onPressed: () => ref.read(selectedShopCategoryProvider.notifier).state = category,
+                      onPressed: () => ref
+                          .read(selectedShopCategoryProvider.notifier)
+                          .state = category,
                     ),
                     const SizedBox(width: PhlioSpacing.sm),
                   ],
@@ -97,14 +106,19 @@ class ShopScreen extends ConsumerWidget {
                 data: (sellers) => ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: sellers.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: PhlioSpacing.lg),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: PhlioSpacing.lg),
                   itemBuilder: (context, index) {
                     final seller = sellers[index];
                     return SizedBox(
                       width: 76,
                       child: Column(
                         children: [
-                          PhlioAvatar(name: seller.displayName, size: 56),
+                          PhlioAvatar(
+                              profileId: seller.userId ??
+                                  seller.handle.replaceFirst('@', ''),
+                              name: seller.displayName,
+                              size: 56),
                           const SizedBox(height: PhlioSpacing.xs),
                           Text(
                             seller.handle,
@@ -123,7 +137,8 @@ class ShopScreen extends ConsumerWidget {
             const PhlioSectionHeader(title: 'For you'),
             const SizedBox(height: PhlioSpacing.md),
             productsAsync.when(
-              loading: () => const ShimmerGrid(crossAxisCount: 2, itemCount: 4, aspectRatio: 0.72),
+              loading: () => const ShimmerGrid(
+                  crossAxisCount: 2, itemCount: 4, aspectRatio: 0.72),
               error: (error, _) => PhlioErrorView(
                 failure: error is Failure ? error : const Failure.unknown(),
                 onRetry: () => ref.invalidate(productsControllerProvider),
@@ -134,7 +149,8 @@ class ShopScreen extends ConsumerWidget {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: products.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         mainAxisSpacing: PhlioSpacing.lg,
                         crossAxisSpacing: PhlioSpacing.lg,
@@ -144,8 +160,9 @@ class ShopScreen extends ConsumerWidget {
                         final product = products[index];
                         return ProductCard(
                           product: product,
-                          onToggleFavorite: () =>
-                              ref.read(productsControllerProvider.notifier).toggleFavorite(product.id),
+                          onToggleFavorite: () => ref
+                              .read(productsControllerProvider.notifier)
+                              .toggleFavorite(product.id),
                         );
                       },
                     ),
@@ -168,14 +185,18 @@ class _EmptyCategoryState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: PhlioSpacing.huge),
       child: Column(
         children: [
-          const Icon(Icons.storefront_outlined, size: 36, color: PhlioColors.textMuted),
+          const Icon(Icons.storefront_outlined,
+              size: 36, color: PhlioColors.textMuted),
           const SizedBox(height: PhlioSpacing.md),
           Text(
-            category == null ? 'Nothing here yet.' : 'No ${category!.label} listings yet.',
+            category == null
+                ? 'Nothing here yet.'
+                : 'No ${category!.label} listings yet.',
             style: PhlioTypography.body,
           ),
           const SizedBox(height: PhlioSpacing.xs),
-          Text('Art & Handmade is the first category live on Phlio Shop.', style: PhlioTypography.caption),
+          Text('Art & Handmade is the first category live on Phlio Shop.',
+              style: PhlioTypography.caption),
         ],
       ),
     );

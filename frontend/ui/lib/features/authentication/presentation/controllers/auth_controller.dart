@@ -22,9 +22,11 @@ import '../../domain/usecases/login_usecase.dart';
 import '../../domain/usecases/logout_usecase.dart';
 import '../../domain/usecases/register_usecase.dart';
 
-final authRepositoryProvider = Provider<AuthRepository>((ref) => getIt<AuthRepository>());
+final authRepositoryProvider =
+    Provider<AuthRepository>((ref) => getIt<AuthRepository>());
 
-final authControllerProvider = AsyncNotifierProvider<AuthController, UserEntity?>(AuthController.new);
+final authControllerProvider =
+    AsyncNotifierProvider<AuthController, UserEntity?>(AuthController.new);
 
 class AuthController extends AsyncNotifier<UserEntity?> {
   late final LoginUseCase _loginUseCase;
@@ -51,8 +53,10 @@ class AuthController extends AsyncNotifier<UserEntity?> {
     );
   }
 
-  Future<Result<UserEntity>> login({required String identifier, required String password}) async {
-    final result = await _loginUseCase(identifier: identifier, password: password);
+  Future<Result<UserEntity>> login(
+      {required String identifier, required String password}) async {
+    final result =
+        await _loginUseCase(identifier: identifier, password: password);
     return result.when(
       success: (data) {
         final (user, _) = data;
@@ -69,6 +73,8 @@ class AuthController extends AsyncNotifier<UserEntity?> {
     required String email,
     required String password,
     required List<String> interests,
+    String? dateOfBirth,
+    String? phoneNumber,
   }) async {
     final result = await _registerUseCase(
       fullName: fullName,
@@ -76,6 +82,8 @@ class AuthController extends AsyncNotifier<UserEntity?> {
       email: email,
       password: password,
       interests: interests,
+      dateOfBirth: dateOfBirth,
+      phoneNumber: phoneNumber,
     );
     return result.when(
       success: (data) {

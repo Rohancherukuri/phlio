@@ -433,8 +433,10 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                       children: [
                         GestureDetector(
                           onTap: openDm,
-                          child:
-                              PhlioAvatar(name: message.displayName, size: 28),
+                          child: PhlioAvatar(
+                              profileId: message.authorId,
+                              name: message.displayName,
+                              size: 28),
                         ),
                         const SizedBox(width: PhlioSpacing.sm),
                         Expanded(

@@ -1,10 +1,3 @@
-// Signup screen — mirrors the reference "2. SIGN UP — Create your world."
-// screen. Implemented as a two-step flow (account details, then interest
-// picking) rather than the reference's three steps — date-of-birth capture
-// is omitted for this build stage since nothing in the backend uses it yet
-// (see `backend/app/domains/identity/entities.py::User`), and adding an
-// unused field would be collecting data with no purpose behind it.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,9 +12,16 @@ import '../../../../design_system/widgets/phlio_text_field.dart';
 import '../controllers/auth_controller.dart';
 
 const _availableInterests = [
-  'Art', 'Tech', 'Gaming', 'Travel',
-  'Food', 'Music', 'Sports', 'Learning',
-  'Shopping', 'Communities',
+  'Art',
+  'Tech',
+  'Gaming',
+  'Travel',
+  'Food',
+  'Music',
+  'Sports',
+  'Learning',
+  'Shopping',
+  'Communities',
 ];
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -38,6 +38,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  final _phoneController = TextEditingController();
+  final _birthdayController = TextEditingController();
+  DateTime? _birthday;
+
   int _step = 0;
   final Set<String> _selectedInterests = {};
   bool _isSubmitting = false;
@@ -49,7 +53,27 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _phoneController.dispose();
+    _birthdayController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickBirthday() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final selected = await showDatePicker(
+      context: context,
+      initialDate:
+          _birthday ?? DateTime(today.year - 18, today.month, today.day),
+      firstDate: DateTime(1900),
+      lastDate: today.subtract(const Duration(days: 1)),
+      helpText: 'Date of birth',
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _birthday = selected;
+      _birthdayController.text =
+          MaterialLocalizations.of(context).formatMediumDate(selected);
+    });
   }
 
   void _goToInterestsStep() {
@@ -68,6 +92,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           username: _usernameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
+          phoneNumber:
+              _phoneController.text.replaceAll(RegExp(r'[\s()\-]'), ''),
+          dateOfBirth: _birthday!.toIso8601String().split('T').first,
           interests: _selectedInterests.map((i) => i.toLowerCase()).toList(),
         );
 
@@ -87,10 +114,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: PhlioColors.backgroundDeep,
       appBar: AppBar(
+        backgroundColor: PhlioColors.backgroundDeep,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          onPressed: () => _step == 0 ? context.go('/login') : setState(() => _step = 0),
+          onPressed: () =>
+              _step == 0 ? context.go('/login') : setState(() => _step = 0),
         ),
       ),
       body: SafeArea(
@@ -145,7 +175,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   children: [
                     Text('Step 1 of 2', style: PhlioTypography.caption),
                     const SizedBox(height: PhlioSpacing.xs),
-                    Text("Let's get you started", style: PhlioTypography.displayMedium),
+                    Text("Let's get you started",
+                        style: PhlioTypography.displayMedium),
                     const SizedBox(height: PhlioSpacing.xs),
                     Text(
                       'Create your Phlio account and unlock a bigger world together.',
@@ -164,7 +195,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             semanticLabel: 'Full name',
             prefixIcon: Icons.person_outline_rounded,
             textInputAction: TextInputAction.next,
-            validator: (v) => (v == null || v.trim().length < 2) ? 'Enter your full name' : null,
+            validator: (v) => (v == null || v.trim().length < 2)
+                ? 'Enter your full name'
+                : null,
           ),
           const SizedBox(height: PhlioSpacing.md),
           PhlioTextField(
@@ -174,21 +207,53 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             prefixIcon: Icons.alternate_email_rounded,
             textInputAction: TextInputAction.next,
             validator: (v) {
-              if (v == null || v.trim().length < 3) return 'At least 3 characters';
-              if (!RegExp(r'^[a-zA-Z0-9._]+$').hasMatch(v.trim())) return 'Letters, numbers, . and _ only';
+              if (v == null || v.trim().length < 3)
+                return 'At least 3 characters';
+              if (!RegExp(r'^[a-zA-Z0-9._]+$').hasMatch(v.trim()))
+                return 'Letters, numbers, . and _ only';
               return null;
             },
           ),
           const SizedBox(height: PhlioSpacing.md),
           PhlioTextField(
             controller: _emailController,
-            hintText: 'Email or phone number',
+            hintText: 'Email address',
             semanticLabel: 'Email',
             prefixIcon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
-            validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+            validator: (v) =>
+                (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
           ),
+          const SizedBox(height: PhlioSpacing.md),
+          PhlioTextField(
+            controller: _phoneController,
+            hintText: 'Phone number with country code',
+            semanticLabel: 'Phone number with country code',
+            prefixIcon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.telephoneNumber],
+            validator: (v) => RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(
+              (v ?? '').replaceAll(RegExp(r'[\s()\-]'), ''),
+            )
+                ? null
+                : 'Include your country code, e.g. +919876543210',
+          ),
+          const SizedBox(height: PhlioSpacing.md),
+          PhlioTextField(
+            controller: _birthdayController,
+            hintText: 'Date of birth',
+            semanticLabel: 'Date of birth',
+            prefixIcon: Icons.cake_outlined,
+            readOnly: true,
+            onTap: _pickBirthday,
+            validator: (_) =>
+                _birthday == null ? 'Choose your date of birth' : null,
+          ),
+          const SizedBox(height: PhlioSpacing.sm),
+          Text('Your phone number and birthday stay private.',
+              style: PhlioTypography.caption),
           const SizedBox(height: PhlioSpacing.md),
           PhlioTextField(
             controller: _passwordController,
@@ -197,14 +262,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             prefixIcon: Icons.lock_outline_rounded,
             obscureText: true,
             textInputAction: TextInputAction.done,
-            validator: (v) => (v == null || v.length < 8) ? 'At least 8 characters' : null,
+            validator: (v) =>
+                (v == null || v.length < 8) ? 'At least 8 characters' : null,
           ),
           if (_formError != null) ...[
             const SizedBox(height: PhlioSpacing.sm),
-            Text(_formError!, style: PhlioTypography.caption.copyWith(color: PhlioColors.danger)),
+            Text(_formError!,
+                style: PhlioTypography.caption
+                    .copyWith(color: PhlioColors.danger)),
           ],
           const SizedBox(height: PhlioSpacing.xl),
-          PhlioPrimaryButton(label: 'Continue', icon: Icons.arrow_forward_rounded, onPressed: _goToInterestsStep),
+          PhlioPrimaryButton(
+              label: 'Continue',
+              icon: Icons.arrow_forward_rounded,
+              onPressed: _goToInterestsStep),
         ],
       ),
     );
@@ -216,9 +287,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       children: [
         Text('Step 2 of 2', style: PhlioTypography.caption),
         const SizedBox(height: PhlioSpacing.xs),
-        Text('What are you interested in?', style: PhlioTypography.displayMedium),
+        Text('What are you interested in?',
+            style: PhlioTypography.displayMedium),
         const SizedBox(height: PhlioSpacing.xs),
-        Text('Pick a few to personalize your experience.', style: PhlioTypography.body),
+        Text('Pick a few to personalize your experience.',
+            style: PhlioTypography.body),
         const SizedBox(height: PhlioSpacing.xl),
         Wrap(
           spacing: PhlioSpacing.sm,
@@ -228,20 +301,25 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             return InkWell(
               borderRadius: PhlioRadii.pillRadius,
               onTap: () => setState(() {
-                selected ? _selectedInterests.remove(interest) : _selectedInterests.add(interest);
+                selected
+                    ? _selectedInterests.remove(interest)
+                    : _selectedInterests.add(interest);
               }),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.md),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.md),
                 decoration: BoxDecoration(
                   borderRadius: PhlioRadii.pillRadius,
                   color: selected ? null : PhlioColors.surfaceElevated,
                   gradient: selected ? PhlioColors.brandGradientSoft : null,
-                  border: Border.all(color: selected ? Colors.transparent : PhlioColors.border),
+                  border: Border.all(
+                      color:
+                          selected ? Colors.transparent : PhlioColors.border),
                 ),
                 child: Text(
                   interest,
                   style: PhlioTypography.body.copyWith(
-                    color: selected ? PhlioColors.textOnBrand : PhlioColors.textPrimary,
+                    color: PhlioColors.textPrimary,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),

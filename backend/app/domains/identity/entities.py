@@ -25,6 +25,8 @@ class User:
     interests: list[str] = field(default_factory=list)
     created_at: dt.datetime = field(default_factory=lambda: dt.datetime.now(dt.UTC))
     is_verified: bool = False
+    date_of_birth: dt.date | None = None
+    phone_number: str | None = None
 
     def public_profile(self) -> PublicProfile:
         return PublicProfile(

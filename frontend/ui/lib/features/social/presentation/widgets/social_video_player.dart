@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../design_system/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../controllers/video_playback_controller.dart';
@@ -143,7 +144,7 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
               mini ? (bounds.maxWidth - 24).clamp(0.0, 360.0) : bounds.maxWidth;
           final height = mini ? width * 9 / 16 + 96 : bounds.maxHeight;
           final content = Material(
-            color: const Color(0xff18181b),
+            color: PhlioColors.surface,
             borderRadius: BorderRadius.circular(mini ? 16 : 0),
             clipBehavior: Clip.antiAlias,
             elevation: 16,
@@ -208,7 +209,7 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                             allowScrubbing: true,
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             colors: const VideoProgressColors(
-                              playedColor: Color(0xffa970ff),
+                              playedColor: PhlioColors.brandPurple,
                             ),
                           ),
                           Row(

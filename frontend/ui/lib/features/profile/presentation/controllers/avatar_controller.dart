@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../../../../design_system/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
@@ -211,7 +212,7 @@ class AvatarController extends Notifier<AvatarState> {
         AndroidUiSettings(
           toolbarTitle: 'Crop your photo',
           lockAspectRatio: true,
-          activeControlsWidgetColor: const Color(0xFFFF8A4C),
+          activeControlsWidgetColor: PhlioColors.brandPeach,
         ),
       ],
     );

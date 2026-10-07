@@ -21,6 +21,9 @@ FROM python:3.12-slim-bookworm AS backend
 # image is the fastest, smallest way to install it (no pip bootstrap needed).
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /usr/local/bin/
 
+# Exports trimmed, muted and rotated DM videos.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Install dependencies first (better Docker layer caching: this layer only

@@ -43,12 +43,12 @@ async def test_private_upload_requires_conversation_access(client, auth_headers)
     upload = await client.post(
         "/api/v1/messaging/peers/neha/files",
         headers=auth_headers,
-        files=[("files", ("notes.txt", b"Secret notes", "text/plain"))],
+        files=[("files", ("notes.png", b"\x89PNG\r\n\x1a\nSecret notes", "image/png"))],
     )
     assert upload.status_code == 201, upload.text
     attachment = upload.json()[0]
     url = attachment["url"]
-    assert (await client.get(url, headers=recipient)).content == b"Secret notes"
+    assert (await client.get(url, headers=recipient)).content == b"\x89PNG\r\n\x1a\nSecret notes"
     assert (await client.get(url, headers=outsider)).status_code == 404
     assert (await client.get(url)).status_code == 401
     sent = await client.post(
@@ -150,11 +150,15 @@ async def test_friend_requests_require_recipient_consent(client, auth_headers):
 
 async def test_search_filters_and_private_conversation_boundary(client, auth_headers):
     outsider = await login(client, "artbykiara")
-    for filename in ["searchunique.txt", "searchunique.png", "searchunique.mp4", "searchunique.m4a"]:
+    for filename, contents in [
+        ("searchunique.png", b"\x89PNG\r\n\x1a\nimage"),
+        ("searchunique.mp4", b"\x00\x00\x00\x18ftypisomvideo"),
+        ("searchunique.m4a", b"\x00\x00\x00\x18ftypM4A audio"),
+    ]:
         upload = await client.post(
             "/api/v1/messaging/peers/neha/files",
             headers=auth_headers,
-            files=[("files", (filename, b"sample", "application/octet-stream"))],
+            files=[("files", (filename, contents, "application/octet-stream"))],
         )
         assert upload.status_code == 201
         sent = await client.post(
@@ -167,8 +171,8 @@ async def test_search_filters_and_private_conversation_boundary(client, auth_hea
         json={"text": "searchunique https://example.com/plan"},
     )
     for kind, count in [
-        ("recent", 5),
-        ("files", 1),
+        ("recent", 4),
+        ("files", 0),
         ("images", 1),
         ("videos", 1),
         ("audio", 1),
