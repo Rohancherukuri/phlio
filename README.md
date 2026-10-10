@@ -116,7 +116,7 @@ flutter run
 
 By default the app talks to `http://localhost:8000/api/v1`. Point it
 somewhere else at run time with `--dart-define` — see
-[`frontend/ui/.env.example`](frontend/ui/flutter/.env.example) for
+[`frontend/ui/.env.example`](frontend/ui/.env.example) for
 every available flag:
 
 ```bash
@@ -128,7 +128,7 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.6:8000/api/v1
 ```
 
 Run its test suite with `flutter test` (see
-[`frontend/ui/test/README.md`](frontend/ui/flutter/test/README.md)).
+[`frontend/ui/test/README.md`](frontend/ui/test/README.md)).
 
 **Note on this sandbox:** this project was scaffolded in an environment
 without network access to `pub.dev`, so `flutter pub get`/`flutter test`
@@ -191,7 +191,7 @@ available command.
   navigation, hand-built shimmer loading skeletons, a choreographed splash
   entrance, an animated bottom-nav indicator, and a `Hero`-animated,
   elastic favorite-heart toggle in Shop. See
-  `frontend/ui/flutter/README.md`'s Animations section for the full list.
+  `frontend/ui/README.md`'s Animations section for the full list.
 
 
 ---
@@ -207,53 +207,66 @@ for each platform.
 > screen is implemented. For the current working scope, see
 > [What's implemented](#whats-implemented) and [Roadmap](#roadmap).
 
-### Phlio Social
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/social/phlio_social.jpeg" alt="Phlio Social design screens" width="280" />
-</p>
-
-### Phlio Rooms
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/rooms/phlio_rooms.jpeg" alt="Phlio Rooms design screens" width="280" />
-</p>
-
-### Phlio Pay
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/pay/phlio_pay.jpeg" alt="Phlio Pay design screens" width="280" />
-</p>
-
-### Phlio Book
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/book/phlio_book.jpeg" alt="Phlio Book design screens" width="280" />
-</p>
-
-### Phlio Shop
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/shop/phlio_shop.jpeg" alt="Phlio Shop design screens" width="280" />
-</p>
-
-### Phlio Stream
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/stream/phlio_stream.jpeg" alt="Phlio Stream design screens" width="280" />
-</p>
-
-### Phlio News
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/news/phlio_news.jpeg" alt="Phlio News design screens" width="280" />
-</p>
-
-### Foxy — Phlio Agent
-
-<p align="center">
-  <img src="frontend/marketing/design_screens/agent/phlio_agent.jpeg" alt="Foxy / Phlio Agent design screens" width="280" />
-</p>
+<table>
+  <tr>
+    <td align="center">
+      <strong>Phlio Social</strong><br><br>
+      <img src="frontend/marketing/design_screens/social/phlio_social.jpeg"
+           alt="Phlio Social"
+           width="280" />
+    </td>
+    <td align="center">
+      <strong>Phlio Rooms</strong><br><br>
+      <img src="frontend/marketing/design_screens/rooms/phlio_rooms.jpeg"
+           alt="Phlio Rooms"
+           width="280" />
+    </td>
+    <td align="center">
+      <strong>Phlio Pay</strong><br><br>
+      <img src="frontend/marketing/design_screens/pay/phlio_pay.jpeg"
+           alt="Phlio Pay"
+           width="280" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>Phlio Book</strong><br><br>
+      <img src="frontend/marketing/design_screens/book/phlio_book.jpeg"
+           alt="Phlio Book"
+           width="280" />
+    </td>
+    <td align="center">
+      <strong>Phlio Shop</strong><br><br>
+      <img src="frontend/marketing/design_screens/shop/phlio_shop.jpeg"
+           alt="Phlio Shop"
+           width="280" />
+    </td>
+    <td align="center">
+      <strong>Phlio Stream</strong><br><br>
+      <img src="frontend/marketing/design_screens/stream/phlio_stream.jpeg"
+           alt="Phlio Stream"
+           width="280" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>Phlio News</strong><br><br>
+      <img src="frontend/marketing/design_screens/news/phlio_news.jpeg"
+           alt="Phlio News"
+           width="280" />
+    </td>
+    <td align="center">
+      <strong>Foxy — Phlio Agent</strong><br><br>
+      <img src="frontend/marketing/design_screens/agent/phlio_agent.jpeg"
+           alt="Foxy / Phlio Agent"
+           width="280" />
+    </td>
+    <td align="center">
+      <strong>More to come</strong><br><br>
+      Phlio continues to evolve across its connected product ecosystem.
+    </td>
+  </tr>
+</table>
 
 ### Cross-platform product model
 
