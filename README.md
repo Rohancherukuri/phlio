@@ -210,49 +210,49 @@ for each platform.
 ### Phlio Social
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/social/phlio_social.jpeg" alt="Phlio Social design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/social/phlio_social.jpeg" alt="Phlio Social design screens" width="280" />
 </p>
 
 ### Phlio Rooms
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/rooms/phlio_rooms.jpeg" alt="Phlio Rooms design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/rooms/phlio_rooms.jpeg" alt="Phlio Rooms design screens" width="280" />
 </p>
 
 ### Phlio Pay
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/pay/phlio_pay.jpeg" alt="Phlio Pay design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/pay/phlio_pay.jpeg" alt="Phlio Pay design screens" width="280" />
 </p>
 
 ### Phlio Book
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/book/phlio_book.jpeg" alt="Phlio Book design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/book/phlio_book.jpeg" alt="Phlio Book design screens" width="280" />
 </p>
 
 ### Phlio Shop
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/shop/phlio_shop.jpeg" alt="Phlio Shop design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/shop/phlio_shop.jpeg" alt="Phlio Shop design screens" width="280" />
 </p>
 
 ### Phlio Stream
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/stream/phlio_stream.jpeg" alt="Phlio Stream design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/stream/phlio_stream.jpeg" alt="Phlio Stream design screens" width="280" />
 </p>
 
 ### Phlio News
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/news/phlio_news.jpeg" alt="Phlio News design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/news/phlio_news.jpeg" alt="Phlio News design screens" width="280" />
 </p>
 
 ### Foxy — Phlio Agent
 
 <p align="center">
-  <img src="frontend/marketing/design_screens/agent/phlio_agent.jpeg" alt="Foxy / Phlio Agent design screens" width="90%" />
+  <img src="frontend/marketing/design_screens/agent/phlio_agent.jpeg" alt="Foxy / Phlio Agent design screens" width="280" />
 </p>
 
 ### Cross-platform product model
