@@ -200,29 +200,60 @@ available command.
 
 Phlio is designed as a family of specialized products connected by four shared
 primitives: the **Social Graph**, **Phlio Objects**, **Phlio Notes**, and **Foxy**
-(the Phlio Agent). The design library below captures the evolving product and UX
-direction for each platform.
+(the Phlio Agent). The screens below capture the evolving product and UX direction
+for each platform.
 
 > **Design status:** These are product/design references, not a claim that every
 > screen is implemented. For the current working scope, see
 > [What's implemented](#whats-implemented) and [Roadmap](#roadmap).
 
-| Platform | Design screens | Current build status |
-|---|---|---|
-| **Phlio Social** | [View Social screens](frontend/marketing/design_screens/social/phlio_social.jpeg) | Implemented in the current stage |
-| **Phlio Rooms** | [View Rooms screens](frontend/marketing/design_screens/rooms/phlio_rooms.jpeg) | Implemented in the current stage |
-| **Phlio Pay** | [View Pay screens](frontend/marketing/design_screens/pay/phlio_pay.jpeg) | Roadmap |
-| **Phlio Book** | [View Book screens](frontend/marketing/design_screens/book/phlio_book.jpeg) | Roadmap |
-| **Phlio Shop** | [View Shop screens](frontend/marketing/design_screens/shop/phlio_shop.jpeg) | Art & Handmade implemented; broader Shop continues to evolve |
-| **Phlio Stream** | [View Stream screens](frontend/marketing/design_screens/stream/phlio_stream.jpeg) | Roadmap |
-| **Phlio News** | [View News screens](frontend/marketing/design_screens/news/phlio_news.jpeg) | Roadmap |
-| **Foxy / Phlio Agent** | [View Agent screens](frontend/marketing/design_screens/agent/phlio_agent.jpeg) | Implemented in the current stage |
+### Phlio Social
 
-The full visual-design source lives at
-[`frontend/marketing/design_screens/`](frontend/marketing/design_screens/). Keeping
-the gallery in the repository makes the distinction between **product direction**
-and **implemented software** explicit while still making the intended Phlio
-experience easy to review.
+<p align="center">
+  <img src="frontend/marketing/design_screens/social/phlio_social.jpeg" alt="Phlio Social design screens" width="90%" />
+</p>
+
+### Phlio Rooms
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/rooms/phlio_rooms.jpeg" alt="Phlio Rooms design screens" width="90%" />
+</p>
+
+### Phlio Pay
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/pay/phlio_pay.jpeg" alt="Phlio Pay design screens" width="90%" />
+</p>
+
+### Phlio Book
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/book/phlio_book.jpeg" alt="Phlio Book design screens" width="90%" />
+</p>
+
+### Phlio Shop
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/shop/phlio_shop.jpeg" alt="Phlio Shop design screens" width="90%" />
+</p>
+
+### Phlio Stream
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/stream/phlio_stream.jpeg" alt="Phlio Stream design screens" width="90%" />
+</p>
+
+### Phlio News
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/news/phlio_news.jpeg" alt="Phlio News design screens" width="90%" />
+</p>
+
+### Foxy — Phlio Agent
+
+<p align="center">
+  <img src="frontend/marketing/design_screens/agent/phlio_agent.jpeg" alt="Foxy / Phlio Agent design screens" width="90%" />
+</p>
 
 ### Cross-platform product model
 
@@ -248,6 +279,8 @@ Each platform is intended to remain a deep product in its own right. The shared
 primitives provide continuity of identity, relationships, context, intentional
 sharing, and AI-assisted actions without reducing the ecosystem to a collection
 of unrelated mini-apps.
+
+---
 
 ## Roadmap
 
