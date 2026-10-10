@@ -7,5 +7,6 @@ class ToggleLikeUseCase {
 
   final SocialRepository _repository;
 
-  Future<Result<PostEntity>> call(String postId) => _repository.toggleLike(postId);
+  Future<Result<PostEntity>> call(String postId) =>
+      _repository.toggleLike(postId);
 }

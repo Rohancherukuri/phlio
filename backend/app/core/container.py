@@ -28,6 +28,8 @@ from app.domains.agent.repository import AgentRepository
 from app.domains.agent.service import AgentService
 from app.domains.book.repository import BookRepository
 from app.domains.book.service import BookService
+from app.domains.graph.service import GraphService
+from app.domains.graph.store import MemoryGraphStore, SurrealGraphStore
 from app.domains.home.service import HomeService
 from app.domains.identity.repository import IdentityRepository
 from app.domains.identity.service import IdentityService
@@ -42,6 +44,7 @@ from app.domains.social.repository import SocialRepository
 from app.domains.social.service import SocialService
 from app.domains.social.video_service import SocialVideoService
 from app.infrastructure.ai.anthropic_client import AgentLLMClient
+from app.infrastructure.cache import Cache
 from app.infrastructure.core_engine.client import CoreEngineClient
 from app.infrastructure.media_storage import MediaStorage
 
@@ -49,6 +52,8 @@ from app.infrastructure.media_storage import MediaStorage
 @dataclass(slots=True)
 class Container:
     settings: Settings
+    graph: GraphService
+    cache: Cache
     core_engine: CoreEngineClient
 
     identity_repository: IdentityRepository
@@ -89,10 +94,16 @@ async def build_container(settings: Settings) -> Container:
         activity_repo,
     ) = await _build_repositories(settings)
 
+    cache = Cache(settings.redis_url, settings.redis_enabled, settings.redis_namespace)
+    graph_store = (
+        SurrealGraphStore(identity_repo._db) if settings.database_backend == "surreal" else MemoryGraphStore()
+    )
+    graph = GraphService(graph_store, identity_repo, rooms_repo, cache)
+
     identity_service = IdentityService(identity_repo, core_engine, settings)
-    social_service = SocialService(social_repo, core_engine)
+    social_service = SocialService(social_repo, core_engine, graph)
     media_storage = MediaStorage(media_root_path(settings))
-    rooms_service = RoomsService(rooms_repo, core_engine, media_storage)
+    rooms_service = RoomsService(rooms_repo, core_engine, media_storage, graph)
     shop_service = ShopService(shop_repo)
     home_service = HomeService(rooms_service, shop_service, social_service)
     book_service = BookService(book_repo)
@@ -110,6 +121,8 @@ async def build_container(settings: Settings) -> Container:
 
     return Container(
         settings=settings,
+        graph=graph,
+        cache=cache,
         core_engine=core_engine,
         identity_repository=identity_repo,
         social_repository=social_repo,
@@ -182,7 +195,7 @@ async def _build_repositories(settings: Settings):
     # existing four once their schemas land in data/surrealdb/schema/.
     from app.infrastructure.database.memory.activity_repo import InMemoryActivityRepository
     from app.infrastructure.database.memory.agent_repo import InMemoryAgentRepository
-    from app.infrastructure.database.memory.book_repo import InMemoryBookRepository
+    from app.infrastructure.database.surreal.book_repo import SurrealBookRepository
     from app.infrastructure.database.memory.pay_repo import InMemoryPayRepository
 
     return (
@@ -191,7 +204,7 @@ async def _build_repositories(settings: Settings):
         SurrealRoomsRepository(db),
         SurrealShopRepository(db),
         InMemoryAgentRepository(),
-        InMemoryBookRepository(),
+        SurrealBookRepository(db),
         InMemoryPayRepository(),
         InMemoryActivityRepository(),
     )

@@ -1,3 +1,9 @@
+import 'package:phlio/core/di/service_locator.dart';
+import 'package:phlio/core/network/api_client.dart';
+import 'content_surface_test.dart' show FakeApi;
+import 'package:go_router/go_router.dart';
+import 'package:phlio/app/app.dart';
+import 'package:phlio/app/router/app_router.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +16,6 @@ import 'package:phlio/features/social/presentation/widgets/creator_follow_button
 import 'package:video_player/video_player.dart';
 import 'package:phlio/features/social/presentation/controllers/video_library.dart';
 import 'package:phlio/features/social/presentation/controllers/video_playback_controller.dart';
-import 'package:phlio/features/social/presentation/widgets/social_video_player.dart';
 
 class TestAuth extends AuthController {
   @override
@@ -114,6 +119,40 @@ void main() {
     expect(api.subscriptions, isEmpty);
     expect(find.text('Follow'), findsNWidgets(2));
   });
+  testWidgets('Holding the global player opens the share sheet above playback',
+      (tester) async {
+    final api = FakeApi();
+    api.dio.interceptors.add(InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(Response(
+            requestOptions: options,
+            statusCode: 200,
+            data: {'people': [], 'groups': [], 'rooms': []}))));
+    getIt.registerSingleton<ApiClient>(api);
+    addTearDown(() => getIt.reset());
+    final router = GoRouter(routes: [
+      GoRoute(path: '/', builder: (_, __) => const Scaffold(body: Text('Home')))
+    ]);
+    addTearDown(router.dispose);
+    final c = VideoPlaybackController();
+    c.video = video;
+    c.error = 'Demo picture';
+    c.setMode(SocialPlayerMode.expanded);
+    await tester.pumpWidget(ProviderScope(overrides: [
+      videoPlaybackProvider.overrideWith((ref) => c),
+      routerProvider.overrideWithValue(router),
+      authControllerProvider.overrideWith(TestAuth.new)
+    ], child: const PhlioApp()));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('Demo picture'));
+    await tester.pumpAndSettle();
+    expect(find.text('Share content'), findsOneWidget);
+    expect(c.mode, SocialPlayerMode.hidden);
+    expect(tester.takeException(), isNull);
+    router.routerDelegate.navigatorKey.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(c.mode, SocialPlayerMode.floating);
+    expect(tester.takeException(), isNull);
+  });
   for (final size in [
     const Size(320, 700),
     const Size(390, 844),
@@ -127,18 +166,35 @@ void main() {
       c.video = video;
       c.error = 'Could not play this video.';
       c.setMode(SocialPlayerMode.expanded);
-      await tester.pumpWidget(ProviderScope(
-          overrides: [videoPlaybackProvider.overrideWith((ref) => c)],
-          child: MaterialApp(
-              home: Scaffold(
-                  body: Stack(
-                      children: [Container(), const SocialVideoPlayer()])))));
+      final router = GoRouter(routes: [
+        GoRoute(
+            path: '/',
+            builder: (_, __) => const Scaffold(body: Text('Underlying page')))
+      ]);
+      addTearDown(router.dispose);
+      // Exercise the global player in MaterialApp.router.builder, outside routes.
+      await tester.pumpWidget(ProviderScope(overrides: [
+        videoPlaybackProvider.overrideWith((ref) => c),
+        routerProvider.overrideWithValue(router),
+        authControllerProvider.overrideWith(TestAuth.new),
+      ], child: const PhlioApp()));
       await tester.pump();
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Playback settings'));
       await tester.pump();
       expect(find.text('Playback speed'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Fullscreen'));
+      await tester.pump();
+      expect(c.mode, SocialPlayerMode.fullscreen);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Exit fullscreen'));
+      await tester.pump();
+      await tester.longPress(find.byTooltip('Minimize player'));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('Minimize player'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 2));
       await tester.tap(find.byTooltip('Floating player'));
       await tester.pump();
       expect(c.mode, SocialPlayerMode.floating);

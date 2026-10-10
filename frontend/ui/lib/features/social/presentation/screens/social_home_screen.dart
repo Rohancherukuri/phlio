@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'social_graph_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../design_system/colors.dart';
 import '../widgets/stories_bar.dart';
@@ -182,7 +182,9 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
                     if (!stackOnOwnLine) const SizedBox(width: 62, height: 48),
                     IconButton(
                         tooltip: 'Activity',
-                        onPressed: () => context.push('/activity'),
+                        onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const SocialGraphScreen())),
                         icon:
                             const Icon(Icons.notifications_outlined, size: 22)),
                   ])),

@@ -104,7 +104,11 @@ class StagedAttachment {
 /// picking: pick the kind first, then the files.
 const List<({String label, IconData icon, Color color})> kAttachmentTypes = [
   (label: 'Image', icon: Icons.image_outlined, color: PhlioColors.brandBlue),
-  (label: 'Video', icon: Icons.videocam_outlined, color: PhlioColors.brandPurple),
+  (
+    label: 'Video',
+    icon: Icons.videocam_outlined,
+    color: PhlioColors.brandPurple
+  ),
   (label: 'Audio', icon: Icons.headset_outlined, color: PhlioColors.success),
   (label: 'GIF', icon: Icons.gif_box_outlined, color: PhlioColors.brandPeach),
   (
@@ -112,7 +116,11 @@ const List<({String label, IconData icon, Color color})> kAttachmentTypes = [
     icon: Icons.description_outlined,
     color: PhlioColors.brandBlue
   ),
-  (label: 'PDF', icon: Icons.picture_as_pdf_outlined, color: PhlioColors.danger),
+  (
+    label: 'PDF',
+    icon: Icons.picture_as_pdf_outlined,
+    color: PhlioColors.danger
+  ),
   (label: 'Excel', icon: Icons.table_view_outlined, color: PhlioColors.success),
   (label: 'Word', icon: Icons.article_outlined, color: PhlioColors.brandBlue),
   (label: 'PPT', icon: Icons.slideshow_outlined, color: PhlioColors.brandPeach),
@@ -126,7 +134,11 @@ const List<({String label, IconData icon, Color color})> kAttachmentTypes = [
     icon: Icons.emoji_emotions_outlined,
     color: PhlioColors.brandPeach
   ),
-  (label: 'Archive', icon: Icons.folder_zip_outlined, color: PhlioColors.brandPeach),
+  (
+    label: 'Archive',
+    icon: Icons.folder_zip_outlined,
+    color: PhlioColors.brandPeach
+  ),
 ];
 
 Future<String?> showAttachmentTypeMenu(

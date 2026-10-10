@@ -27,6 +27,8 @@ class User:
     is_verified: bool = False
     date_of_birth: dt.date | None = None
     phone_number: str | None = None
+    is_creator: bool = False
+    is_test_user: bool = False
 
     def public_profile(self) -> PublicProfile:
         return PublicProfile(

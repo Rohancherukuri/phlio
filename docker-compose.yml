@@ -9,12 +9,10 @@
 #      fastest way to get the API up and point the Flutter app at it.
 #
 #   2. Full stack (SurrealDB-backed):
-#        docker compose --profile full up --build
-#      Additionally starts `surrealdb` and `redis`, and switches the
-#      backend to DATABASE_BACKEND=surreal. Note: `redis` is started for
-#      forward compatibility with the caching/session layer described in
-#      docs/architecture/phlio_architecture.md — the backend code in this
-#      build stage does not yet call it for anything.
+#        DATABASE_BACKEND=surreal REDIS_ENABLED=true docker compose --profile full up --build
+#      Starts SurrealDB and Redis. Set both environment flags shown above;
+#      enabling the profile alone does not change the backend settings.
+#      Redis caches social feeds and delivers durable graph outbox events.
 #
 # The Flutter app is not part of this compose file — see
 # frontend/ui/flutter/README.md to run it with `flutter run`.
@@ -36,9 +34,13 @@ services:
       SURREAL_USER: root
       SURREAL_PASSWORD: root
       REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: ${REDIS_ENABLED:-false}
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-dev-only-change-me}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+    volumes:
+      - backend-data:/app/data
+      - backend-media:/app/media
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -53,9 +55,9 @@ services:
     # --profile full restart backend` once SurrealDB is up.
 
   surrealdb:
-    image: surrealdb/surrealdb:v1.5.4
+    image: surrealdb/surrealdb:v2.2.1
     profiles: ["full"]
-    command: start --user root --pass root rocksdb:/data/phlio.db
+    command: start --user root --pass root surrealkv:/data/phlio.db
     ports:
       - "8001:8000"
     volumes:
@@ -70,5 +72,7 @@ services:
       - redis-data:/data
 
 volumes:
+  backend-data:
+  backend-media:
   surrealdb-data:
   redis-data:

@@ -16,7 +16,8 @@ MAX_POST_LENGTH = 2_000
 
 
 class SocialService:
-    def __init__(self, repository: SocialRepository, core_engine: CoreEngineClient) -> None:
+    def __init__(self, repository: SocialRepository, core_engine: CoreEngineClient, graph=None) -> None:
+        self.graph = graph
         self._repository = repository
         self._core_engine = core_engine
 
@@ -38,6 +39,11 @@ class SocialService:
         )
         created = await self._repository.create_post(post)
         logger.info("social.post_created post_id=%s author_id=%s", created.id, author_id)
+        if self.graph:
+            obj = await self.graph.register_object(
+                author_id, "social.post", created.id, text[:160] or "Media post"
+            )
+            await self.graph.action(author_id, obj["id"], "created", trusted=True)
         return created
 
     async def get_feed(self, *, cursor: str | None, limit: int) -> tuple[list[Post], str | None]:
@@ -57,19 +63,45 @@ class SocialService:
     async def is_liked_by(self, post_id: str, user_id: str) -> bool:
         return await self._repository.is_liked_by(post_id, user_id)
 
+    async def visible_to(self, post, viewer):
+        if not self.graph:
+            return True
+        from app.domains.graph.service import key
+
+        if await self.graph.blocked(viewer, post.author_id):
+            return False
+        obj = await self.graph.store.get(key("phlio_object", "social", post.id))
+        return not obj or obj["state"] == "active"
+
+    async def require_visible(self, post_id, viewer):
+        post = await self.get_post_or_raise(post_id)
+        if not await self.visible_to(post, viewer):
+            raise NotFoundError("Post unavailable.")
+        return post
+
     async def toggle_like(self, post_id: str, user_id: str) -> Post:
-        await self.get_post_or_raise(post_id)
+        await self.require_visible(post_id, user_id)
         currently_liked = await self._repository.is_liked_by(post_id, user_id)
         post = await self._repository.set_liked(post_id, user_id, not currently_liked)
         logger.debug(
             "social.like_toggled post_id=%s user_id=%s liked=%s", post_id, user_id, not currently_liked
         )
+        if self.graph:
+            from app.domains.graph.service import key
+
+            obj = await self.graph.register_object(
+                post.author_id, "social.post", post.id, post.text[:160] or "Media post"
+            )
+            if not currently_liked:
+                await self.graph.action(user_id, obj["id"], "liked")
+            else:
+                await self.graph.store.delete(key("activity", user_id, obj["id"], "liked"))
         return post
 
     async def add_comment(
         self, *, post_id: str, author_id: str, text: str, sticker_id: str | None = None
     ) -> Comment:
-        await self.get_post_or_raise(post_id)
+        await self.require_visible(post_id, author_id)
         text = text.strip()
         if not text and not sticker_id:
             raise ValidationAppError("Comment cannot be empty.")
@@ -82,7 +114,14 @@ class SocialService:
             text=text,
             sticker_id=sticker_id,
         )
-        return await self._repository.add_comment(comment)
+        result = await self._repository.add_comment(comment)
+        if self.graph:
+            post = await self.get_post_or_raise(post_id)
+            obj = await self.graph.register_object(
+                post.author_id, "social.post", post.id, post.text[:160] or "Media post"
+            )
+            await self.graph.action(author_id, obj["id"], "commented")
+        return result
 
     async def get_comments(
         self, post_id: str, *, cursor: str | None, limit: int

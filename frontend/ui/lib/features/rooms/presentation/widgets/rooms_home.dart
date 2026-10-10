@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -108,6 +109,15 @@ class _RoomsHomeState extends ConsumerState<RoomsHome> {
                                             fontSize: 24,
                                             fontWeight: FontWeight.w800,
                                             color: Colors.white))),
+                                Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                        icon: const Icon(Icons.group_outlined),
+                                        label: const Text('Group messages'),
+                                        onPressed: () => Navigator.of(context)
+                                            .push(MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const GroupInboxScreen())))),
                                 Padding(
                                     padding: const EdgeInsets.fromLTRB(
                                         10, 12, 10, 16),

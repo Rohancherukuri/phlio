@@ -7,7 +7,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user, get_social_service
+from app.api.deps import get_current_user, get_social_service, get_container
 from app.common.pagination import clamp_limit
 from app.common.schemas import Page, PageMeta
 from app.domains.identity.entities import User
@@ -35,7 +35,6 @@ class AuthorSummary(BaseModel):
 
     id: str
     username: str
-
 
 
 class PostResponse(BaseModel):
@@ -95,13 +94,22 @@ async def get_feed(
     limit: int = Query(default=20, ge=1, le=100),
     social_service: SocialService = Depends(get_social_service),
     current_user: User = Depends(get_current_user),
+    c=Depends(get_container),
 ) -> Page[PostResponse]:
+    revision = await c.graph.store.revision()
+    cache_key = f"feed:{revision}:{current_user.id}:{cursor}:{limit}"
+    cached = await c.cache.get(cache_key)
+    if cached is not None:
+        return Page[PostResponse].model_validate(cached)
     posts, next_cursor = await social_service.get_feed(cursor=cursor, limit=clamp_limit(limit))
+    posts = [p for p in posts if await social_service.visible_to(p, current_user.id)]
     items = [
         PostResponse.from_entity(p, liked_by_me=await social_service.is_liked_by(p.id, current_user.id))
         for p in posts
     ]
-    return Page(items=items, meta=PageMeta(next_cursor=next_cursor, has_more=next_cursor is not None))
+    page = Page(items=items, meta=PageMeta(next_cursor=next_cursor, has_more=next_cursor is not None))
+    await c.cache.put(cache_key, page.model_dump(mode="json"))
+    return page
 
 
 @router.post("/posts", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
@@ -123,7 +131,7 @@ async def get_post(
     social_service: SocialService = Depends(get_social_service),
     current_user: User = Depends(get_current_user),
 ) -> PostResponse:
-    post = await social_service.get_post_or_raise(post_id)
+    post = await social_service.require_visible(post_id, current_user.id)
     liked = await social_service.is_liked_by(post_id, current_user.id)
     return PostResponse.from_entity(post, liked_by_me=liked)
 
@@ -139,9 +147,7 @@ async def toggle_like(
     return PostResponse.from_entity(post, liked_by_me=liked)
 
 
-@router.post(
-    "/posts/{post_id}/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/posts/{post_id}/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
 async def add_comment(
     post_id: str,
     body: CreateCommentRequest,
@@ -160,7 +166,9 @@ async def list_comments(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     social_service: SocialService = Depends(get_social_service),
+    current_user: User = Depends(get_current_user),
 ) -> Page[CommentResponse]:
+    await social_service.require_visible(post_id, current_user.id)
     comments, next_cursor = await social_service.get_comments(
         post_id, cursor=cursor, limit=clamp_limit(limit)
     )

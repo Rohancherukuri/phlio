@@ -1,3 +1,5 @@
+import 'package:phlio/shared/content/news_screen.dart';
+import 'package:phlio/shared/content/content_surface.dart';
 // The Explore tab, per platform. Each platform gets its own discovery
 // surface built from the providers that already back its home screen —
 // explore is the "browse and wander" counterpart to home's "your stuff":
@@ -32,24 +34,35 @@ import '../../features/shop/presentation/widgets/product_card.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
 
-class PlatformExploreScreen extends ConsumerWidget {
+class PlatformExploreScreen extends ConsumerStatefulWidget {
   const PlatformExploreScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlatformExploreScreen> createState() =>
+      _PlatformExploreScreenState();
+}
+
+class _PlatformExploreScreenState extends ConsumerState<PlatformExploreScreen> {
+  final visited = <int>{};
+  @override
+  Widget build(BuildContext context) {
     final platform = ref.watch(currentPlatformProvider);
+    visited.add(platform.index);
 
     return IndexedStack(
       index: platform.index,
-      children: const [
-        _PayExplore(),
-        SafeArea(child: SocialExploreVideosView()),
-        RoomsExploreScreen(),
-        _BookExplore(),
-        _ShopExplore(),
-        _ComingSoonExplore(platform: PhlioPlatform.stream),
-        _ComingSoonExplore(platform: PhlioPlatform.news),
-        _AgentExplore(),
+      children: [
+        for (final entry in const <Widget>[
+          _PayExplore(),
+          SafeArea(child: SocialExploreVideosView()),
+          RoomsExploreScreen(),
+          _BookExplore(),
+          _ShopExplore(),
+          PlatformCatalogScreen(platform: 'stream'),
+          NewsScreen(explore: true),
+          _AgentExplore(),
+        ].indexed)
+          visited.contains(entry.$1) ? entry.$2 : const SizedBox.shrink()
       ],
     );
   }
@@ -67,6 +80,14 @@ class _PayExplore extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        actions: [
+          IconButton(
+              tooltip: 'Discover merchants',
+              icon: const Icon(Icons.storefront_outlined),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      const PlatformCatalogScreen(platform: 'pay'))))
+        ],
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -249,43 +270,47 @@ class _BookExplore extends ConsumerWidget {
                   for (final listing in listings)
                     Padding(
                       padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
-                      child: PhlioCard(
-                        padding: const EdgeInsets.all(PhlioSpacing.lg),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: PhlioRadii.mdRadius,
-                              child: Image.asset(
-                                listingPlaceholderImage(listing),
-                                width: 52,
-                                height: 52,
-                                fit: BoxFit.cover,
-                                filterQuality: FilterQuality.low,
-                              ),
+                      child: ContentSurface(
+                          platform: 'book',
+                          contentId: listing.id,
+                          child: PhlioCard(
+                            padding: const EdgeInsets.all(PhlioSpacing.lg),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: PhlioRadii.mdRadius,
+                                  child: Image.asset(
+                                    listingPlaceholderImage(listing),
+                                    width: 52,
+                                    height: 52,
+                                    fit: BoxFit.cover,
+                                    filterQuality: FilterQuality.low,
+                                  ),
+                                ),
+                                const SizedBox(width: PhlioSpacing.md),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(listing.title,
+                                          style: PhlioTypography.bodyStrong),
+                                      Text(listing.venue,
+                                          style: PhlioTypography.caption),
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  listing.displayPrice,
+                                  style: PhlioTypography.label.copyWith(
+                                    color: listing.isFree
+                                        ? PhlioColors.success
+                                        : PhlioColors.brandOrange,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: PhlioSpacing.md),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(listing.title,
-                                      style: PhlioTypography.bodyStrong),
-                                  Text(listing.venue,
-                                      style: PhlioTypography.caption),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              listing.displayPrice,
-                              style: PhlioTypography.label.copyWith(
-                                color: listing.isFree
-                                    ? PhlioColors.success
-                                    : PhlioColors.brandOrange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                          )),
                     ),
                 ],
               ),
@@ -355,11 +380,15 @@ class _ShopExplore extends ConsumerWidget {
                       style: PhlioTypography.body)),
               data: (products) => GridView.builder(
                 padding: const EdgeInsets.all(PhlioSpacing.lg),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   mainAxisSpacing: PhlioSpacing.md,
                   crossAxisSpacing: PhlioSpacing.md,
-                  childAspectRatio: 0.72,
+                  mainAxisExtent:
+                      (MediaQuery.sizeOf(context).width - 3 * PhlioSpacing.lg) /
+                              2 +
+                          MediaQuery.textScalerOf(context).scale(42) +
+                          110,
                 ),
                 itemCount: products.length,
                 itemBuilder: (context, index) => ProductCard(
@@ -479,32 +508,3 @@ class _CapabilityTile extends StatelessWidget {
 }
 
 // -- Stream / News ------------------------------------------------------------
-
-class _ComingSoonExplore extends StatelessWidget {
-  const _ComingSoonExplore({required this.platform});
-
-  final PhlioPlatform platform;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Explore ${platform.label}')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const PhlioFox(size: 110, pose: PhlioFoxPose.sleepy),
-            const SizedBox(height: PhlioSpacing.md),
-            Text('${platform.label} is coming soon',
-                style: PhlioTypography.headline),
-            const SizedBox(height: PhlioSpacing.xs),
-            Text(
-              'Switch platforms from the tray meanwhile.',
-              style: PhlioTypography.body,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

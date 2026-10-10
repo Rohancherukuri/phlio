@@ -34,6 +34,7 @@ COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
 RUN uv sync --frozen --no-install-project --no-dev --extra surreal
 
 COPY backend/app ./app
+COPY backend/migrations ./migrations
 
 # Bring in the compiled Rust binary from stage 1, at the path
 # `app/config.py`'s default `core_engine_binary_path` resolves relative to

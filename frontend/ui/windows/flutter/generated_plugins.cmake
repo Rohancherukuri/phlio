@@ -8,6 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_windows
   flutter_webrtc
   record_windows
+  share_plus
   url_launcher_windows
   video_player_win
 )

@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 // Rooms Home hosts friends and search; conversations use the responsive room drawer.
 
 import 'package:flutter/material.dart';
@@ -467,7 +468,7 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                                 ),
                                 const SizedBox(height: 2),
                                 if (message.text.isNotEmpty)
-                                  Text(message.text,
+                                  SharedContentText(message.text,
                                       style: PhlioTypography.body),
                                 // Document/image/sticker previews with the
                                 // Foxy reaction overlay riding on top.

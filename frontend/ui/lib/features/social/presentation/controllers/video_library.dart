@@ -13,8 +13,17 @@ class PlayableVideo {
     this.localPath,
     this.creatorName,
     this.avatarUrl,
+    this.kind = 'video',
+    this.durationSeconds = 0,
+    this.platform = 'social',
+    this.contentId,
+    this.thumbnailUrl,
   });
-  final String id, title, creator, url;
+  final String id, title, creator, url, kind;
+  final int durationSeconds;
+  final String platform;
+  final String? contentId;
+  final String? thumbnailUrl;
   final String? localPath, creatorName, avatarUrl;
   factory PlayableVideo.fromJson(Map json) => PlayableVideo(
         id: json['id'] as String,
@@ -23,6 +32,9 @@ class PlayableVideo {
         url: json['url'] as String,
         creatorName: json['creator_name'] as String?,
         avatarUrl: json['avatar_url'] as String?,
+        kind: json['kind'] as String? ?? 'video',
+        durationSeconds: json['duration_seconds'] as int? ?? 0,
+        thumbnailUrl: json['thumbnail_url'] as String?,
       );
 }
 
@@ -33,9 +45,9 @@ class SocialVideoApi {
     final items = <PlayableVideo>[];
     String? before;
     do {
-      final page =
-          (await dio.get('/social/videos', queryParameters: {'before': before}))
-              .data as List;
+      final page = (await dio.get('/social/videos',
+              queryParameters: {if (before != null) 'before': before}))
+          .data as List;
       items.addAll(page.map((v) => PlayableVideo.fromJson(v as Map)));
       if (page.length < 50) break;
       final next = (page.last as Map)['created_at'] as String?;
@@ -62,12 +74,17 @@ class SocialVideoApi {
     String path,
     String title, {
     ProgressCallback? onProgress,
+    String kind = 'video',
   }) async =>
       PlayableVideo.fromJson(
         (await dio.post(
           '/social/videos',
           data: FormData.fromMap(
-            {'title': title, 'file': await MultipartFile.fromFile(path)},
+            {
+              'title': title,
+              'kind': kind,
+              'file': await MultipartFile.fromFile(path)
+            },
           ),
           options: Options(
             sendTimeout: const Duration(minutes: 30),

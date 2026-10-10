@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 // Stories for the Social home, following the reference app's behavior:
 //
 //  * At rest (feed at top) — a full-width strip of large circle avatars
@@ -6,12 +7,11 @@
 //    overlapping avatar stack slides into the header row, inline with the
 //    tabs (what the reference shows in its scrolled state).
 //
-// Story playback needs the Stories domain (blueprint section 5) — tapping
-// a creator's circle opens their profile page; "Your story" keeps the
-// honest "coming soon" snackbar. The visual language is already the real
-// one.
+// The first tile opens 24-hour content reshares; creator circles open profiles.
 
 import 'package:flutter/material.dart';
+import '../../../../app/config/app_config.dart';
+import '../controllers/video_library.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -25,40 +25,19 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 /// in the Videos tab (`social_videos_view.dart`) so the surfaces feel like
 /// one social graph. Replaced by real follows once the social graph API
 /// lands.
-const List<({String name, String avatarAsset})> kStoryUsers = [
-  (
-    name: 'pixelpanda',
-    avatarAsset: 'assets/images/placeholders/social/avatar_pixelpanda.png'
-  ),
-  (
-    name: 'artbykiara',
-    avatarAsset: 'assets/images/placeholders/social/avatar_artbykiara.png'
-  ),
-  (
-    name: 'lofinight',
-    avatarAsset: 'assets/images/placeholders/social/avatar_lofinight.png'
-  ),
-  (
-    name: 'devdiaries',
-    avatarAsset: 'assets/images/placeholders/social/avatar_devdiaries.png'
-  ),
-  (
-    name: 'wanderfox',
-    avatarAsset: 'assets/images/placeholders/social/avatar_wanderfox.png'
-  ),
-  (
-    name: 'ironarena',
-    avatarAsset: 'assets/images/placeholders/social/avatar_ironarena.png'
-  ),
-  (
-    name: 'retroray',
-    avatarAsset: 'assets/images/placeholders/social/avatar_retroray.png'
-  ),
-  (
-    name: 'chefatlas',
-    avatarAsset: 'assets/images/placeholders/social/avatar_chefatlas.png'
-  ),
-];
+final storyUsersProvider =
+    Provider<List<({String name, String avatarAsset})>>((ref) {
+  final videos =
+      ref.watch(socialVideoCatalogProvider).valueOrNull ?? <PlayableVideo>[];
+  final following =
+      ref.watch(creatorFollowingProvider).valueOrNull ?? <String>{};
+  final seen = <String>{};
+  return [
+    for (final video in videos)
+      if (following.contains(video.creator) && seen.add(video.creator))
+        (name: video.creator, avatarAsset: video.avatarUrl ?? '')
+  ];
+});
 
 /// Creator circles open the creator's profile page; story playback itself
 /// stays a coming-soon until the Stories domain lands.
@@ -75,6 +54,7 @@ class StoriesStrip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentUser = ref.watch(authControllerProvider).valueOrNull;
+    final kStoryUsers = ref.watch(storyUsersProvider);
 
     return SizedBox(
       height: 100 +
@@ -85,12 +65,16 @@ class StoriesStrip extends ConsumerWidget {
             const EdgeInsets.fromLTRB(PhlioSpacing.lg, 12, PhlioSpacing.lg, 8),
         children: [
           _StripItem(
-            label: 'Your story',
-            onTap: () => context.push('/profile'),
+            label: 'Stories',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SharedStoriesScreen())),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                PhlioAvatar(name: currentUser?.fullName ?? 'You', size: 56),
+                PhlioAvatar(
+                    name: currentUser?.fullName ?? 'You',
+                    imageUrl: currentUser?.avatarUrl,
+                    size: 56),
                 Positioned(
                   right: -1,
                   bottom: -1,
@@ -161,15 +145,15 @@ class _StripItem extends StatelessWidget {
 
 /// The compact overlapping stack that appears in the header row once the
 /// user has scrolled — the reference app's collapsed state.
-class StoriesHeaderStack extends StatelessWidget {
+class StoriesHeaderStack extends ConsumerWidget {
   const StoriesHeaderStack({super.key, this.avatarSize = 26});
 
   final double avatarSize;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Your avatar + the first few followed users, overlapping Twitch-style.
-    final visible = kStoryUsers.take(4).toList();
+    final visible = ref.watch(storyUsersProvider).take(4).toList();
     return SizedBox(
       height: avatarSize + 4,
       width: avatarSize + (visible.length - 1) * (avatarSize * 0.55) + 8,
@@ -183,8 +167,8 @@ class StoriesHeaderStack extends StatelessWidget {
                 onTap: () => _openCreator(context, visible[i].name),
                 size: avatarSize,
                 child: ClipOval(
-                  child: Image.asset(
-                    visible[i].avatarAsset,
+                  child: Image.network(
+                    AppConfig.mediaUrl(visible[i].avatarAsset),
                     width: avatarSize - 7,
                     height: avatarSize - 7,
                     fit: BoxFit.cover,
@@ -244,8 +228,8 @@ Widget _ringedAvatar(
     onTap: onTap,
     size: size,
     child: ClipOval(
-      child: Image.asset(
-        user.avatarAsset,
+      child: Image.network(
+        AppConfig.mediaUrl(user.avatarAsset),
         width: size - 7,
         height: size - 7,
         fit: BoxFit.cover,
@@ -281,6 +265,7 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
   @override
   Widget build(BuildContext context) {
     final currentUser = ref.watch(authControllerProvider).valueOrNull;
+    final kStoryUsers = ref.watch(storyUsersProvider);
     final p = widget.progress.clamp(0.0, 1.0);
     final storyHeight = 100 +
         (MediaQuery.textScalerOf(context).scale(11) - 11).clamp(0, 60) * 1.4;
@@ -316,7 +301,7 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                     child: widget.toolbar),
                 for (var index = kStoryUsers.length; index >= 0; index--)
                   _movingStory(context, index, p, labels, compactLeft,
-                      compactTop, currentUser?.fullName ?? 'You'),
+                      compactTop, currentUser?.fullName ?? 'You', kStoryUsers),
                 if (p > .95)
                   Positioned(
                       left: compactLeft - 4,
@@ -333,8 +318,15 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
     });
   }
 
-  Widget _movingStory(BuildContext context, int index, double p, double labels,
-      double compactLeft, double compactTop, String ownName) {
+  Widget _movingStory(
+      BuildContext context,
+      int index,
+      double p,
+      double labels,
+      double compactLeft,
+      double compactTop,
+      String ownName,
+      List<({String name, String avatarAsset})> kStoryUsers) {
     final retained = index >= 1 && index <= 4;
     final opacity = retained ? 1.0 : (1 - p * 5).clamp(0.0, 1.0);
     final size = 56 + (22 - 56) * p;

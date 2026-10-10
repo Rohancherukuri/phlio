@@ -49,5 +49,7 @@
 	<string>Use your camera for video calls and photos.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Use your microphone for calls and voice messages.</string>
+<key>CFBundleURLTypes</key>
+<array><dict><key>CFBundleURLSchemes</key><array><string>phlio</string></array></dict></array>
 </dict>
 </plist>

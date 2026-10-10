@@ -18,6 +18,14 @@ class SocialVideoService:
             "CREATE TABLE IF NOT EXISTS videos "
             "(id TEXT PRIMARY KEY, creator TEXT, title TEXT, url TEXT, created_at TEXT)"
         )
+        columns = {r[1] for r in self.db.execute("PRAGMA table_info(videos)")}
+        for name, definition in [
+            ("kind", "TEXT NOT NULL DEFAULT 'video'"),
+            ("thumbnail_url", "TEXT"),
+            ("duration_seconds", "INTEGER NOT NULL DEFAULT 0"),
+        ]:
+            if name not in columns:
+                self.db.execute(f"ALTER TABLE videos ADD COLUMN {name} {definition}")
         self.db.commit()
 
     def following(self, user: str) -> list[str]:
@@ -30,14 +38,15 @@ class SocialVideoService:
             self.db.execute("DELETE FROM follows WHERE viewer=? AND creator=?", (user, creator))
         self.db.commit()
 
-    def publish(self, video_id: str, creator: str, title: str, url: str):
+    def publish(self, video_id: str, creator: str, title: str, url: str, *, kind="video", duration_seconds=0):
         self.db.execute(
-            "INSERT INTO videos VALUES (?, ?, ?, ?, ?)",
-            (video_id, creator, title, url, dt.datetime.now(dt.UTC).isoformat()),
+            "INSERT INTO videos (id, creator, title, url, created_at, kind, duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (video_id, creator, title, url, dt.datetime.now(dt.UTC).isoformat(), kind, duration_seconds),
         )
         self.db.commit()
 
     def videos(self, before: str | None = None):
+        before = before.strip() or None if before is not None else None
         return [
             dict(row)
             for row in self.db.execute(

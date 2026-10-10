@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 // Phlio Pay — the Pay platform's home, formatted after the reference
 // payments apps (PhonePe-style) in Phlio's design language:
 //
@@ -42,11 +43,20 @@ class PayScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        actions: [
+          IconButton(
+              tooltip: 'Discover merchants',
+              icon: const Icon(Icons.storefront_outlined),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      const PlatformCatalogScreen(platform: 'pay'))))
+        ],
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Phlio Pay'),
-            Text('Scan. Pay. Earn.', style: PhlioTypography.caption.copyWith(height: 1.2)),
+            Text('Scan. Pay. Earn.',
+                style: PhlioTypography.caption.copyWith(height: 1.2)),
           ],
         ),
       ),
@@ -63,7 +73,10 @@ class PayScreen extends ConsumerWidget {
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-              PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, PhlioSpacing.xxl,
+              PhlioSpacing.lg,
+              PhlioSpacing.md,
+              PhlioSpacing.lg,
+              PhlioSpacing.xxl,
             ),
             children: [
               // -- Promo banner -------------------------------------------------
@@ -121,22 +134,22 @@ class PayScreen extends ConsumerWidget {
                 mainAxisSpacing: PhlioSpacing.md,
                 childAspectRatio: 0.78,
                 children: [
-                  _serviceTile(context, Icons.bolt_rounded, PhlioColors.brandOrange,
-                      'Mobile\nRecharge'),
-                  _serviceTile(context, Icons.live_tv_rounded, PhlioColors.domainStream,
-                      'DTH\nRecharge'),
-                  _serviceTile(context, Icons.lightbulb_rounded, PhlioColors.warning,
-                      'Electricity\nBill'),
-                  _serviceTile(context, Icons.local_fire_department_rounded, PhlioColors.danger,
-                      'Gas\nBill'),
-                  _serviceTile(context, Icons.water_drop_rounded, PhlioColors.info,
-                      'Water\nBill'),
-                  _serviceTile(context, Icons.wifi_rounded, PhlioColors.domainSocial,
-                      'Broadband'),
-                  _serviceTile(context, Icons.home_work_outlined, PhlioColors.domainRooms,
-                      'Rent'),
-                  _serviceTile(context, Icons.account_balance_rounded, PhlioColors.domainPay,
-                      'Loan\nRepayment'),
+                  _serviceTile(context, Icons.bolt_rounded,
+                      PhlioColors.brandOrange, 'Mobile\nRecharge'),
+                  _serviceTile(context, Icons.live_tv_rounded,
+                      PhlioColors.domainStream, 'DTH\nRecharge'),
+                  _serviceTile(context, Icons.lightbulb_rounded,
+                      PhlioColors.warning, 'Electricity\nBill'),
+                  _serviceTile(context, Icons.local_fire_department_rounded,
+                      PhlioColors.danger, 'Gas\nBill'),
+                  _serviceTile(context, Icons.water_drop_rounded,
+                      PhlioColors.info, 'Water\nBill'),
+                  _serviceTile(context, Icons.wifi_rounded,
+                      PhlioColors.domainSocial, 'Broadband'),
+                  _serviceTile(context, Icons.home_work_outlined,
+                      PhlioColors.domainRooms, 'Rent'),
+                  _serviceTile(context, Icons.account_balance_rounded,
+                      PhlioColors.domainPay, 'Loan\nRepayment'),
                 ],
               ),
               const SizedBox(height: PhlioSpacing.xl),
@@ -185,7 +198,10 @@ class PayScreen extends ConsumerWidget {
                     return PhlioCard(
                       child: Row(
                         children: [
-                          const PhlioFox(size: 44, pose: PhlioFoxPose.coffee, animate: false),
+                          const PhlioFox(
+                              size: 44,
+                              pose: PhlioFoxPose.coffee,
+                              animate: false),
                           const SizedBox(width: PhlioSpacing.md),
                           Expanded(
                             child: Text(
@@ -199,7 +215,8 @@ class PayScreen extends ConsumerWidget {
                   }
                   return Column(
                     children: [
-                      for (final txn in transactions) _TransactionTile(txn: txn),
+                      for (final txn in transactions)
+                        _TransactionTile(txn: txn),
                     ],
                   );
                 },
@@ -230,7 +247,8 @@ class PayScreen extends ConsumerWidget {
               width: 56,
               height: 56,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.16), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.16), shape: BoxShape.circle),
               child: Icon(icon, color: color, size: 26),
             ),
             const SizedBox(height: PhlioSpacing.xs),
@@ -297,7 +315,10 @@ class PayScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(PhlioSpacing.lg),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color.withValues(alpha: 0.55), color.withValues(alpha: 0.22)],
+            colors: [
+              color.withValues(alpha: 0.55),
+              color.withValues(alpha: 0.22)
+            ],
           ),
           borderRadius: PhlioRadii.xlRadius,
         ),
@@ -305,7 +326,8 @@ class PayScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title, style: PhlioTypography.title.copyWith(color: Colors.white)),
+            Text(title,
+                style: PhlioTypography.title.copyWith(color: Colors.white)),
             const SizedBox(height: PhlioSpacing.xs),
             Expanded(
               child: Text(
@@ -316,7 +338,8 @@ class PayScreen extends ConsumerWidget {
             Align(
               alignment: Alignment.centerRight,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(999),
@@ -385,7 +408,8 @@ class _PromoBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rewards arrive with Phlio Stream — coming soon.')),
+        const SnackBar(
+            content: Text('Rewards arrive with Phlio Stream — coming soon.')),
       ),
       child: Container(
         height: 118,
@@ -434,7 +458,8 @@ class _PromoBanner extends StatelessWidget {
                 const SizedBox(height: PhlioSpacing.xxs),
                 Text(
                   'Tap the scanner below — every payment counts.',
-                  style: PhlioTypography.caption.copyWith(color: Colors.white70),
+                  style:
+                      PhlioTypography.caption.copyWith(color: Colors.white70),
                 ),
               ],
             ),
@@ -478,7 +503,8 @@ class _OfflineWalletCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Offline Wallet', style: PhlioTypography.bodyStrong),
-                    Text('Works without internet', style: PhlioTypography.caption),
+                    Text('Works without internet',
+                        style: PhlioTypography.caption),
                   ],
                 ),
               ),
@@ -486,7 +512,8 @@ class _OfflineWalletCard extends ConsumerWidget {
               // be long — they must shrink, never overflow the row.
               Flexible(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: PhlioColors.surfaceElevated,
                     borderRadius: BorderRadius.circular(999),
@@ -578,14 +605,20 @@ class _TransactionTile extends StatelessWidget {
               height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: (txn.isReceive ? PhlioColors.success : PhlioColors.brandOrange)
+                color: (txn.isReceive
+                        ? PhlioColors.success
+                        : PhlioColors.brandOrange)
                     .withValues(alpha: 0.14),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                txn.isReceive ? Icons.south_west_rounded : Icons.north_east_rounded,
+                txn.isReceive
+                    ? Icons.south_west_rounded
+                    : Icons.north_east_rounded,
                 size: 18,
-                color: txn.isReceive ? PhlioColors.success : PhlioColors.brandOrange,
+                color: txn.isReceive
+                    ? PhlioColors.success
+                    : PhlioColors.brandOrange,
               ),
             ),
             const SizedBox(width: PhlioSpacing.md),
@@ -672,7 +705,9 @@ class _SendMoneySheetState extends ConsumerState<_SendMoneySheet> {
         ref.invalidate(transactionsProvider);
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sent ${txn.displayAmount.substring(1)} to ${txn.counterparty}.')),
+          SnackBar(
+              content: Text(
+                  'Sent ${txn.displayAmount.substring(1)} to ${txn.counterparty}.')),
         );
       },
       failure: (failure) => setState(() {
@@ -710,12 +745,15 @@ class _SendMoneySheetState extends ConsumerState<_SendMoneySheet> {
               hintText: 'Amount (₹)',
               semanticLabel: 'Amount in rupees',
               prefixIcon: Icons.currency_rupee_rounded,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() => _error = null),
             ),
             if (_error != null) ...[
               const SizedBox(height: PhlioSpacing.sm),
-              Text(_error!, style: PhlioTypography.caption.copyWith(color: PhlioColors.danger)),
+              Text(_error!,
+                  style: PhlioTypography.caption
+                      .copyWith(color: PhlioColors.danger)),
             ],
             const SizedBox(height: PhlioSpacing.lg),
             PhlioPrimaryButton(
@@ -753,7 +791,8 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
   }
 
   Future<void> _create() async {
-    final total = double.tryParse(_totalController.text.trim().replaceAll(',', ''));
+    final total =
+        double.tryParse(_totalController.text.trim().replaceAll(',', ''));
     final names = _namesController.text
         .split(',')
         .map((n) => n.trim())
@@ -824,7 +863,8 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
               hintText: 'Total amount (₹)',
               semanticLabel: 'Total amount in rupees',
               prefixIcon: Icons.receipt_long_outlined,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: PhlioSpacing.md),
             PhlioTextField(
@@ -836,7 +876,9 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: PhlioSpacing.sm),
-              Text(_error!, style: PhlioTypography.caption.copyWith(color: PhlioColors.danger)),
+              Text(_error!,
+                  style: PhlioTypography.caption
+                      .copyWith(color: PhlioColors.danger)),
             ],
             const SizedBox(height: PhlioSpacing.lg),
             PhlioPrimaryButton(

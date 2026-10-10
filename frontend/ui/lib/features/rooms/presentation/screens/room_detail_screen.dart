@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 // Room detail/chat screen — mirrors the Rooms two-pane thread style:
 // thread (e.g. "#general"): Discord-style full-width rows + a composer bar.
 
@@ -139,7 +140,7 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 if (message.text.isNotEmpty)
-                                  Text(message.text,
+                                  SharedContentText(message.text,
                                       style: PhlioTypography.body),
                                 if (message.attachments.isNotEmpty) ...[
                                   const SizedBox(height: PhlioSpacing.xs),

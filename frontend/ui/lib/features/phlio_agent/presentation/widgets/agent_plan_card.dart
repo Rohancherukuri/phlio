@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 // Renders an `AgentPlanEntity` — mirrors the reference "4. PHLIO AGENT"
 // screen's plan card: a list of recommended items, an estimated total, and
 // a gradient "Book This Plan" CTA.
@@ -42,20 +43,34 @@ class AgentPlanCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final item in plan.items) ...[
-            _PlanItemRow(item: item),
-            if (item != plan.items.last) const Divider(height: PhlioSpacing.xl, color: PhlioColors.borderSubtle),
+            ContentSurface(
+                platform: switch (item.kind) {
+                  PlanItemKind.room => 'rooms',
+                  PlanItemKind.product => 'shop',
+                  PlanItemKind.post => 'social',
+                  PlanItemKind.book => 'book'
+                },
+                contentId: item.refId,
+                child: _PlanItemRow(item: item)),
+            if (item != plan.items.last)
+              const Divider(
+                  height: PhlioSpacing.xl, color: PhlioColors.borderSubtle),
           ],
           const SizedBox(height: PhlioSpacing.md),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.md, vertical: PhlioSpacing.sm),
-            decoration: BoxDecoration(color: PhlioColors.surfaceInput, borderRadius: PhlioRadii.mdRadius),
+            padding: const EdgeInsets.symmetric(
+                horizontal: PhlioSpacing.md, vertical: PhlioSpacing.sm),
+            decoration: BoxDecoration(
+                color: PhlioColors.surfaceInput,
+                borderRadius: PhlioRadii.mdRadius),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Estimated total', style: PhlioTypography.label),
                 Text(
                   plan.displayEstimatedRange,
-                  style: PhlioTypography.bodyStrong.copyWith(color: PhlioColors.brandOrange),
+                  style: PhlioTypography.bodyStrong
+                      .copyWith(color: PhlioColors.brandOrange),
                 ),
               ],
             ),
@@ -96,7 +111,9 @@ class _PlanItemRow extends StatelessWidget {
           width: 40,
           height: 40,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: PhlioColors.surfaceInput, borderRadius: PhlioRadii.mdRadius),
+          decoration: BoxDecoration(
+              color: PhlioColors.surfaceInput,
+              borderRadius: PhlioRadii.mdRadius),
           child: Icon(_icon, size: 18, color: PhlioColors.brandOrange),
         ),
         const SizedBox(width: PhlioSpacing.md),
@@ -116,7 +133,9 @@ class _PlanItemRow extends StatelessWidget {
         ),
         if (item.displayPrice != null) ...[
           const SizedBox(width: PhlioSpacing.sm),
-          Text(item.displayPrice!, style: PhlioTypography.bodyStrong.copyWith(color: PhlioColors.brandOrange)),
+          Text(item.displayPrice!,
+              style: PhlioTypography.bodyStrong
+                  .copyWith(color: PhlioColors.brandOrange)),
         ],
       ],
     );

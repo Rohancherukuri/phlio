@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -181,58 +182,69 @@ class _RoomsExploreScreenState extends ConsumerState<RoomsExploreScreen> {
                 ])));
   }
 
-  Widget _card(RoomEntity room, bool joined, bool loadingMembership) => Card(
-      color: PhlioColors.roomsSidebar,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      child: Padding(
-          padding: const EdgeInsets.all(18),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                  width: 48,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                      color: PhlioColors.roomsInput,
-                      borderRadius: BorderRadius.circular(16)),
-                  child: Text(room.icon, style: const TextStyle(fontSize: 26))),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Text(room.name,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w700)))
-            ]),
-            const SizedBox(height: 12),
-            Text(room.description,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: PhlioColors.textSecondary)),
-            const SizedBox(height: 12),
-            Text('${room.memberCount} members · ${room.category.label}',
-                style: const TextStyle(
-                    fontSize: 12, color: PhlioColors.textSecondary)),
-            const SizedBox(height: 14),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              FilledButton.icon(
-                  onPressed: joined
-                      ? () =>
-                          context.push('/rooms/${Uri.encodeComponent(room.id)}')
-                      : _joining.contains(room.id) || loadingMembership
-                          ? null
-                          : () => _join(room),
-                  icon: Icon(joined ? Icons.chat_bubble_outline : Icons.add),
-                  label: Text(joined
-                      ? 'Open room'
-                      : _joining.contains(room.id)
-                          ? 'Joining…'
-                          : 'Join')),
-              if (!joined)
-                TextButton(
-                    onPressed: () =>
-                        context.push('/rooms/${Uri.encodeComponent(room.id)}'),
-                    child: const Text('Preview')),
-            ]),
-          ])));
+  Widget _card(RoomEntity room, bool joined, bool loadingMembership) =>
+      ContentSurface(
+          platform: 'rooms',
+          contentId: room.id,
+          child: _roomCard(room, joined, loadingMembership));
+  Widget _roomCard(RoomEntity room, bool joined, bool loadingMembership) =>
+      Card(
+          color: PhlioColors.roomsSidebar,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                          width: 48,
+                          height: 48,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                              color: PhlioColors.roomsInput,
+                              borderRadius: BorderRadius.circular(16)),
+                          child: Text(room.icon,
+                              style: const TextStyle(fontSize: 26))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: Text(room.name,
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.w700)))
+                    ]),
+                    const SizedBox(height: 12),
+                    Text(room.description,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(color: PhlioColors.textSecondary)),
+                    const SizedBox(height: 12),
+                    Text('${room.memberCount} members · ${room.category.label}',
+                        style: const TextStyle(
+                            fontSize: 12, color: PhlioColors.textSecondary)),
+                    const SizedBox(height: 14),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      FilledButton.icon(
+                          onPressed: joined
+                              ? () => context.push(
+                                  '/rooms/${Uri.encodeComponent(room.id)}')
+                              : _joining.contains(room.id) || loadingMembership
+                                  ? null
+                                  : () => _join(room),
+                          icon: Icon(
+                              joined ? Icons.chat_bubble_outline : Icons.add),
+                          label: Text(joined
+                              ? 'Open room'
+                              : _joining.contains(room.id)
+                                  ? 'Joining…'
+                                  : 'Join')),
+                      if (!joined)
+                        TextButton(
+                            onPressed: () => context
+                                .push('/rooms/${Uri.encodeComponent(room.id)}'),
+                            child: const Text('Preview')),
+                    ]),
+                  ])));
 }

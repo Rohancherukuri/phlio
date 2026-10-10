@@ -12,6 +12,7 @@ class AddCommentUseCase {
     required String text,
     String? stickerId,
   }) {
-    return _repository.addComment(postId: postId, text: text, stickerId: stickerId);
+    return _repository.addComment(
+        postId: postId, text: text, stickerId: stickerId);
   }
 }

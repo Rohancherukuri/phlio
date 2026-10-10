@@ -149,12 +149,15 @@ class ShopScreen extends ConsumerWidget {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: products.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         mainAxisSpacing: PhlioSpacing.lg,
                         crossAxisSpacing: PhlioSpacing.lg,
-                        childAspectRatio: 0.72,
+                        mainAxisExtent: (MediaQuery.sizeOf(context).width -
+                                    3 * PhlioSpacing.lg) /
+                                2 +
+                            MediaQuery.textScalerOf(context).scale(42) +
+                            110,
                       ),
                       itemBuilder: (context, index) {
                         final product = products[index];

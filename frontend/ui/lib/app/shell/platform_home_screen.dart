@@ -1,3 +1,5 @@
+import 'package:phlio/shared/content/news_screen.dart';
+import 'package:phlio/shared/content/content_surface.dart';
 // The Home tab is platform-aware: whatever platform is selected in the
 // App Tray, this screen shows that platform's home surface. All platform
 // homes stay alive in an `IndexedStack` so switching platforms preserves
@@ -13,10 +15,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../design_system/spacing.dart';
-import '../../design_system/typography.dart';
-import '../../design_system/widgets/phlio_button.dart';
-import '../../design_system/widgets/phlio_fox.dart';
 import '../../features/book/presentation/screens/book_screen.dart';
 import '../../features/pay/presentation/screens/pay_screen.dart';
 import '../../features/phlio_agent/presentation/screens/agent_screen.dart';
@@ -25,69 +23,37 @@ import '../../features/shop/presentation/screens/shop_screen.dart';
 import '../../features/social/presentation/screens/social_home_screen.dart';
 import '../platform/phlio_platform.dart';
 
-class PlatformHomeScreen extends ConsumerWidget {
+class PlatformHomeScreen extends ConsumerStatefulWidget {
   const PlatformHomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlatformHomeScreen> createState() => _PlatformHomeScreenState();
+}
+
+class _PlatformHomeScreenState extends ConsumerState<PlatformHomeScreen> {
+  final visited = <int>{};
+  @override
+  Widget build(BuildContext context) {
     final platform = ref.watch(currentPlatformProvider);
+    visited.add(platform.index);
 
     // IndexedStack keeps every platform home alive (state + scroll) across
     // switches. Ordinal order matches the enum declaration order.
     return IndexedStack(
       index: platform.index,
-      children: const [
-        PayScreen(),
-        SocialHomeScreen(),
-        RoomsScreen(),
-        BookScreen(),
-        ShopScreen(),
-        _ComingSoonHome(platform: PhlioPlatform.stream),
-        _ComingSoonHome(platform: PhlioPlatform.news),
-        AgentScreen(),
+      children: [
+        for (final entry in const <Widget>[
+          PayScreen(),
+          SocialHomeScreen(),
+          RoomsScreen(),
+          BookScreen(),
+          ShopScreen(),
+          PlatformCatalogScreen(platform: 'stream'),
+          NewsScreen(),
+          AgentScreen(),
+        ].indexed)
+          visited.contains(entry.$1) ? entry.$2 : const SizedBox.shrink()
       ],
-    );
-  }
-}
-
-class _ComingSoonHome extends StatelessWidget {
-  const _ComingSoonHome({required this.platform});
-
-  final PhlioPlatform platform;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Phlio ${platform.label}', style: PhlioTypography.displayMedium)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(PhlioSpacing.xxl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const PhlioFox(size: 120, pose: PhlioFoxPose.sleepy),
-              const SizedBox(height: PhlioSpacing.lg),
-              Text('${platform.label} is on the roadmap', style: PhlioTypography.headline),
-              const SizedBox(height: PhlioSpacing.xs),
-              Text(
-                platform == PhlioPlatform.stream
-                    ? 'Watch, listen and enjoy — being built next.'
-                    : 'Stay informed, stay aware — being built next.',
-                textAlign: TextAlign.center,
-                style: PhlioTypography.body,
-              ),
-              const SizedBox(height: PhlioSpacing.xl),
-              PhlioPrimaryButton(
-                label: 'Back to Social',
-                size: PhlioButtonSize.medium,
-                onPressed: () {
-                  switchPlatform(context, PhlioPlatform.social);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

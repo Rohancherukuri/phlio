@@ -10,6 +10,8 @@ from app.api.v1 import (
     auth,
     book,
     creator_chat,
+    graph,
+    content,
     home,
     messaging,
     pay,
@@ -38,3 +40,10 @@ api_router.include_router(stickers.router)
 api_router.include_router(messaging.router)
 
 api_router.include_router(creator_chat.router)
+
+api_router.include_router(graph.router)
+
+api_router.include_router(content.router)
+
+from app.api.v1 import news
+api_router.include_router(news.router)

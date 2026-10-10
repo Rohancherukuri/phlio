@@ -1,3 +1,5 @@
+import '../../../../core/di/service_locator.dart';
+import '../../../../core/network/api_client.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -70,6 +72,13 @@ class VideoPlaybackController extends ChangeNotifier {
       next.addListener(_tick);
       loading = false;
       await next.play();
+      if (source.localPath == null && getIt.isRegistered<ApiClient>()) {
+        unawaited(getIt<ApiClient>()
+            .dio
+            .put(
+                '/content/${source.platform}/${source.contentId ?? source.id}/actions/viewed')
+            .then<void>((_) {}, onError: (Object _) {}));
+      }
     } catch (_) {
       if (!_disposed && generation == _generation) {
         loading = false;

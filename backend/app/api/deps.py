@@ -69,20 +69,6 @@ def get_activity_service(container: Container = Depends(get_container)) -> Activ
     return container.activity_service
 
 
-def get_agent_tools(
-    rooms_service: RoomsService = Depends(get_rooms_service),
-    shop_service: ShopService = Depends(get_shop_service),
-    social_service: SocialService = Depends(get_social_service),
-    book_service: BookService = Depends(get_book_service),
-) -> AgentTools:
-    return AgentTools(
-        rooms_service=rooms_service,
-        shop_service=shop_service,
-        social_service=social_service,
-        book_service=book_service,
-    )
-
-
 async def get_current_user(
     container: Container = Depends(get_container),
     authorization: str | None = Header(default=None),
@@ -97,3 +83,21 @@ async def get_current_user(
     token = authorization.split(" ", 1)[1].strip()
     user_id = decode_token(token, "access", container.settings)
     return await container.identity_service.get_user_or_raise(user_id)
+
+
+def get_agent_tools(
+    user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
+    rooms_service: RoomsService = Depends(get_rooms_service),
+    shop_service: ShopService = Depends(get_shop_service),
+    social_service: SocialService = Depends(get_social_service),
+    book_service: BookService = Depends(get_book_service),
+) -> AgentTools:
+    return AgentTools(
+        graph=container.graph,
+        viewer_id=user.id,
+        rooms_service=rooms_service,
+        shop_service=shop_service,
+        social_service=social_service,
+        book_service=book_service,
+    )

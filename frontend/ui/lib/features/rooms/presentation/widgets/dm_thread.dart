@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -179,7 +180,8 @@ class _DmThreadState extends ConsumerState<DmThread> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if ((message['text'] as String).isNotEmpty)
-              Text(message['text'] as String, style: PhlioTypography.body),
+              SharedContentText(message['text'] as String,
+                  style: PhlioTypography.body),
             for (final raw in message['attachments'] as List)
               _PrivateAttachment(
                 key: ValueKey((raw as Map)['id']),

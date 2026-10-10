@@ -1,3 +1,4 @@
+import '../../features/social/presentation/widgets/video_publish_sheet.dart';
 // The persistent app chrome: platform-aware bottom navigation wrapping the
 // three shell tabs — Home (current platform's home), Explore (current
 // platform's discovery), and Profile (shared across all platforms). The
@@ -163,15 +164,21 @@ class AppShell extends ConsumerWidget {
             icon: Icons.videocam_outlined,
             color: PhlioColors.domainStream,
             title: 'New video',
-            subtitle: 'Long-form upload',
-            onTap: comingSoon('Video uploads'),
+            subtitle: '1–5 minutes',
+            onTap: () {
+              Navigator.of(context).pop();
+              showVideoPublisher(context, kind: 'video');
+            },
           ),
           _CreateOption(
             icon: Icons.content_cut_rounded,
             color: PhlioColors.brandOrange,
             title: 'New clip',
-            subtitle: 'Short-form vertical video',
-            onTap: comingSoon('Clip uploads'),
+            subtitle: '15 seconds–2 minutes',
+            onTap: () {
+              Navigator.of(context).pop();
+              showVideoPublisher(context, kind: 'clip');
+            },
           ),
           _CreateOption(
             icon: Icons.collections_outlined,

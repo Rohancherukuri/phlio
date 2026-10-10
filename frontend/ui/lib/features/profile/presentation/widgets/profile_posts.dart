@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/config/app_config.dart';
@@ -136,43 +137,50 @@ class ProfilePosts extends ConsumerWidget {
         }
         return ListView(padding: const EdgeInsets.all(12), children: [
           for (final video in videos)
-            Card(
-                child: ListTile(
-                    leading: const Icon(Icons.play_circle_outline),
-                    title: Text(video.title),
-                    onTap: () => ref.read(videoPlaybackProvider).open(video))),
+            ContentSurface(
+                platform: 'social',
+                contentId: video.id,
+                child: Card(
+                    child: ListTile(
+                        leading: const Icon(Icons.play_circle_outline),
+                        title: Text(video.title),
+                        onTap: () =>
+                            ref.read(videoPlaybackProvider).open(video)))),
           for (final post in posts)
-            Card(
-                key: ValueKey('profile-post-${post.id}'),
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (post.text.isNotEmpty) Text(post.text),
-                          for (final media in post.media.where((m) => type == ProfilePostType.pics ? m.kind == MediaKind.image : m.kind == MediaKind.video))
-                            Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: media.kind == MediaKind.image
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: Image.network(
-                                            AppConfig.mediaUrl(media.url),
-                                            width: double.infinity,
-                                            fit: BoxFit.contain,
-                                            errorBuilder: (_, __, ___) =>
-                                                const SizedBox(
-                                                    height: 100,
-                                                    child: Center(
-                                                        child: Text(
-                                                            'Image unavailable')))))
-                                    : ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        leading:
-                                            const Icon(Icons.play_circle_outline),
-                                        title: const Text('Play video'),
-                                        onTap: () => ref.read(videoPlaybackProvider).open(PlayableVideo(id: '${post.id}-${media.url}', title: post.text.isEmpty ? 'Video' : post.text, creator: author, url: media.url)))),
-                        ]))),
+            ContentSurface(
+                platform: 'social',
+                contentId: post.id,
+                child: Card(
+                    key: ValueKey('profile-post-${post.id}'),
+                    child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (post.text.isNotEmpty) Text(post.text),
+                              for (final media in post.media.where((m) => type == ProfilePostType.pics ? m.kind == MediaKind.image : m.kind == MediaKind.video))
+                                Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: media.kind == MediaKind.image
+                                        ? ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            child: Image.network(
+                                                AppConfig.mediaUrl(media.url),
+                                                width: double.infinity,
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const SizedBox(
+                                                        height: 100,
+                                                        child: Center(
+                                                            child: Text(
+                                                                'Image unavailable')))))
+                                        : ListTile(
+                                            contentPadding: EdgeInsets.zero,
+                                            leading: const Icon(Icons.play_circle_outline),
+                                            title: const Text('Play video'),
+                                            onTap: () => ref.read(videoPlaybackProvider).open(PlayableVideo(id: '${post.id}-${media.url}', contentId: post.id, title: post.text.isEmpty ? 'Video' : post.text, creator: author, url: media.url)))),
+                            ])))),
         ]);
       },
     );

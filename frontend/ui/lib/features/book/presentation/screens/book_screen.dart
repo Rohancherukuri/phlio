@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 // Phlio Book — discover bookable experiences and confirm a booking.
 //
 // Mirrors the reference "Plan. Meet. Experience." surface: a category chip
@@ -52,7 +53,10 @@ class BookScreen extends ConsumerWidget {
           onRefresh: () async => ref.invalidate(listingsControllerProvider),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-              PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, PhlioSpacing.xxl,
+              PhlioSpacing.lg,
+              PhlioSpacing.md,
+              PhlioSpacing.lg,
+              PhlioSpacing.xxl,
             ),
             children: [
               // Category chips.
@@ -63,7 +67,8 @@ class BookScreen extends ConsumerWidget {
                   children: [
                     _categoryChip(context, ref, null, selectedCategory == null),
                     for (final category in BookCategory.values)
-                      _categoryChip(context, ref, category, selectedCategory == category),
+                      _categoryChip(
+                          context, ref, category, selectedCategory == category),
                   ],
                 ),
               ),
@@ -107,7 +112,8 @@ class BookScreen extends ConsumerWidget {
       child: PhlioChipButton(
         label: category?.label ?? 'All',
         selected: selected,
-        onPressed: () => ref.read(selectedBookCategoryProvider.notifier).state = category,
+        onPressed: () =>
+            ref.read(selectedBookCategoryProvider.notifier).state = category,
       ),
     );
   }
@@ -120,6 +126,11 @@ class _ListingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ContentSurface(
+        platform: 'book', contentId: listing.id, child: _content(context));
+  }
+
+  Widget _content(BuildContext context) {
     return PhlioCard(
       onTap: () => _openBookingSheet(context),
       padding: const EdgeInsets.all(PhlioSpacing.lg),
@@ -185,13 +196,16 @@ class _ListingCard extends StatelessWidget {
                     Text(
                       listing.displayPrice,
                       style: PhlioTypography.label.copyWith(
-                        color: listing.isFree ? PhlioColors.success : PhlioColors.brandOrange,
+                        color: listing.isFree
+                            ? PhlioColors.success
+                            : PhlioColors.brandOrange,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     if (listing.durationLabel.isNotEmpty) ...[
                       const Spacer(),
-                      Text(listing.durationLabel, style: PhlioTypography.caption),
+                      Text(listing.durationLabel,
+                          style: PhlioTypography.caption),
                     ],
                   ],
                 ),
@@ -239,7 +253,8 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(context: context, initialTime: _selectedTime);
+    final picked =
+        await showTimePicker(context: context, initialTime: _selectedTime);
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
@@ -264,7 +279,8 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Booked! ${booking.title} on ${_formatDate(booking.date)}.'),
+            content: Text(
+                'Booked! ${booking.title} on ${_formatDate(booking.date)}.'),
           ),
         );
       },
@@ -295,13 +311,15 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.listing.title, style: PhlioTypography.headline),
+                      Text(widget.listing.title,
+                          style: PhlioTypography.headline),
                       const SizedBox(height: PhlioSpacing.xxs),
                       Text(widget.listing.venue, style: PhlioTypography.body),
                     ],
                   ),
                 ),
-                const PhlioFox(size: 44, pose: PhlioFoxPose.hello, animate: false),
+                const PhlioFox(
+                    size: 44, pose: PhlioFoxPose.hello, animate: false),
               ],
             ),
             const SizedBox(height: PhlioSpacing.xl),
@@ -362,14 +380,17 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
                   const Spacer(),
                   Text(
                     widget.listing.displayPrice,
-                    style: PhlioTypography.title.copyWith(color: PhlioColors.brandOrange),
+                    style: PhlioTypography.title
+                        .copyWith(color: PhlioColors.brandOrange),
                   ),
                 ],
               ),
             ),
             if (_error != null) ...[
               const SizedBox(height: PhlioSpacing.sm),
-              Text(_error!, style: PhlioTypography.caption.copyWith(color: PhlioColors.danger)),
+              Text(_error!,
+                  style: PhlioTypography.caption
+                      .copyWith(color: PhlioColors.danger)),
             ],
             const SizedBox(height: PhlioSpacing.lg),
             PhlioPrimaryButton(
@@ -384,7 +405,20 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
   }
 
   static String _formatDate(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return '${days[date.weekday - 1]}, ${date.day} ${months[date.month - 1]}';
   }
@@ -398,7 +432,8 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
       borderRadius: PhlioRadii.mdRadius,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.md, vertical: PhlioSpacing.md),
+        padding: const EdgeInsets.symmetric(
+            horizontal: PhlioSpacing.md, vertical: PhlioSpacing.md),
         decoration: BoxDecoration(
           color: PhlioColors.surfaceInput,
           borderRadius: PhlioRadii.mdRadius,

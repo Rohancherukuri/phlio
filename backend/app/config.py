@@ -47,7 +47,10 @@ class Settings(BaseSettings):
     surreal_user: str = "root"
     surreal_password: str = "root"
 
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    news_ingestion_enabled: bool = False
+    redis_enabled: bool = False
+    redis_namespace: str = "development"
 
     # Room file uploads stream here (see app/infrastructure/media_storage.py)
     # and are served back under /media by StaticFiles in main.py.

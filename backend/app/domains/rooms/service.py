@@ -44,7 +44,9 @@ class RoomsService:
         repository: RoomsRepository,
         core_engine: CoreEngineClient,
         media_storage: MediaStorage | None = None,
+        graph=None,
     ) -> None:
+        self.graph = graph
         self._repository = repository
         self._core_engine = core_engine
         self._media = media_storage
@@ -82,6 +84,7 @@ class RoomsService:
         created = await self._repository.create_room(room)
         joined = await self._repository.join_room(created.id, created_by)
         logger.info("rooms.created room_id=%s name=%s created_by=%s", created.id, created.name, created_by)
+        await self._record_membership(joined, created_by)
         return joined
 
     async def get_room_or_raise(self, room_id: str) -> Room:
@@ -94,7 +97,19 @@ class RoomsService:
         await self.get_room_or_raise(room_id)
         room = await self._repository.join_room(room_id, user_id)
         logger.info("rooms.joined room_id=%s user_id=%s member_count=%d", room_id, user_id, room.member_count)
+        await self._record_membership(room, user_id)
         return room
+
+    async def _record_membership(self, room, user_id):
+        if not self.graph or not room.created_by:
+            return
+        from app.domains.graph.service import key
+        from app.domains.graph.store import now
+        obj = await self.graph.register_object(room.created_by, "rooms.room", room.id, room.name,
+            audience="room" if room.is_private else "public", room_id=room.id)
+        await self.graph.store.put(key("graph_member", user_id, obj["id"]),
+            {"in": "user:" + user_id, "out": obj["id"], "role": "owner" if user_id == room.created_by else "member", "created_at": now()})
+        await self.graph.action(user_id, obj["id"], "joined", trusted=True)
 
     async def my_rooms(self, user_id: str) -> list[Room]:
         return await self._repository.list_member_rooms(user_id)

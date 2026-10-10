@@ -6,14 +6,17 @@ class MediaAttachmentModel {
   factory MediaAttachmentModel.fromJson(Map<String, dynamic> json) {
     return MediaAttachmentModel(
       url: json['url'] as String,
-      kind: (json['kind'] as String) == 'video' ? MediaKind.video : MediaKind.image,
+      kind: (json['kind'] as String) == 'video'
+          ? MediaKind.video
+          : MediaKind.image,
     );
   }
 
   final String url;
   final MediaKind kind;
 
-  MediaAttachmentEntity toEntity() => MediaAttachmentEntity(url: url, kind: kind);
+  MediaAttachmentEntity toEntity() =>
+      MediaAttachmentEntity(url: url, kind: kind);
 }
 
 class PostModel {

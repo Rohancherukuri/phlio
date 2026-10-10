@@ -25,13 +25,16 @@ class PhlioApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
       routerConfig: router,
-      builder: (context, child) => Stack(
+      // The builder sits above the router's Navigator. Global controls need
+      // their own Overlay ancestor for tooltips, independent of route overlays.
+      builder: (context, child) => Overlay.wrap(
+          child: Stack(
         children: [
           child!,
           const SocialVideoPlayer(),
           IncomingCallBanner(router: router),
         ],
-      ),
+      )),
     );
   }
 }

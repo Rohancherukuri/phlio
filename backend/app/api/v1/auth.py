@@ -71,6 +71,8 @@ class UserResponse(BaseModel):
     interests: list[str]
     is_verified: bool
     created_at: dt.datetime
+    is_creator: bool = False
+    is_test_user: bool = False
     date_of_birth: dt.date | None = None
     phone_number: str | None = None
 
@@ -86,6 +88,8 @@ class UserResponse(BaseModel):
             interests=user.interests,
             is_verified=user.is_verified,
             created_at=user.created_at,
+            is_creator=user.is_creator,
+            is_test_user=user.is_test_user,
             date_of_birth=user.date_of_birth,
             phone_number=user.phone_number,
         )

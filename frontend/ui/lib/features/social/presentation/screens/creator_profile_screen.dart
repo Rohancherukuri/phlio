@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,8 @@ import '../widgets/creator_chat.dart';
 import '../../../profile/presentation/widgets/profile_posts.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../controllers/video_library.dart';
+import '../controllers/video_playback_controller.dart';
+import '../../../../app/config/app_config.dart';
 import '../widgets/social_videos_view.dart';
 
 /// Creator profile screen — opened by tapping any creator's avatar (video
@@ -59,136 +62,6 @@ class CreatorProfile {
   final List<String> reposts;
 }
 
-const _assetBase = 'assets/images/placeholders/social';
-
-const List<CreatorProfile> kCreatorProfiles = [
-  CreatorProfile(
-    handle: 'pixelpanda',
-    displayName: 'Pixel Panda',
-    avatarAsset: '$_assetBase/avatar_pixelpanda.png',
-    verified: true,
-    followers: 128400,
-    following: 342,
-    postCount: 214,
-    hasPosts: true,
-    bio: 'Top-500 grind, cozy streams, zero rage quits.',
-    tags: ['#gaming', '#retro', '#speedruns'],
-    songTitle: 'lofi_bgm_beats.mp3',
-    moments: ['Ranked', 'Arcade', 'IRL'],
-    replies: [
-      (to: 'lofinight', text: 'This mix carried my whole ranked grind tbh'),
-      (
-        to: 'devdiaries',
-        text: 'Day 12 and the rooms pane already feels premium'
-      ),
-      (to: 'artbykiara', text: 'The dusk palette in this one!'),
-    ],
-  ),
-  CreatorProfile(
-    handle: 'artbykiara',
-    displayName: 'Kiara',
-    avatarAsset: '$_assetBase/avatar_artbykiara.png',
-    verified: true,
-    followers: 45200,
-    following: 512,
-    postCount: 98,
-    hasPosts: true,
-    bio: 'Acrylic skies and pixel sunsets. Commissions open.',
-    tags: ['#art', '#painting', '#dusk'],
-    moments: ['Studio', 'Gallery'],
-  ),
-  CreatorProfile(
-    handle: 'lofinight',
-    displayName: 'Lofi Night',
-    avatarAsset: '$_assetBase/avatar_lofinight.png',
-    verified: false,
-    followers: 89000,
-    following: 89,
-    postCount: 61,
-    hasPosts: false,
-    bio: '3AM beats to relax and study to.',
-    tags: ['#music', '#lofi'],
-    songTitle: 'midnight_tape_vol4.mp3',
-  ),
-  CreatorProfile(
-    handle: 'devdiaries',
-    displayName: 'Dev Diaries',
-    avatarAsset: '$_assetBase/avatar_devdiaries.png',
-    verified: true,
-    followers: 58900,
-    following: 120,
-    postCount: 142,
-    hasPosts: true,
-    bio: 'Building Phlio in public — day 12 of 100.',
-    tags: ['#tech', '#flutter', '#buildinpublic'],
-    replies: [
-      (to: 'pixelpanda', text: 'Wait till you see the pane resize drop'),
-      (to: 'wanderfox', text: 'The Hyderabad series is unmatched'),
-    ],
-  ),
-  CreatorProfile(
-    handle: 'retroray',
-    displayName: 'Retro Ray',
-    avatarAsset: '$_assetBase/avatar_retroray.png',
-    verified: false,
-    followers: 21400,
-    following: 1187,
-    postCount: 0,
-    hasPosts: false,
-    tags: ['#gaming', '#clips'],
-  ),
-  CreatorProfile(
-    handle: 'wanderfox',
-    displayName: 'Wander Fox',
-    avatarAsset: '$_assetBase/avatar_wanderfox.png',
-    verified: false,
-    followers: 76300,
-    following: 893,
-    postCount: 156,
-    hasPosts: true,
-    bio: '48 hours everywhere. Hyderabad based.',
-    tags: ['#travel', '#food', '#streets'],
-    moments: ['Charminar', 'Goa', 'Hills'],
-    reposts: [
-      'Late night lofi + chat',
-      'Ranked grind till dawn — road to top 500'
-    ],
-  ),
-  CreatorProfile(
-    handle: 'ironarena',
-    displayName: 'Iron Arena',
-    avatarAsset: '$_assetBase/avatar_ironarena.png',
-    verified: false,
-    followers: 33800,
-    following: 210,
-    postCount: 88,
-    hasPosts: true,
-    bio: 'Push · Pull · Legs. Form over ego.',
-    tags: ['#fitness', '#gym'],
-  ),
-  CreatorProfile(
-    handle: 'chefatlas',
-    displayName: 'Chef Atlas',
-    avatarAsset: '$_assetBase/avatar_chefatlas.png',
-    verified: false,
-    followers: 512000,
-    following: 76,
-    postCount: 240,
-    hasPosts: true,
-    bio: 'Street food, home kitchen, 60-second recipes.',
-    tags: ['#food', '#recipes'],
-    moments: ['Market', 'Service'],
-    reposts: ['48 hours in Hyderabad — food street tour'],
-  ),
-];
-
-CreatorProfile? creatorProfileByHandle(String handle) {
-  for (final profile in kCreatorProfiles) {
-    if (profile.handle == handle) return profile;
-  }
-  return null;
-}
-
 /// Shared brand gradients for Moments circles and placeholder post tiles.
 const kProfileGradients = [
   [PhlioColors.brandOrange, PhlioColors.brandViolet],
@@ -224,7 +97,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     // itself stays ref-free for hot-reload safety.
     return Consumer(
       builder: (context, ref, _) {
-        final seed = creatorProfileByHandle(widget.username);
+        const CreatorProfile? seed = null;
         final remote = ref.watch(publicProfileProvider(widget.username));
         if (seed == null && !remote.hasValue) {
           return Scaffold(
@@ -248,9 +121,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 avatarAsset: seed?.avatarAsset ?? '',
                 avatarUrl: data['avatar_url'] as String?,
                 verified: data['is_verified'] == true,
-                followers: seed?.followers ?? 0,
-                following: seed?.following ?? 0,
-                postCount: seed?.postCount ?? 0,
+                followers: data['followers'] as int? ?? 0,
+                following: data['following'] as int? ?? 0,
+                postCount: data['post_count'] as int? ?? 0,
                 hasPosts: true,
                 bio: data['bio'] as String?,
                 tags: (data['interests'] as List? ?? []).cast<String>(),
@@ -261,8 +134,13 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               );
         final followed = ref.watch(followedCreatorsProvider);
         final isFollowed = followed.contains(profile.handle);
-        final videos =
-            kSocialVideos.where((v) => v.creator == profile.handle).toList();
+        final videos = ref
+                .watch(socialVideoCatalogProvider)
+                .valueOrNull
+                ?.where((v) => v.creator == profile.handle)
+                .map(socialVideoPresentation)
+                .toList() ??
+            <SocialVideo>[];
         final clips =
             videos.where((v) => v.kind == SocialVideoKind.clip).toList();
         final isLive = videos.any((v) => v.kind == SocialVideoKind.live);
@@ -337,6 +215,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           ]);
                         }),
                       ),
+                      MutualAvatars(target: profile.handle),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(PhlioSpacing.lg,
                             PhlioSpacing.md, PhlioSpacing.lg, 0),
@@ -424,20 +303,19 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           children: [
                             Expanded(
                               child: GestureDetector(
-                                onTap: () {
-                                  ref
-                                      .read(followedCreatorsProvider.notifier)
-                                      .update((set) {
-                                    final next = Set<String>.from(set);
-                                    if (!next.remove(profile.handle)) {
-                                      next.add(profile.handle);
-                                    }
-                                    return next;
-                                  });
-                                  ref
-                                      .read(socialVideoApiProvider)
-                                      .follow(profile.handle, !isFollowed)
-                                      .catchError((_) {});
+                                onTap: () async {
+                                  try {
+                                    await ref
+                                        .read(socialVideoApiProvider)
+                                        .follow(profile.handle, !isFollowed);
+                                    ref.invalidate(creatorFollowingProvider);
+                                  } catch (_) {
+                                    if (context.mounted)
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              content: Text(
+                                                  'Could not update follow. Try again.')));
+                                  }
                                 },
                                 child: Container(
                                   height: 44,
@@ -562,7 +440,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   )
                 else
                   clips.isNotEmpty
-                      ? SliverToBoxAdapter(child: _videosGrid(clips))
+                      ? SliverToBoxAdapter(child: _videosGrid(clips, ref))
                       : _foxyEmpty(
                           'No clips yet',
                           'Their best moments will be clipped here.',
@@ -816,7 +694,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  Widget _videosGrid(List<SocialVideo> videos) {
+  Widget _videosGrid(List<SocialVideo> videos, WidgetRef ref) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -831,16 +709,17 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       itemBuilder: (context, index) {
         final video = videos[index];
         return GestureDetector(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(video.kind == SocialVideoKind.live
-                ? 'Demo stream — real live playback lands with the Stream platform.'
-                : 'Demo video — upload one to get real playback.'),
-          )),
+          onLongPress: video.playable == null
+              ? null
+              : () => showContentShare(context, 'social/${video.playable!.id}'),
+          onTap: video.playable == null
+              ? null
+              : () => ref.read(videoPlaybackProvider).open(video.playable!),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.asset(
-                video.thumbAsset,
+              Image.network(
+                AppConfig.mediaUrl(video.thumbAsset),
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) =>
                     Container(color: PhlioColors.surfaceElevated),

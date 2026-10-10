@@ -1,3 +1,5 @@
+import '../../../../app/router/app_router.dart';
+import '../../../../shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import '../../../../design_system/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +50,23 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
     final ready = p?.value.isInitialized == true && c.error == null;
     Widget button(IconData icon, String label, VoidCallback action) =>
         IconButton(tooltip: label, onPressed: action, icon: Icon(icon));
+    Future<void> shareVideo() async {
+      final source = c.video!;
+      final navigatorContext =
+          ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      if (navigatorContext == null || source.localPath != null) return;
+      final wasPlaying = p?.value.isPlaying == true;
+      await p?.pause();
+      c.setMode(SocialPlayerMode.hidden);
+      if (navigatorContext.mounted)
+        await showContentShare(navigatorContext,
+            '${source.platform}/${source.contentId ?? source.id}');
+      if (mounted && c.video == source) {
+        c.setMode(SocialPlayerMode.floating);
+        if (wasPlaying) await p?.play();
+      }
+    }
+
     final picture = ColoredBox(
       color: Colors.black,
       child: Center(
@@ -114,6 +133,8 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
             'Mute or unmute',
             () => c.setVolume(c.volume == 0 ? 1 : 0),
           ),
+        if (!mini && c.video!.localPath == null)
+          button(Icons.ios_share, 'Share video', shareVideo),
         if (!mini)
           button(
             Icons.settings,
@@ -193,7 +214,8 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        picture,
+                        GestureDetector(
+                            onLongPress: shareVideo, child: picture),
                         if (ready && p!.value.isBuffering)
                           const Center(child: CircularProgressIndicator()),
                       ],

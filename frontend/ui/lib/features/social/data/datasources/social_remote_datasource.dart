@@ -17,8 +17,10 @@ class SocialRemoteDataSource {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<PostModel> createPost({required String text, required List<String> tags}) async {
-    final response = await _apiClient.dio.post('/social/posts', data: {'text': text, 'tags': tags});
+  Future<PostModel> createPost(
+      {required String text, required List<String> tags}) async {
+    final response = await _apiClient.dio
+        .post('/social/posts', data: {'text': text, 'tags': tags});
     return PostModel.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -42,7 +44,8 @@ class SocialRemoteDataSource {
     return CommentModel.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<Map<String, dynamic>> getComments(String postId, {String? cursor}) async {
+  Future<Map<String, dynamic>> getComments(String postId,
+      {String? cursor}) async {
     final response = await _apiClient.dio.get(
       '/social/posts/$postId/comments',
       queryParameters: {if (cursor != null) 'cursor': cursor},

@@ -41,6 +41,8 @@ def _row_to_user(row: dict) -> User:
         interests=row.get("interests", []),
         created_at=row.get("created_at") or dt.datetime.now(dt.UTC),
         is_verified=row.get("is_verified", False),
+        is_creator=row.get("is_creator", False),
+        is_test_user=row.get("is_test_user", False),
         phone_number=row.get("phone_number"),
         date_of_birth=dt.date.fromisoformat(row["date_of_birth"]) if row.get("date_of_birth") else None,
     )
@@ -57,6 +59,8 @@ def _user_to_row(user: User) -> dict:
         "interests": user.interests,
         "is_verified": user.is_verified,
         "created_at": user.created_at,
+        "is_creator": user.is_creator,
+        "is_test_user": user.is_test_user,
         "phone_number": user.phone_number,
         "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
     }

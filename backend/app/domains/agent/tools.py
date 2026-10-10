@@ -97,6 +97,15 @@ class AgentTools:
     social_service: SocialService
     book_service: BookService
 
+    graph: object | None = None
+    viewer_id: str | None = None
+
+    async def get_shared_object_preferences(self, *, participants: list[str], platform: str, purpose: str, verbs: list[str]):
+        from fastapi import HTTPException
+        if self.graph is None or self.viewer_id is None:
+            raise HTTPException(403, "Authenticated context is required.")
+        return await self.graph.foxy_context(self.viewer_id, participants, platform, purpose, verbs)
+
     async def search_rooms(self, *, category: str | None = None, limit: int = 3) -> list[Room]:
         from app.domains.rooms.entities import RoomCategory
 
@@ -107,7 +116,7 @@ class AgentTools:
             except ValueError:
                 parsed_category = None
         rooms, _ = await self.rooms_service.discover(category=parsed_category, cursor=None, limit=limit)
-        return rooms
+        return [r for r in rooms if not r.is_private or (self.viewer_id and await self.rooms_service._repository.is_member(r.id, self.viewer_id))]
 
     async def search_products(
         self, *, max_price_minor_units: int | None = None, limit: int = 3

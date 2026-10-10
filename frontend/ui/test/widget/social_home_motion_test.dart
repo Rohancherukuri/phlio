@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:phlio/features/social/presentation/controllers/video_library.dart';
+import 'package:phlio/features/profile/presentation/widgets/profile_posts.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -61,7 +63,14 @@ Future<void> app(WidgetTester tester, double width, double scale,
   await tester.pumpWidget(ProviderScope(
       overrides: [
         authControllerProvider.overrideWith(_Auth.new),
-        feedControllerProvider.overrideWith(_Feed.new)
+        feedControllerProvider.overrideWith(_Feed.new),
+        socialVideoCatalogProvider.overrideWith((ref) async => []),
+        creatorFollowingProvider.overrideWith((ref) async => {}),
+        publicProfileProvider
+            .overrideWith((ref, id) async => {'full_name': id}),
+        storyUsersProvider.overrideWith((ref) => [
+              for (var i = 0; i < 8; i++) (name: 'Creator $i', avatarAsset: '')
+            ]),
       ],
       child: RepaintBoundary(
           key: captureKey,
@@ -78,7 +87,6 @@ Future<void> app(WidgetTester tester, double width, double scale,
   if (capture) {
     await tester.runAsync(() async {
       for (final path in {
-        ...kStoryUsers.map((user) => user.avatarAsset),
         ...kSocialVideos.map((video) => video.thumbAsset),
         ...kSocialVideos.map((video) => video.avatarAsset)
       }) {

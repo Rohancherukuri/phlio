@@ -1,3 +1,4 @@
+import '../../shared/content/content_surface.dart';
 // App routing (go_router).
 //
 // Route shape:
@@ -81,6 +82,7 @@ CustomTransitionPage<void> _fadeThroughPage(Widget child) {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = _RouterRefreshNotifier(ref);
+  String? pendingSharedContent;
 
   return GoRouter(
     initialLocation: '/splash',
@@ -88,6 +90,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final authState = ref.read(authControllerProvider);
       final location = state.matchedLocation;
+      if (state.uri.path.startsWith('/shared/'))
+        pendingSharedContent = state.uri.path;
       const authRoutes = ['/login', '/signup'];
 
       if (authState.isLoading) {
@@ -98,10 +102,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       final onAuthRoute = authRoutes.contains(location);
 
       if (!isSignedIn && !onAuthRoute) return '/login';
-      if (isSignedIn && (onAuthRoute || location == '/splash')) return '/home';
+      if (isSignedIn && (onAuthRoute || location == '/splash')) {
+        final next = pendingSharedContent;
+        pendingSharedContent = null;
+        return next ?? '/home';
+      }
+      if (isSignedIn) pendingSharedContent = null;
       return null;
     },
     routes: [
+      GoRoute(
+          path: '/shared/:platform/:ref',
+          builder: (context, state) => ContentDetailScreen(
+              path:
+                  '${state.pathParameters['platform']}/${state.pathParameters['ref']}')),
       GoRoute(
           path: '/splash', builder: (context, state) => const SplashScreen()),
       GoRoute(

@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../design_system/colors.dart';
@@ -14,6 +15,11 @@ class RoomCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ContentSurface(
+        platform: 'rooms', contentId: room.id, child: _content(context));
+  }
+
+  Widget _content(BuildContext context) {
     return PhlioCard(
       onTap: onTap,
       child: Row(

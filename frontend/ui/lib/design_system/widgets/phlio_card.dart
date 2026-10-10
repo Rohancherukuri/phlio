@@ -1,3 +1,4 @@
+import '../../app/config/app_config.dart';
 // Phlio design system — cards and avatars.
 //
 // [PhlioCard] is the one surface elevation the whole app uses for grouped
@@ -104,7 +105,7 @@ class PhlioAvatar extends StatelessWidget {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       return ClipOval(
         child: Image.network(
-          imageUrl!,
+          AppConfig.mediaUrl(imageUrl!),
           width: size,
           height: size,
           fit: BoxFit.cover,

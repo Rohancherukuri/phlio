@@ -44,7 +44,8 @@ String attachmentKindForName(String name) {
 }
 
 /// Extracts a bounded text sample off the UI thread, without unpacking files to disk.
-Future<String> documentSample(String path, String name) => compute(_readSample, (path, name));
+Future<String> documentSample(String path, String name) =>
+    compute(_readSample, (path, name));
 
 String _readSample((String, String) input) {
   final file = File(input.$1);

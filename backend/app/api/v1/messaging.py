@@ -104,6 +104,8 @@ async def messages(
     c: Container = Depends(get_container),
 ):
     target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
     return c.messaging_service.history(user.id, target.id, before)
 
 
@@ -112,6 +114,8 @@ async def send(
     peer: str, body: MessageIn, user: User = Depends(get_current_user), c: Container = Depends(get_container)
 ):
     target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
     for a in body.attachments:
         if a.kind in ("sticker", "gif") and not a.url:
             validate_pack(a.kind, a.value)
@@ -153,6 +157,8 @@ async def files(
     c: Container = Depends(get_container),
 ):
     target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
     if not 1 <= len(files) <= 10:
         raise HTTPException(422, "Attach up to ten media files.")
     try:
@@ -237,6 +243,8 @@ async def set_overlays(
     c: Container = Depends(get_container),
 ):
     target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
     return {
         "overlays": c.messaging_service.overlays(
             message_id, user.id, target.id, [v.model_dump() for v in body.overlays]
@@ -271,6 +279,8 @@ async def create_call(
     body: CallIn, user: User = Depends(get_current_user), c: Container = Depends(get_container)
 ):
     target = await resolve_peer(body.peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
     return c.messaging_service.public_call(c.messaging_service.create_call(user.id, target.id, body.video))
 
 
@@ -312,14 +322,9 @@ class FriendIn(BaseModel):
 
 @router.get("/friends")
 async def friends(user: User = Depends(get_current_user), c: Container = Depends(get_container)):
-    items = []
-    for relation in c.messaging_service.friends(user.id):
-        peer_id = relation["recipient"] if relation["sender"] == user.id else relation["sender"]
-        peer = await c.identity_repository.get_by_id(peer_id)
-        if peer:
-            items.append(
-                dict(peer=profile(peer), status=relation["status"], incoming=relation["recipient"] == user.id)
-            )
+    items = (await c.graph.connections(user.id))["friends"]
+    for item in items:
+        item["peer"]["full_name"] = item["peer"].pop("display_name")
     return items
 
 
@@ -328,7 +333,7 @@ async def add_friend(
     body: FriendIn, user: User = Depends(get_current_user), c: Container = Depends(get_container)
 ):
     peer = await resolve_peer(body.peer, c)
-    c.messaging_service.request_friend(user.id, peer.id)
+    await c.graph.relationship(user.id, peer.id, "request")
     return {"status": "pending"}
 
 
@@ -340,7 +345,9 @@ async def friend_action(
     c: Container = Depends(get_container),
 ):
     target = await resolve_peer(peer, c)
-    c.messaging_service.friend_action(user.id, target.id, action)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
+    await c.graph.relationship(user.id, target.id, action)
 
 
 def matches_search(message: dict, query: str, kind: str) -> bool:

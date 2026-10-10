@@ -105,8 +105,6 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
     }
   }
 
-  Future<void> _openComposer() => showPostComposer(context, ref);
-
   void _openComments(String postId) {
     showModalBottomSheet<void>(
       context: context,
@@ -118,7 +116,6 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
   @override
   Widget build(BuildContext context) {
     final feedAsync = ref.watch(feedControllerProvider);
-    final currentUser = ref.watch(authControllerProvider).valueOrNull;
 
     return feedAsync.when(
       loading: () => const PhlioLoadingIndicator(),
@@ -137,24 +134,6 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
             PhlioSpacing.lg,
           ),
           children: [
-            PhlioCard(
-              onTap: _openComposer,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      currentUser != null
-                          ? "Share something, ${currentUser.fullName.split(' ').first}..."
-                          : 'Share something...',
-                      style: PhlioTypography.body,
-                    ),
-                  ),
-                  const Icon(Icons.edit_outlined,
-                      color: PhlioColors.textMuted, size: 18),
-                ],
-              ),
-            ),
-            const SizedBox(height: PhlioSpacing.lg),
             for (final post in state.posts) ...[
               PostCard(
                 post: post,

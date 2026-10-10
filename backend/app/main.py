@@ -11,6 +11,8 @@ demo seed data, then exposes the `app` object uvicorn serves.
 from __future__ import annotations
 
 import logging
+import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -50,7 +52,23 @@ async def lifespan(app: FastAPI):
         settings.database_backend,
         type(container.agent_planner).__name__,
     )
-    yield
+    from app.infrastructure.outbox import run as deliver_outbox
+    worker = asyncio.create_task(deliver_outbox(container))
+    from app.domains.graph.news import run as refresh_news
+    news_worker = asyncio.create_task(refresh_news(container)) if settings.news_ingestion_enabled else None
+    try:
+        yield
+    finally:
+        if news_worker:
+            news_worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await news_worker
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
+    await container.cache.close()
+    if container.graph.store.db:
+        await container.graph.store.db.close()
     container.messaging_service.db.close()
     container.social_video_service.db.close()
     logger.info("Phlio API shutting down.")

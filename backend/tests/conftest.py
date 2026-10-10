@@ -24,6 +24,8 @@ from app.main import create_app
 def settings(tmp_path) -> Settings:
     return Settings(
         database_backend="memory",
+        redis_enabled=False,
+        news_ingestion_enabled=False,
         messaging_database=":memory:",
         social_video_database=":memory:",
         media_root=str(tmp_path / "media"),

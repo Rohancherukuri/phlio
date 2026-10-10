@@ -41,12 +41,7 @@ enum PhlioPlatform {
         PhlioPlatform.agent => PhlioColors.brandOrange,
       };
 
-  /// Stream and News are roadmap platforms (no backend domain yet) — the
-  /// app still switches to them and shows an honest "coming soon" surface.
-  bool get isAvailable => switch (this) {
-        PhlioPlatform.stream || PhlioPlatform.news => false,
-        _ => true,
-      };
+  bool get isAvailable => true;
 }
 
 /// The platform the shell is currently showing. Defaults to Social —
