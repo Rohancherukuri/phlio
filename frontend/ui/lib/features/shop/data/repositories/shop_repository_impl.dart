@@ -46,7 +46,8 @@ class ShopRepositoryImpl implements ShopRepository {
       final product = await _remoteDataSource.toggleFavorite(productId);
       return Result.success(product.toEntity());
     } on DioException catch (e) {
-      _logger.warning('shop.toggle_favorite failed product_id=$productId', error: e);
+      _logger.warning('shop.toggle_favorite failed product_id=$productId',
+          error: e);
       return Result.failure(mapDioErrorToFailure(e));
     }
   }

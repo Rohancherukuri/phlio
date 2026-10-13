@@ -18,8 +18,10 @@ class ShopRemoteDataSource {
     final response = await _apiClient.dio.get(
       '/shop/products',
       queryParameters: {
+        'limit': 100,
         if (category != null) 'category': category.apiValue,
-        if (maxPriceMinorUnits != null) 'max_price_minor_units': maxPriceMinorUnits,
+        if (maxPriceMinorUnits != null)
+          'max_price_minor_units': maxPriceMinorUnits,
         if (cursor != null) 'cursor': cursor,
       },
     );
@@ -27,7 +29,8 @@ class ShopRemoteDataSource {
   }
 
   Future<ProductModel> toggleFavorite(String productId) async {
-    final response = await _apiClient.dio.post('/shop/products/$productId/favorite');
+    final response =
+        await _apiClient.dio.post('/shop/products/$productId/favorite');
     return ProductModel.fromJson(response.data as Map<String, dynamic>);
   }
 

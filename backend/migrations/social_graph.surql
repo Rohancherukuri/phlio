@@ -123,3 +123,7 @@ DEFINE INDEX IF NOT EXISTS content_platform ON platform_content FIELDS platform;
 DEFINE INDEX IF NOT EXISTS group_message_group ON graph_group_message FIELDS group_id, created_at;
 
 DEFINE TABLE IF NOT EXISTS shared_story SCHEMALESS PERMISSIONS NONE;
+
+DEFINE TABLE IF NOT EXISTS content_comment SCHEMALESS PERMISSIONS NONE;
+DEFINE TABLE IF NOT EXISTS shop_cart SCHEMALESS PERMISSIONS NONE;
+DEFINE INDEX IF NOT EXISTS cart_owner ON shop_cart FIELDS user_id;

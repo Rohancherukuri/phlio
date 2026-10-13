@@ -16,6 +16,7 @@ class MediaKind(StrEnum):
 class MediaAttachment:
     url: str
     kind: MediaKind
+    thumbnail_url: str | None = None
 
 
 @dataclass(slots=True)

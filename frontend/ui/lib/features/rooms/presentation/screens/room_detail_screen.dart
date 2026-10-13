@@ -17,6 +17,7 @@ import '../../../../shared/widgets/loading_indicator.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../controllers/room_chat_controller.dart';
 import '../widgets/message_attachments.dart';
+import '../../../../shared/realtime/realtime_screen.dart';
 
 class RoomDetailScreen extends ConsumerStatefulWidget {
   const RoomDetailScreen({required this.roomId, super.key});
@@ -59,7 +60,24 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-          title: Text('# ${widget.roomId}', style: PhlioTypography.title)),
+          title: Text('# ${widget.roomId}', style: PhlioTypography.title),
+          actions: [
+            IconButton(
+                tooltip: 'Join voice',
+                icon: const Icon(Icons.headphones),
+                onPressed: () => openRealtime(context,
+                    endpoint: '/realtime/rooms/${widget.roomId}/join',
+                    title: 'Room voice',
+                    rooms: true,
+                    video: false)),
+            IconButton(
+                tooltip: 'Join video',
+                icon: const Icon(Icons.videocam_outlined),
+                onPressed: () => openRealtime(context,
+                    endpoint: '/realtime/rooms/${widget.roomId}/join',
+                    title: 'Room video',
+                    rooms: true)),
+          ]),
       body: Column(
         children: [
           Expanded(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/service_locator.dart';
@@ -17,15 +18,37 @@ class PlayableVideo {
     this.durationSeconds = 0,
     this.platform = 'social',
     this.contentId,
+    this.attribution,
     this.thumbnailUrl,
+    this.sources = const [],
   });
   final String id, title, creator, url, kind;
   final int durationSeconds;
   final String platform;
   final String? contentId;
+  final String? attribution;
   final String? thumbnailUrl;
+  final List<Map<String, dynamic>> sources;
+  PlayableVideo withUrl(String value) => PlayableVideo(
+      id: id,
+      title: title,
+      creator: creator,
+      url: value,
+      creatorName: creatorName,
+      avatarUrl: avatarUrl,
+      kind: kind,
+      durationSeconds: durationSeconds,
+      platform: platform,
+      contentId: contentId,
+      attribution: attribution,
+      thumbnailUrl: thumbnailUrl,
+      sources: sources);
   final String? localPath, creatorName, avatarUrl;
   factory PlayableVideo.fromJson(Map json) => PlayableVideo(
+        sources: (json['sources'] as List? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList(),
+        attribution: json['attribution'] as String?,
         id: json['id'] as String,
         title: json['title'] as String,
         creator: json['creator'] as String,
@@ -100,6 +123,9 @@ final socialVideoApiProvider =
     Provider((ref) => SocialVideoApi(getIt<ApiClient>().dio));
 final socialVideoCatalogProvider = FutureProvider.autoDispose((ref) {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+  final refresh =
+      Timer.periodic(const Duration(minutes: 1), (_) => ref.invalidateSelf());
+  ref.onDispose(refresh.cancel);
   return ref.watch(socialVideoApiProvider).videos();
 });
 final creatorFollowingProvider = FutureProvider((ref) {

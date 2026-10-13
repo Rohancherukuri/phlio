@@ -12,6 +12,7 @@ import '../../../../design_system/radii.dart';
 import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../domain/entities/product_entity.dart';
+import '../screens/cart_sheet.dart';
 
 class ProductCard extends StatelessWidget {
   const ProductCard(
@@ -51,7 +52,7 @@ class ProductCard extends StatelessWidget {
       borderRadius: PhlioRadii.xlRadius,
       child: InkWell(
         borderRadius: PhlioRadii.xlRadius,
-        onTap: onTap,
+        onTap: onTap ?? () => showShopProduct(context, product),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -66,9 +67,9 @@ class ProductCard extends StatelessWidget {
                             AppConfig.mediaUrl(product.imageUrls.first),
                             width: double.infinity,
                             height: double.infinity,
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) =>
-                                Image.asset(_image, fit: BoxFit.cover))
+                                const Center(child: Icon(Icons.image_not_supported_outlined)))
                         : Image.asset(
                             _image,
                             width: double.infinity,
@@ -124,6 +125,7 @@ class ProductCard extends StatelessWidget {
                     size: 16, color: PhlioColors.textMuted),
               ],
             ),
+            AddToCartButton(product: product),
           ],
         ),
       ),

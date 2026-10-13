@@ -24,6 +24,9 @@ class InMemoryIdentityRepository:
     async def get_by_id(self, user_id: str) -> User | None:
         return self._by_id.get(user_id)
 
+    async def get_many(self, user_ids: list[str]) -> list[User]:
+        return [self._by_id[uid] for uid in set(user_ids) if uid in self._by_id]
+
     async def get_by_username(self, username: str) -> User | None:
         user_id = self._by_username.get(username)
         return self._by_id.get(user_id) if user_id else None

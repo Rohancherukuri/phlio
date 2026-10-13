@@ -1,3 +1,5 @@
+import 'dart:ui' show FontFeature;
+import 'social_comments_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,7 +23,8 @@ final engagementProvider =
 final contentProvider =
     FutureProvider.autoDispose.family<Map, String>((ref, path) async {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
-  final result = (await getIt<ApiClient>().dio.get('/content/$path')).data as Map;
+  final result =
+      (await getIt<ApiClient>().dio.get('/content/$path')).data as Map;
   try {
     await getIt<ApiClient>().dio.put('/content/$path/actions/viewed');
   } catch (_) {}
@@ -207,7 +210,13 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
               TextButton.icon(
                 style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: const Size(40, 36)),
+                    foregroundColor: const Color(0xFFC4C8D2),
+                    textStyle: const TextStyle(
+                        fontSize: 12,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: [FontFeature.tabularFigures()]),
+                    minimumSize: const Size(44, 40)),
                 onPressed: busy
                     ? null
                     : () async {
@@ -233,7 +242,7 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
                     color: data?['${verb}_by_me'] == true
                         ? const Color(0xFF8D78FF)
                         : null),
-                label: Text('${data?[countKey] ?? 0}',
+                label: Text(formatEngagementCount(data?[countKey] as num? ?? 0),
                     semanticsLabel: '$label ${data?[countKey] ?? 0}'),
               );
           return Column(
@@ -254,11 +263,32 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
                           'bookmarks_count'),
                       action(
                           'reposted', 'Reposts', Icons.repeat, 'reposts_count'),
-                      Text('${data?['shares_count'] ?? 0} shares',
-                          style: const TextStyle(fontSize: 11)),
-                      const Icon(Icons.visibility_outlined, size: 15),
-                      Text('${data?['views_count'] ?? 0}',
-                          style: const TextStyle(fontSize: 11)),
+                      if (widget.path.startsWith('social/'))
+                        IconButton(
+                            tooltip: 'Comments',
+                            icon: const Icon(Icons.chat_bubble_outline_rounded,
+                                size: 19),
+                            onPressed: () => showSocialComments(
+                                context, widget.path.substring(7))),
+                      Tooltip(
+                          message: 'Shares',
+                          child: Text(
+                              '${formatEngagementCount(data?['shares_count'] as num? ?? 0)} shares',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF858D9E)))),
+                      const Icon(Icons.visibility_outlined,
+                          size: 17, color: Color(0xFF858D9E)),
+                      Tooltip(
+                          message: 'Views',
+                          child: Text(
+                              formatEngagementCount(
+                                  data?['views_count'] as num? ?? 0),
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF858D9E)))),
                     ]),
               ]);
         }));
@@ -1047,4 +1077,12 @@ class ContentLibraryScreen extends ConsumerWidget {
                     ]),
             ),
       );
+}
+
+String formatEngagementCount(num value) {
+  if (value >= 1000000)
+    return '${(value / 1000000).toStringAsFixed(1).replaceAll(RegExp(r"\.0$"), "")}M';
+  if (value >= 1000)
+    return '${(value / 1000).toStringAsFixed(1).replaceAll(RegExp(r"\.0$"), "")}K';
+  return value.toInt().toString();
 }

@@ -12,7 +12,8 @@ import '../colors.dart';
 import '../typography.dart';
 
 class PhlioBottomNavItem {
-  const PhlioBottomNavItem({required this.icon, required this.activeIcon, required this.label});
+  const PhlioBottomNavItem(
+      {required this.icon, required this.activeIcon, required this.label});
 
   final IconData icon;
   final IconData activeIcon;
@@ -23,9 +24,16 @@ class PhlioBottomNavItem {
 /// button and the trailing app-tray slot are handled via callbacks in
 /// [PhlioBottomNav] and never render as selected.
 const List<PhlioBottomNavItem> phlioBottomNavItems = [
-  PhlioBottomNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
-  PhlioBottomNavItem(icon: Icons.search_outlined, activeIcon: Icons.search_rounded, label: 'Explore'),
-  PhlioBottomNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile'),
+  PhlioBottomNavItem(
+      icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
+  PhlioBottomNavItem(
+      icon: Icons.search_outlined,
+      activeIcon: Icons.search_rounded,
+      label: 'Explore'),
+  PhlioBottomNavItem(
+      icon: Icons.person_outline_rounded,
+      activeIcon: Icons.person_rounded,
+      label: 'Profile'),
 ];
 
 class PhlioBottomNav extends StatelessWidget {
@@ -37,6 +45,8 @@ class PhlioBottomNav extends StatelessWidget {
     this.onTrayTap,
     this.createIcon = Icons.add_rounded,
     this.profileAvatar,
+    this.createLabel = 'Create',
+    this.createCount = 0,
   });
 
   /// Index into [phlioBottomNavItems] (0-2). The center create button and
@@ -48,6 +58,8 @@ class PhlioBottomNav extends StatelessWidget {
 
   /// The center button's glyph — Phlio Pay swaps the plus for a QR scanner.
   final IconData createIcon;
+  final String createLabel;
+  final int createCount;
 
   /// Optional avatar widget rendered in place of the Profile icon (the
   /// user's picture once they upload one).
@@ -97,10 +109,12 @@ class PhlioBottomNav extends StatelessWidget {
               tween: Tween(begin: selected ? 0.8 : 1.0, end: 1.0),
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutBack,
-              builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+              builder: (context, scale, child) =>
+                  Transform.scale(scale: scale, child: child),
               child: (index == 2 && profileAvatar != null)
                   ? _ringedAvatar(profileAvatar!)
-                  : Icon(selected ? item.activeIcon : item.icon, color: color, size: 24),
+                  : Icon(selected ? item.activeIcon : item.icon,
+                      color: color, size: 24),
             ),
             const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
@@ -131,7 +145,8 @@ class PhlioBottomNav extends StatelessWidget {
       padding: const EdgeInsets.all(1.5),
       decoration: const BoxDecoration(shape: BoxShape.circle),
       foregroundDecoration: const ShapeDecoration(
-        shape: CircleBorder(side: BorderSide(color: PhlioColors.brandOrange, width: 2)),
+        shape: CircleBorder(
+            side: BorderSide(color: PhlioColors.brandOrange, width: 2)),
       ),
       child: SizedBox(width: 24, height: 24, child: ClipOval(child: avatar)),
     );
@@ -149,7 +164,17 @@ class PhlioBottomNav extends StatelessWidget {
               gradient: PhlioColors.sunsetGradient,
               shape: BoxShape.circle,
             ),
-            child: Icon(createIcon, color: PhlioColors.textOnBrand, size: 26),
+            child: Tooltip(
+                message: createLabel,
+                child: Semantics(
+                    label: createLabel,
+                    button: true,
+                    child: Center(
+                        child: Badge(
+                            isLabelVisible: createCount > 0,
+                            label: Text('$createCount'),
+                            child: Icon(createIcon,
+                                color: PhlioColors.textOnBrand, size: 26))))),
           ),
         ),
       ),
@@ -165,9 +190,12 @@ class PhlioBottomNav extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.grid_view_outlined, color: PhlioColors.textMuted, size: 24),
+            const Icon(Icons.grid_view_outlined,
+                color: PhlioColors.textMuted, size: 24),
             const SizedBox(height: 2),
-            Text('Tray', style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted)),
+            Text('Tray',
+                style: PhlioTypography.caption
+                    .copyWith(color: PhlioColors.textMuted)),
             const SizedBox(height: 5),
           ],
         ),

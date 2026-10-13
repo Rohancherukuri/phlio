@@ -224,7 +224,8 @@ async def seed(database):
                 ).fetchone():
                     c.social_video_service.publish(vid, uid, title, f"/media/demo_graph/{kind}_{i:02}.mp4")
                 c.social_video_service.db.execute(
-                    "UPDATE videos SET kind=?, thumbnail_url=? WHERE id=?",
+                    "UPDATE videos SET kind=?, thumbnail_url=? WHERE id=? "
+                    "AND (url LIKE '/media/demo_graph/%' OR thumbnail_url IS NULL)",
                     (kind, f"/media/demo_graph/cover_{i:02}.jpg", vid),
                 )
                 c.social_video_service.db.commit()

@@ -58,6 +58,10 @@ class Settings(BaseSettings):
 
     social_video_database: str = 'data/social_videos.sqlite3'
     messaging_database: str = 'data/messages.sqlite3'
+    livekit_url: str = ''
+    livekit_api_url: str = ''
+    livekit_api_key: str = ''
+    livekit_api_secret: str = ''
     messaging_media_root: str = 'data/dm_files'
     calls_ice_servers: list[dict] = Field(
         default_factory=lambda: [{'urls': 'stun:stun.l.google.com:19302'}]

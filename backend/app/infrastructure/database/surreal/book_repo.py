@@ -38,7 +38,8 @@ class SurrealBookRepository:
         items = [
             self.listing(r)
             for r in rows
-            if (category is None or r["category"] == category.value)
+            if not r['id'].startswith('book_listing:demo_')
+            and (category is None or r["category"] == category.value)
             and (max_price_minor_units is None or r["price_min_minor_units"] <= max_price_minor_units)
         ]
         return _paginate(items, cursor=cursor, limit=limit)

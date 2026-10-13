@@ -13,6 +13,7 @@ class BookRemoteDataSource {
     final response = await _apiClient.dio.get(
       '/book/listings',
       queryParameters: {
+        'limit': 100,
         if (category != null) 'category': category,
         if (maxPriceMinorUnits != null) 'max_price_minor_units': maxPriceMinorUnits,
         if (cursor != null) 'cursor': cursor,

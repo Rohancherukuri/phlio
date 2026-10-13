@@ -1,3 +1,4 @@
+import '../../../../shared/realtime/realtime_screen.dart';
 import 'package:flutter/material.dart';
 import 'social_graph_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,7 +50,7 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
 
   void _tabChanged() {
     if (_selected == _tabs.index) return;
-    _selected = _tabs.index;
+    setState(() => _selected = _tabs.index);
     _settle(_foldTargets[_selected]);
   }
 
@@ -105,10 +106,12 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
                         builder: (context, _) => _header(context, _fold.value)),
                     Expanded(
                         child: TabBarView(controller: _tabs, children: [
-                      for (final (index, child) in const [
-                        SocialFeedView(),
-                        SocialVideosView(),
-                        SocialClipsView()
+                      for (final (index, child) in [
+                        const SocialFeedView(),
+                        const SocialVideosView(),
+                        TickerMode(
+                            enabled: _selected == 2,
+                            child: const SocialClipsView())
                       ].indexed)
                         _SocialTab(
                             key: ValueKey('social-tab-$index'),
@@ -179,7 +182,12 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
                           Tab(text: 'Videos'),
                           Tab(text: 'Clips')
                         ])),
-                    if (!stackOnOwnLine) const SizedBox(width: 62, height: 48),
+                    IconButton(
+                        tooltip: 'Live now',
+                        icon: const Icon(Icons.live_tv, size: 22),
+                        onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const SocialLiveScreen()))),
                     IconButton(
                         tooltip: 'Activity',
                         onPressed: () => Navigator.of(context).push(

@@ -17,6 +17,9 @@ class BookListingEntity {
     required this.startsAt,
     required this.isFree,
     required this.tags,
+    this.imageUrl,
+    this.sourceUrl,
+    this.sourceName,
   });
 
   final String id;
@@ -33,22 +36,36 @@ class BookListingEntity {
   final DateTime? startsAt;
   final bool isFree;
   final List<String> tags;
+  final String? imageUrl, sourceUrl, sourceName;
 
   String get displayPrice {
+    if (sourceUrl != null && priceMinMinorUnits == 0 && !isFree)
+      return 'Check ticket prices';
     if (isFree) return 'Free';
     final min = priceMinMinorUnits / 100;
     final max = priceMaxMinorUnits / 100;
-    if (priceMinMinorUnits == priceMaxMinorUnits) return '₹${min.toStringAsFixed(0)}';
+    if (priceMinMinorUnits == priceMaxMinorUnits)
+      return '₹${min.toStringAsFixed(0)}';
     return '₹${min.toStringAsFixed(0)} – ₹${max.toStringAsFixed(0)}';
   }
 }
 
 /// Mirrors the backend's `BookCategory` (blueprint section 9 categories).
-enum BookCategory { entertainment, sportsAndActivities, mobility, services, meet, travel }
+enum BookCategory {
+  entertainment,
+  sportsAndActivities,
+  mobility,
+  services,
+  meet,
+  travel
+}
 
 extension BookCategoryX on BookCategory {
-  static BookCategory fromApiValue(String value) => BookCategory.values.firstWhere(
-        (c) => c.name == value,
+  String get apiValue =>
+      this == BookCategory.sportsAndActivities ? 'sports_and_activities' : name;
+  static BookCategory fromApiValue(String value) =>
+      BookCategory.values.firstWhere(
+        (c) => c.apiValue == value,
         orElse: () => BookCategory.entertainment,
       );
 

@@ -13,6 +13,9 @@ class BrowseProductsUseCase {
     int? maxPriceMinorUnits,
     String? cursor,
   }) {
-    return _repository.browse(category: category, maxPriceMinorUnits: maxPriceMinorUnits, cursor: cursor);
+    return _repository.browse(
+        category: category,
+        maxPriceMinorUnits: maxPriceMinorUnits,
+        cursor: cursor);
   }
 }

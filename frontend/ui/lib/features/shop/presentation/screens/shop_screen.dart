@@ -52,13 +52,13 @@ class ShopScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Art lives here.',
+                          'Find your next favorite.',
                           style: PhlioTypography.displayMedium
                               .copyWith(color: Colors.white),
                         ),
                         const SizedBox(height: PhlioSpacing.xs),
                         Text(
-                          'Real creators. Real stories. From art to everyday finds.',
+                          'Discover fashion, electronics, beauty and everyday finds.',
                           style: PhlioTypography.body
                               .copyWith(color: Colors.white70),
                         ),
@@ -157,7 +157,7 @@ class ShopScreen extends ConsumerWidget {
                                     3 * PhlioSpacing.lg) /
                                 2 +
                             MediaQuery.textScalerOf(context).scale(42) +
-                            110,
+                            158,
                       ),
                       itemBuilder: (context, index) {
                         final product = products[index];
@@ -198,7 +198,7 @@ class _EmptyCategoryState extends StatelessWidget {
             style: PhlioTypography.body,
           ),
           const SizedBox(height: PhlioSpacing.xs),
-          Text('Art & Handmade is the first category live on Phlio Shop.',
+          Text('Try another category or check back for new products.',
               style: PhlioTypography.caption),
         ],
       ),

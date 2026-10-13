@@ -29,7 +29,8 @@ enum ShopCategory {
   final String label;
 
   static ShopCategory fromApiValue(String value) =>
-      ShopCategory.values.firstWhere((c) => c.apiValue == value, orElse: () => ShopCategory.artAndHandmade);
+      ShopCategory.values.firstWhere((c) => c.apiValue == value,
+          orElse: () => ShopCategory.artAndHandmade);
 }
 
 enum ProductCondition {
@@ -46,8 +47,9 @@ enum ProductCondition {
   final String apiValue;
   final String label;
 
-  static ProductCondition fromApiValue(String value) => ProductCondition.values
-      .firstWhere((c) => c.apiValue == value, orElse: () => ProductCondition.newItem);
+  static ProductCondition fromApiValue(String value) =>
+      ProductCondition.values.firstWhere((c) => c.apiValue == value,
+          orElse: () => ProductCondition.newItem);
 }
 
 class ProductEntity extends Equatable {
@@ -87,7 +89,7 @@ class ProductEntity extends Equatable {
     final majorUnits = priceMinorUnits / 100;
     final symbol = currency == 'INR' ? '₹' : '$currency ';
     final formatted = majorUnits
-        .toStringAsFixed(0)
+        .toStringAsFixed(priceMinorUnits % 100 == 0 ? 0 : 2)
         .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
     return '$symbol$formatted';
   }
@@ -110,5 +112,6 @@ class ProductEntity extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, title, priceMinorUnits, favoriteCount, favoritedByMe];
+  List<Object?> get props =>
+      [id, title, priceMinorUnits, favoriteCount, favoritedByMe];
 }

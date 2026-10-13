@@ -25,7 +25,7 @@ void main() {
     // This is the element type that existed before the Riverpod migration.
     final element = tester.element(find.byType(SocialVideosView));
     expect(element.runtimeType, StatefulElement);
-    expect(find.text('Following'), findsWidgets);
+    expect(find.text('Recommended for you'), findsWidgets);
     expect(tester.takeException(), isNull);
     // Exercise hot-reload reassembly on the retained element, without a VM reload.
     // ignore: invalid_use_of_protected_member
@@ -34,7 +34,7 @@ void main() {
     expect(tester.element(find.byType(SocialVideosView)), same(element));
     ProviderScope.containerOf(element).invalidate(socialVideoCatalogProvider);
     await tester.pumpAndSettle();
-    expect(find.text('Following'), findsWidgets);
+    expect(find.text('Recommended for you'), findsWidgets);
     expect(requests, 2);
     expect(tester.takeException(), isNull);
   });

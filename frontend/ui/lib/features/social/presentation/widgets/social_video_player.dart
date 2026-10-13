@@ -1,3 +1,6 @@
+import 'social_watch_view.dart';
+import 'video_settings_panel.dart';
+import '../../../../shared/content/social_comments_sheet.dart';
 import '../../../../app/router/app_router.dart';
 import '../../../../shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +19,8 @@ class SocialVideoPlayer extends ConsumerStatefulWidget {
 class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
     with WidgetsBindingObserver {
   Offset offset = Offset.zero;
-  bool settings = false;
+  bool settings = false, locked = false, audioOnly = false;
+  String? lastId;
   @override
   void initState() {
     super.initState();
@@ -44,6 +48,12 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
     if (c.mode == SocialPlayerMode.hidden || c.video == null) {
       return const SizedBox.shrink();
     }
+    if (lastId != c.video!.id) {
+      lastId = c.video!.id;
+      settings = false;
+      locked = false;
+      audioOnly = false;
+    }
     final mini = c.mode == SocialPlayerMode.floating;
     final full = c.mode == SocialPlayerMode.fullscreen;
     final p = c.player;
@@ -67,39 +77,61 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
       }
     }
 
-    final picture = ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: c.error != null
-            ? SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(c.error!, textAlign: TextAlign.center),
-                    TextButton(
-                      onPressed: () => c.open(c.video!),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              )
-            : !ready
-                ? const CircularProgressIndicator()
-                : ClipRect(
-                    child: SizedBox.expand(
-                      child: FittedBox(
-                        fit: c.fill ? BoxFit.cover : BoxFit.contain,
-                        child: SizedBox(
-                          width: p!.value.size.width,
-                          height: p.value.size.height,
-                          child: VideoPlayer(p),
-                        ),
+    Future<void> commentsVideo() async {
+      final source = c.video!;
+      final navigatorContext =
+          ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      if (navigatorContext == null || source.localPath != null) return;
+      final previousMode = c.mode;
+      final wasPlaying = p?.value.isPlaying == true;
+      await p?.pause();
+      c.setMode(SocialPlayerMode.hidden);
+      if (navigatorContext.mounted)
+        await showSocialComments(
+            navigatorContext, source.contentId ?? source.id);
+      if (mounted && c.video == source) {
+        c.setMode(previousMode);
+        if (wasPlaying) await p?.play();
+      }
+    }
+
+    final picture = audioOnly
+        ? const ColoredBox(
+            color: Colors.black,
+            child: Center(child: Icon(Icons.headphones, size: 64)))
+        : ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: c.error != null
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(c.error!, textAlign: TextAlign.center),
+                          TextButton(
+                            onPressed: () => c.open(c.video!),
+                            child: const Text('Retry'),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-      ),
-    );
+                    )
+                  : !ready
+                      ? const CircularProgressIndicator()
+                      : ClipRect(
+                          child: SizedBox.expand(
+                            child: FittedBox(
+                              fit: c.fill ? BoxFit.cover : BoxFit.contain,
+                              child: SizedBox(
+                                width: p!.value.size.width,
+                                height: p.value.size.height,
+                                child: VideoPlayer(p),
+                              ),
+                            ),
+                          ),
+                        ),
+            ),
+          );
     final controls = Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -133,6 +165,10 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
             'Mute or unmute',
             () => c.setVolume(c.volume == 0 ? 1 : 0),
           ),
+        if (!mini &&
+            c.video!.localPath == null &&
+            c.video!.platform == 'social')
+          button(Icons.chat_bubble_outline, 'Comments', commentsVideo),
         if (!mini && c.video!.localPath == null)
           button(Icons.ios_share, 'Share video', shareVideo),
         if (!mini)
@@ -260,69 +296,61 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                         ],
                       ),
                     ),
-                  if (settings && !mini)
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Playback speed'),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  .25,
-                                  .5,
-                                  .75,
-                                  1.0,
-                                  1.25,
-                                  1.5,
-                                  1.75,
-                                  2.0,
-                                ]
-                                    .map(
-                                      (s) => ChoiceChip(
-                                        label: Text('${s}x'),
-                                        selected: c.speed == s,
-                                        onSelected: (_) => c.setSpeed(s),
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                              Row(
-                                children: [
-                                  const Icon(Icons.volume_up),
-                                  Expanded(
-                                    child: Slider(
-                                      value: c.volume,
-                                      onChanged: c.setVolume,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SwitchListTile(
-                                title: const Text('Loop video'),
-                                value: c.loop,
-                                onChanged: c.setLoop,
-                              ),
-                              SwitchListTile(
-                                title: const Text('Fill screen'),
-                                value: c.fill,
-                                onChanged: c.setFill,
-                              ),
-                              const Text('Original source quality'),
-                              if (c.notice != null) Text(c.notice!),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
           );
-          if (!mini) return content;
+          if (!mini) {
+            final watch = !full &&
+                c.video!.platform == 'social' &&
+                c.video!.localPath == null;
+            final body = watch
+                ? Material(
+                    color: PhlioColors.background,
+                    child: SafeArea(
+                        bottom: false,
+                        child: SocialWatchView(
+                            video: c.video!,
+                            picture: GestureDetector(
+                                onLongPress: shareVideo, child: picture),
+                            onSettings: () => setState(() => settings = true),
+                            onShare: shareVideo,
+                            onComments: commentsVideo,
+                            onProfile: (id) {
+                              c.setMode(SocialPlayerMode.floating);
+                              ref
+                                  .read(routerProvider)
+                                  .push('/creator/${Uri.encodeComponent(id)}');
+                            })))
+                : content;
+            return Stack(children: [
+              Positioned.fill(
+                  child: AbsorbPointer(absorbing: locked, child: body)),
+              if (settings)
+                Positioned.fill(
+                    child: VideoSettingsPanel(
+                        controller: c,
+                        onClose: () => setState(() => settings = false),
+                        audioOnly: audioOnly,
+                        onAudioOnly: (value) =>
+                            setState(() => audioOnly = value),
+                        onLock: () {
+                          setState(() {
+                            settings = false;
+                            locked = true;
+                          });
+                          c.setMode(SocialPlayerMode.fullscreen);
+                        })),
+              if (locked)
+                Positioned(
+                    right: 16,
+                    top: MediaQuery.paddingOf(context).top + 12,
+                    child: FilledButton.icon(
+                        onPressed: () => setState(() => locked = false),
+                        icon: const Icon(Icons.lock_open),
+                        label: const Text('Unlock controls'))),
+            ]);
+          }
           return Stack(
             children: [
               Positioned(

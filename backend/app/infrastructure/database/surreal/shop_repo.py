@@ -88,7 +88,7 @@ class SurrealShopRepository:
     ) -> tuple[list[Product], str | None]:
         query = f"SELECT * FROM {_PRODUCTS} "
         params: dict = {"limit": limit + 1}
-        clauses = []
+        clauses = ["!string::starts_with(<string>id, 'product:demo_')"]
         if category is not None:
             clauses.append("category = $category")
             params["category"] = category.value
@@ -115,7 +115,7 @@ class SurrealShopRepository:
 
     async def list_featured_sellers(self, limit: int) -> list[Seller]:
         result = await self._db.query(
-            f"SELECT * FROM {_SELLERS} ORDER BY followers_count DESC LIMIT $limit",
+            f"SELECT * FROM {_SELLERS} WHERE !string::starts_with(<string>id, 'seller:demo_') ORDER BY followers_count DESC LIMIT $limit",
             {"limit": limit},
         )
         records = result[0]["result"] if result and result[0].get("result") else []

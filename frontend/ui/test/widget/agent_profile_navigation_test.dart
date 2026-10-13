@@ -28,7 +28,8 @@ class _Agent extends AgentController {
 class _Playback extends VideoPlaybackController {
   PlayableVideo? opened;
   @override
-  Future<void> open(PlayableVideo source) async {
+  Future<void> open(PlayableVideo source,
+      {bool force = false, Duration? position, bool autoplay = true}) async {
     opened = source;
   }
 }

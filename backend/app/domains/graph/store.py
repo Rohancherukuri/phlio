@@ -5,6 +5,8 @@ import uuid
 from app.infrastructure.database.surreal.client import record
 
 TABLES = {
+    "shop_cart",
+    "content_comment",
     "shared_story",
     "platform_content",
     "graph_group",
@@ -40,6 +42,9 @@ class MemoryGraphStore:
     async def get(self, key):
         table = key.split(":", 1)[0]
         return copy.deepcopy(self.data[table].get(key))
+
+    async def get_many(self, keys):
+        return [value for key in keys if (value := await self.get(key)) is not None]
 
     async def rows(self, table, filters=None):
         return [
@@ -80,6 +85,14 @@ class SurrealGraphStore:
         assert key.split(":", 1)[0] in TABLES
         value = await self.db.select(key)
         return value[0] if isinstance(value, list) and value else value or None
+
+    async def get_many(self, keys):
+        if not keys:
+            return []
+        table = keys[0].split(':', 1)[0]
+        assert table in TABLES and all(k.split(':', 1)[0] == table for k in keys)
+        return await self.db.rows(f'SELECT * FROM {table} WHERE id IN $ids',
+                                  {'ids': [record(k) for k in keys]})
 
     async def rows(self, table, filters=None):
         assert table in TABLES

@@ -1,3 +1,4 @@
+import '../../../../shared/realtime/realtime_screen.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Rooms Home hosts friends and search; conversations use the responsive room drawer.
 
@@ -359,6 +360,27 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
               ],
             ),
           ),
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(children: [
+                Expanded(
+                    child: TextButton.icon(
+                        icon: const Icon(Icons.headphones),
+                        label: const Text('Join voice'),
+                        onPressed: () => openRealtime(context,
+                            endpoint: '/realtime/rooms/${widget.room.id}/join',
+                            title: widget.room.name,
+                            rooms: true,
+                            video: false))),
+                Expanded(
+                    child: TextButton.icon(
+                        icon: const Icon(Icons.videocam_outlined),
+                        label: const Text('Join video'),
+                        onPressed: () => openRealtime(context,
+                            endpoint: '/realtime/rooms/${widget.room.id}/join',
+                            title: widget.room.name,
+                            rooms: true))),
+              ])),
           // Thread.
           Expanded(
             child: messagesAsync.when(

@@ -4,6 +4,9 @@ $backendRoot = Split-Path -Parent $PSScriptRoot
 $projectRoot = Split-Path -Parent $backendRoot
 Push-Location -LiteralPath $backendRoot
 try {
+if (Test-Path -LiteralPath (Join-Path $backendRoot 'data/livekit/local.yaml')) {
+    & (Join-Path $PSScriptRoot 'Start-Realtime.ps1')
+}
 New-Item -ItemType Directory -Force -Path 'data/surreal' | Out-Null
 if (-not (Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue)) {
     $surrealExe = (Get-Command surreal -ErrorAction Stop).Source
@@ -23,6 +26,18 @@ if ($Seed) {
     if ($LASTEXITCODE -ne 0) { throw 'Platform content seed failed.' }
     uv run python -m scripts.enrich_social_demo
     if ($LASTEXITCODE -ne 0) { throw 'Social enrichment failed.' }
+    uv run python -m scripts.import_licensed_social
+    if ($LASTEXITCODE -ne 0) { throw 'Licensed social media import failed.' }
+    uv run python -m scripts.prepare_video_renditions
+    if ($LASTEXITCODE -ne 0) { throw 'Video quality preparation failed.' }
+    uv run python -m scripts.seed_social_comments
+    if ($LASTEXITCODE -ne 0) { throw 'Social demo comment seed failed.' }
+    uv run python -m scripts.import_shop_catalog
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Retailer refresh failed; continuing with the saved catalog. Retry python -m scripts.import_shop_catalog later.' }
+    uv run python -m scripts.import_book_catalog
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Book refresh failed; continuing with saved listings. Retry python -m scripts.import_book_catalog later.' }
+    uv run python -m scripts.reconcile_catalog_sources
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Shared catalog reconciliation failed. See the error above.' }
 }
 if (-not (Get-NetTCPConnection -LocalPort 8002 -State Listen -ErrorAction SilentlyContinue)) {
     Start-Process -FilePath (Get-Command uv).Source -ArgumentList @('run', 'python', '-m', 'scripts.run_graph_demo') -WorkingDirectory $backendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $backendRoot 'data/graph-api.log') -RedirectStandardError (Join-Path $backendRoot 'data/graph-api-error.log')
@@ -42,6 +57,19 @@ if (-not (Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction Silent
     Start-Process -FilePath (Get-Command uv).Source -ArgumentList @('run', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000') -WorkingDirectory $backendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $backendRoot 'data/api.log') -RedirectStandardError (Join-Path $backendRoot 'data/api-error.log')
 }
 Write-Output 'Normal API: http://127.0.0.1:8000/docs; graph demo: http://127.0.0.1:8002/docs'
+# localhost in an Android app is the phone, not this PC. Restore both USB
+# tunnels on every start, including after a cable reconnect or device reboot.
+if (Get-Command adb -ErrorAction SilentlyContinue) {
+    foreach ($line in (& adb devices)) {
+        if ($line -match '^([^\s]+)\s+device$') {
+            $deviceSerial = $Matches[1]
+            foreach ($apiPort in @(8000, 8002)) {
+                & adb -s $deviceSerial reverse "tcp:$apiPort" "tcp:$apiPort"
+                if ($LASTEXITCODE -ne 0) { Write-Warning "Could not connect device $deviceSerial to API port $apiPort." }
+            }
+        }
+    }
+}
 if ($RunApp) {
     Set-Location -LiteralPath (Join-Path $projectRoot 'frontend/ui')
     flutter run --dart-define=API_BASE_URL=http://localhost:8002/api/v1

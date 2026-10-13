@@ -34,3 +34,4 @@ backend/data/
 
 # Reproducible synthetic graph media; regenerate with seed_social_graph.py
 backend/media/demo_graph/
+backend/media/licensed_social/

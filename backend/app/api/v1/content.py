@@ -66,7 +66,7 @@ async def presentation(c, obj):
         kind=details.get("kind"),
         demo=details.get("demo", False),
     )
-    if obj["platform"] == "news":
+    if obj["platform"] in {"news", "book", "shop", "stream"}:
         result.update({field: details.get(field) for field in ("publisher", "source_url", "published_at", "category")})
     if obj["object_type"] in {"social.video", "social.clip"}:
         video = c.social_video_service.db.execute(
@@ -106,8 +106,12 @@ async def discover(
     last = None
     for row in rows:
         last = row["id"]
+        # Generated demo catalogs are retained for old shares/history, but no
+        # longer appear beside sourced listings in public discovery.
+        if platform != 'social' and row.get('demo') and not row.get('source_url'):
+            continue
         try:
-            obj = await c.graph.object_for(user.id, row["object_id"])
+            obj = await c.graph.object_for(user.id, row.get('object_id') or key('phlio_object', platform, row['domain_ref']))
         except HTTPException:
             continue
         items.append(await presentation(c, obj))

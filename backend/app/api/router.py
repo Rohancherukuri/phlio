@@ -47,3 +47,9 @@ api_router.include_router(content.router)
 
 from app.api.v1 import news
 api_router.include_router(news.router)
+
+from app.api.v1 import social_comments
+api_router.include_router(social_comments.router)
+
+from app.api.v1 import realtime
+api_router.include_router(realtime.router)

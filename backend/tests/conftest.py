@@ -25,6 +25,9 @@ def settings(tmp_path) -> Settings:
     return Settings(
         database_backend="memory",
         redis_enabled=False,
+        livekit_url="",
+        livekit_api_key="",
+        livekit_api_secret="",
         news_ingestion_enabled=False,
         messaging_database=":memory:",
         social_video_database=":memory:",

@@ -1,5 +1,6 @@
 """Video upload/discovery and authenticated follow actions."""
 
+import asyncio
 import json
 import subprocess
 import uuid
@@ -13,6 +14,7 @@ from app.api.deps import get_container, get_current_user
 from app.core.container import Container, media_root_path
 from app.domains.graph.service import key
 from app.domains.identity.entities import User
+from app.infrastructure.video_thumbnail import make_thumbnail
 
 router = APIRouter(prefix="/social", tags=["social videos"])
 
@@ -41,11 +43,21 @@ async def unfollow(
     await c.graph.relationship(user.id, username.lower(), "unfollow")
 
 
-async def video_response(row, c):
-    creator = await c.identity_repository.get_by_id(row["creator"])
+async def video_response(row, c, creator=None, details=None):
+    creator = creator or await c.identity_repository.get_by_id(row["creator"])
     if not creator:
         return None
+    if details is None:
+        details = await c.graph.store.get(key("platform_content", "social", row["id"])) or {}
+    thumbnail = row.get('thumbnail_url')
+    if thumbnail and thumbnail.startswith('/media/'):
+        root = media_root_path(c.settings).resolve()
+        path = (root / thumbnail.removeprefix('/media/').split('?')[0]).resolve()
+        if path.is_relative_to(root) and path.is_file():
+            thumbnail = thumbnail.split('?')[0] + f'?v={path.stat().st_mtime_ns}'
     return dict(
+        sources=details.get("sources", []),
+        attribution=details.get("attribution"),
         id=row["id"],
         title=row["title"],
         creator=creator.username,
@@ -54,7 +66,7 @@ async def video_response(row, c):
         url=row["url"],
         created_at=row["created_at"],
         kind=row.get("kind", "video"),
-        thumbnail_url=row.get("thumbnail_url"),
+        thumbnail_url=thumbnail,
         duration_seconds=row.get("duration_seconds", 0),
     )
 
@@ -65,20 +77,32 @@ async def videos(
 ):
     before = before.strip() or None if before is not None else None
     revision = await c.graph.store.revision()
-    cache_key = f"videos:v2:{revision}:{user.id}:{before}"
+    cache_key = f"videos:v3:{revision}:{user.id}:{before}"
     cached = await c.cache.get(cache_key)
     if cached is not None:
         return cached
+    rows = c.social_video_service.videos(before)
+    creator_ids = list({row['creator'] for row in rows})
+    creators, objects, details, blocks = await asyncio.gather(
+        c.identity_repository.get_many(creator_ids),
+        c.graph.store.get_many([key('phlio_object', 'social', row['id']) for row in rows]),
+        c.graph.store.get_many([key('platform_content', 'social', row['id']) for row in rows]),
+        c.graph.store.get_many([key('block', a, b) for peer in creator_ids
+                              for a, b in [(user.id, peer), (peer, user.id)]]),
+    )
+    creators = {creator.id: creator for creator in creators}
+    objects = {obj['id']: obj for obj in objects}
+    details = {detail['id']: detail for detail in details}
+    blocked = {edge['id'] for edge in blocks}
     result = []
-    for row in c.social_video_service.videos(before):
-        video = await video_response(row, c)
-        obj = await c.graph.store.get(key("phlio_object", "social", row["id"]))
-        if (
-            video
-            and (not obj or obj["state"] == "active")
-            and not await c.graph.blocked(user.id, row["creator"])
-        ):
-            result.append(video)
+    for row in rows:
+        obj = objects.get(key('phlio_object', 'social', row['id']))
+        creator = creators.get(row['creator'])
+        if (creator and (not obj or obj['state'] == 'active')
+            and key('block', user.id, creator.id) not in blocked
+            and key('block', creator.id, user.id) not in blocked):
+            result.append(await video_response(row, c, creator,
+                details.get(key('platform_content', 'social', row['id']), {})))
     await c.cache.put(cache_key, result)
     return result
 
@@ -127,6 +151,7 @@ async def upload_video(
     directory = media_root_path(c.settings) / "social"
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / (video_id + suffix)
+    cover = directory / (video_id + '.jpg')
     size = 0
     try:
         with target.open("wb") as destination:
@@ -142,13 +167,21 @@ async def upload_video(
         if not minimum <= duration <= maximum + 0.2:
             raise HTTPException(422, f"{kind.title()} must be between {minimum} and {maximum} seconds.")
         url = "/media/social/" + target.name
+        try:
+            await run_in_threadpool(make_thumbnail, target, cover, duration)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            raise HTTPException(422, 'Could not generate a preview for this video.') from exc
+        thumbnail_url = '/media/social/' + cover.name
         c.social_video_service.publish(
             video_id, user.id, title, url, kind=kind, duration_seconds=round(duration)
         )
+        c.social_video_service.db.execute('UPDATE videos SET thumbnail_url=? WHERE id=?', (thumbnail_url, video_id))
+        c.social_video_service.db.commit()
         obj = await c.graph.register_object(user.id, "social." + kind, video_id, title)
         await c.graph.action(user.id, obj["id"], "created", trusted=True)
     except BaseException:
         target.unlink(missing_ok=True)
+        cover.unlink(missing_ok=True)
         raise
     return dict(
         id=video_id,
@@ -159,4 +192,5 @@ async def upload_video(
         url=url,
         kind=kind,
         duration_seconds=round(duration),
+        thumbnail_url=thumbnail_url,
     )

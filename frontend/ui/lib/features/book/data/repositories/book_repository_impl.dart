@@ -24,7 +24,7 @@ class BookRepositoryImpl implements BookRepository {
   }) async {
     try {
       final json = await _remoteDataSource.browseListings(
-        category: category?.name,
+        category: category?.apiValue,
         maxPriceMinorUnits: maxPriceMinorUnits,
         cursor: cursor,
       );

@@ -6,13 +6,15 @@ import 'package:equatable/equatable.dart';
 enum MediaKind { image, video }
 
 class MediaAttachmentEntity extends Equatable {
-  const MediaAttachmentEntity({required this.url, required this.kind});
+  const MediaAttachmentEntity(
+      {required this.url, required this.kind, this.thumbnailUrl});
 
   final String url;
   final MediaKind kind;
+  final String? thumbnailUrl;
 
   @override
-  List<Object?> get props => [url, kind];
+  List<Object?> get props => [url, kind, thumbnailUrl];
 }
 
 class PostEntity extends Equatable {

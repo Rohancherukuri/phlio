@@ -89,16 +89,31 @@ class PostCard extends ConsumerWidget {
                               const Text('Image unavailable')))
                   : AspectRatio(
                       aspectRatio: 16 / 9,
-                      child: FilledButton.tonalIcon(
-                          onPressed: () => ref.read(videoPlaybackProvider).open(
-                              PlayableVideo(
-                                  id: post.id,
-                                  title: post.text,
-                                  creator: profile?['username'] as String? ??
-                                      post.authorId,
-                                  url: media.url)),
-                          icon: const Icon(Icons.play_circle_outline, size: 40),
-                          label: const Text('Play video'))),
+                      child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(fit: StackFit.expand, children: [
+                            if (media.thumbnailUrl != null)
+                              Image.network(
+                                  AppConfig.mediaUrl(media.thumbnailUrl!),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      const ColoredBox(
+                                          color: Color(0xFF182231))),
+                            Center(
+                                child: IconButton.filled(
+                                    tooltip: 'Play video',
+                                    onPressed: () => ref
+                                        .read(videoPlaybackProvider)
+                                        .open(PlayableVideo(
+                                            id: post.id,
+                                            title: post.text,
+                                            creator: profile?['username']
+                                                    as String? ??
+                                                post.authorId,
+                                            url: media.url)),
+                                    icon: const Icon(Icons.play_arrow,
+                                        size: 40))),
+                          ]))),
             ),
           if (post.tags.isNotEmpty) ...[
             const SizedBox(height: PhlioSpacing.sm),
@@ -112,42 +127,6 @@ class PostCard extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: PhlioSpacing.md),
-          Row(
-            children: [
-              _ActionButton(
-                icon: Icons.mode_comment_outlined,
-                label: '${post.commentCount}',
-                onTap: onOpenComments,
-              ),
-              const Spacer(),
-
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton(
-      {required this.icon, required this.label, required this.onTap});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: PhlioColors.textMuted),
-          const SizedBox(width: PhlioSpacing.xs),
-          Text(label, style: PhlioTypography.label),
         ],
       ),
     );

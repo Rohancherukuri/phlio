@@ -17,6 +17,7 @@ async def test_follow_creator(client, auth_headers):
 
 async def test_video_catalog_and_upload(client, auth_headers, monkeypatch):
     monkeypatch.setattr("app.api.v1.social_videos.probe_duration", lambda _: 60.0)
+    monkeypatch.setattr('app.api.v1.social_videos.make_thumbnail', lambda *args: None)
     path = "/api/v1/social/videos"
     assert (await client.get(path)).status_code == 401
     assert (
@@ -72,6 +73,7 @@ async def test_video_clip_duration_boundaries(client, auth_headers, monkeypatch)
         ("clip", 121, 422),
     ]:
         monkeypatch.setattr("app.api.v1.social_videos.probe_duration", lambda _, value=seconds: value)
+        monkeypatch.setattr('app.api.v1.social_videos.make_thumbnail', lambda *args: None)
         response = await client.post(
             "/api/v1/social/videos",
             headers=auth_headers,
@@ -85,6 +87,7 @@ async def test_video_clip_duration_boundaries(client, auth_headers, monkeypatch)
 
 async def test_empty_video_cursor_is_first_page(client, auth_headers, monkeypatch):
     monkeypatch.setattr('app.api.v1.social_videos.probe_duration', lambda _: 60.0)
+    monkeypatch.setattr('app.api.v1.social_videos.make_thumbnail', lambda *args: None)
     response = await client.post('/api/v1/social/videos', headers=auth_headers,
         data={'title':'Cursor regression'}, files={'file':('cursor.mp4',b'test-media')})
     assert response.status_code == 201
@@ -92,3 +95,27 @@ async def test_empty_video_cursor_is_first_page(client, auth_headers, monkeypatc
     empty = await client.get('/api/v1/social/videos?before=', headers=auth_headers)
     assert len(plain.json()) == 1
     assert empty.json() == plain.json()
+
+
+async def test_bulk_catalog_preserves_block_filter_and_cache_revocation(settings):
+    from app.api.v1.social_videos import videos
+    from app.core.container import build_container
+    from app.core.seed import seed_memory_backend
+
+    c = await build_container(settings)
+    await seed_memory_backend(c)
+    viewer, creator = (await c.identity_repository.search_users('', 30))[:2]
+    try:
+        c.social_video_service.publish('bulk-test', creator.id, 'Catalog test', '/media/test.mp4')
+        await c.graph.register_object(creator.id, 'social.video', 'bulk-test', 'Catalog test')
+        assert [row['id'] for row in await videos(None, viewer, c)] == ['bulk-test']
+        await c.graph.relationship(creator.id, viewer.id, 'block')
+        assert await videos(None, viewer, c) == []
+        await c.graph.relationship(creator.id, viewer.id, 'unblock')
+        assert len(await videos(None, viewer, c)) == 1
+        await c.graph.relationship(viewer.id, creator.id, 'block')
+        assert await videos(None, viewer, c) == []
+    finally:
+        await c.cache.close()
+        c.messaging_service.db.close()
+        c.social_video_service.db.close()

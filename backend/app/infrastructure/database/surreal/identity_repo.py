@@ -82,6 +82,14 @@ class SurrealIdentityRepository:
             return None
         return _row_to_user(row[0] if isinstance(row, list) else row)
 
+    async def get_many(self, user_ids: list[str]) -> list[User]:
+        from app.infrastructure.database.surreal.client import record
+        if not user_ids:
+            return []
+        rows = await self._db.rows('SELECT * FROM user WHERE id IN $ids',
+            {'ids': [record('user:' + uid) for uid in set(user_ids)]})
+        return [_row_to_user(row) for row in rows]
+
     async def get_by_username(self, username: str) -> User | None:
         rows = await self._db.query(
             f"SELECT * FROM {_TABLE} WHERE username = $username LIMIT 1",

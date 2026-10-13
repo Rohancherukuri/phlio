@@ -39,14 +39,21 @@ class VideoPlaybackController extends ChangeNotifier {
   double speed = 1;
   double volume = 1;
   bool loop = false;
+  String qualityLabel = 'Auto';
+  String? qualityUrl;
   int _generation = 0;
   bool _disposed = false;
   void _changed() {
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> open(PlayableVideo source) async {
-    if (video?.id == source.id && player != null && error == null) {
+  Future<void> open(PlayableVideo source,
+      {bool force = false, Duration? position, bool autoplay = true}) async {
+    if (video?.id != source.id) {
+      qualityUrl = null;
+      qualityLabel = 'Auto';
+    }
+    if (!force && video?.id == source.id && player != null && error == null) {
       setMode(SocialPlayerMode.expanded);
       return;
     }
@@ -61,7 +68,8 @@ class VideoPlaybackController extends ChangeNotifier {
     setMode(SocialPlayerMode.expanded);
     if (old != null) unawaited(old.dispose());
     try {
-      final next = _factory(source);
+      final next =
+          _factory(qualityUrl == null ? source : source.withUrl(qualityUrl!));
       player = next;
       await next.initialize();
       if (_disposed || generation != _generation) return;
@@ -71,8 +79,11 @@ class VideoPlaybackController extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       next.addListener(_tick);
       loading = false;
-      await next.play();
-      if (source.localPath == null && getIt.isRegistered<ApiClient>()) {
+      if (position != null) await next.seekTo(position);
+      if (autoplay) await next.play();
+      if (!force &&
+          source.localPath == null &&
+          getIt.isRegistered<ApiClient>()) {
         unawaited(getIt<ApiClient>()
             .dio
             .put(
@@ -87,6 +98,15 @@ class VideoPlaybackController extends ChangeNotifier {
       }
     }
     if (generation == _generation) _changed();
+  }
+
+  Future<void> setQuality(Map<String, dynamic>? source) async {
+    if (video == null || loading) return;
+    final position = player?.value.position;
+    final playing = player?.value.isPlaying == true;
+    qualityUrl = source?['url'] as String?;
+    qualityLabel = source?['label'] as String? ?? 'Auto';
+    await open(video!, force: true, position: position, autoplay: playing);
   }
 
   void _tick() {

@@ -303,7 +303,16 @@ async def call_action(
     user: User = Depends(get_current_user),
     c: Container = Depends(get_container),
 ):
-    return c.messaging_service.public_call(c.messaging_service.transition(call_id, user.id, action))
+    call = c.messaging_service.transition(call_id, user.id, action)
+    if action == 'end' and c.settings.livekit_url:
+        from app.api.v1.realtime import server
+        from livekit import api
+        try:
+            async with server(c) as lk:
+                await lk.room.delete_room(api.DeleteRoomRequest(room='call-' + call_id))
+        except HTTPException:
+            pass  # Local call state is ended even if the SFU is unreachable.
+    return c.messaging_service.public_call(call)
 
 
 @router.post("/calls/{call_id}/signals", status_code=204)

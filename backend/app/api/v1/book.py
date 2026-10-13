@@ -12,7 +12,8 @@ import datetime as dt
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_activity_service, get_book_service, get_current_user
+from app.api.deps import get_activity_service, get_book_service, get_current_user, get_container
+from app.core.container import Container
 from app.common.pagination import clamp_limit
 from app.common.schemas import Page, PageMeta
 from app.domains.activity.entities import ActivityKind
@@ -39,6 +40,9 @@ class ListingResponse(BaseModel):
     starts_at: dt.datetime | None
     is_free: bool
     tags: list[str]
+    image_url: str | None = None
+    source_url: str | None = None
+    source_name: str | None = None
 
     @classmethod
     def from_entity(cls, listing: BookListing) -> ListingResponse:
@@ -57,6 +61,9 @@ class ListingResponse(BaseModel):
             starts_at=listing.starts_at,
             is_free=listing.is_free,
             tags=listing.tags,
+            image_url=listing.image_url,
+            source_url=listing.source_url,
+            source_name=listing.source_name,
         )
 
 
@@ -106,17 +113,25 @@ async def browse_listings(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     book_service: BookService = Depends(get_book_service),
+    c: Container = Depends(get_container),
 ) -> Page[ListingResponse]:
+    revision = await c.graph.store.revision()
+    cache_key = f'book:catalog:{revision}:{category}:{max_price_minor_units}:{cursor}:{limit}'
+    cached = await c.cache.get(cache_key)
+    if cached is not None:
+        return Page[ListingResponse].model_validate(cached)
     listings, next_cursor = await book_service.browse(
         category=category,
         max_price_minor_units=max_price_minor_units,
         cursor=cursor,
         limit=clamp_limit(limit),
     )
-    return Page(
+    page = Page(
         items=[ListingResponse.from_entity(l) for l in listings],
         meta=PageMeta(next_cursor=next_cursor, has_more=next_cursor is not None),
     )
+    await c.cache.put(cache_key, page.model_dump(mode='json'), ttl=120)
+    return page
 
 
 @router.get("/listings/{listing_id}", response_model=ListingResponse)

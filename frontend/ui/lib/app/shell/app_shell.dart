@@ -1,3 +1,6 @@
+import '../../shared/realtime/realtime_screen.dart';
+import '../../features/shop/presentation/screens/cart_sheet.dart';
+import '../../features/shop/presentation/controllers/cart_controller.dart';
 import '../../features/social/presentation/widgets/video_publish_sheet.dart';
 // The persistent app chrome: platform-aware bottom navigation wrapping the
 // three shell tabs — Home (current platform's home), Explore (current
@@ -35,6 +38,7 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final platform = ref.watch(currentPlatformProvider);
     final onPay = platform == PhlioPlatform.pay;
+    final onShop = platform == PhlioPlatform.shop;
     final user = ref.watch(authControllerProvider).valueOrNull;
 
     final mode = ref.watch(videoPlaybackProvider.select((value) => value.mode));
@@ -56,14 +60,28 @@ class AppShell extends ConsumerWidget {
           ),
           // Phlio Pay: the center button becomes Scan & Pay, like the
           // reference payments apps. Everywhere else: the create sheet.
-          createIcon: onPay ? Icons.qr_code_scanner_rounded : Icons.add_rounded,
+          createIcon: onShop
+              ? Icons.shopping_cart_outlined
+              : onPay
+                  ? Icons.qr_code_scanner_rounded
+                  : Icons.add_rounded,
+          createLabel: onShop
+              ? 'Cart'
+              : onPay
+                  ? 'Scan and pay'
+                  : 'Create',
+          createCount: onShop
+              ? (ref.watch(cartProvider).valueOrNull?['count'] as int? ?? 0)
+              : 0,
           profileAvatar:
               user == null ? null : MeAvatar(name: user.fullName, size: 26),
-          onCreateTap: onPay
-              ? () => context.push('/qr-scanner')
-              : platform == PhlioPlatform.rooms
-                  ? () => showCreateRoomSheet(context)
-                  : () => _showCreateSheet(context, ref),
+          onCreateTap: onShop
+              ? () => showShopCart(context)
+              : onPay
+                  ? () => context.push('/qr-scanner')
+                  : platform == PhlioPlatform.rooms
+                      ? () => showCreateRoomSheet(context)
+                      : () => _showCreateSheet(context, ref),
           onTrayTap: () => _showPlatformTray(context),
         ),
       ),
@@ -180,6 +198,18 @@ class AppShell extends ConsumerWidget {
               showVideoPublisher(context, kind: 'clip');
             },
           ),
+          _CreateOption(
+              icon: Icons.live_tv,
+              color: PhlioColors.brandPurple,
+              title: 'Go live',
+              subtitle: 'Broadcast to your Social audience',
+              onTap: () {
+                Navigator.of(context).pop();
+                openRealtime(context,
+                    endpoint: '/realtime/live',
+                    title:
+                        'Live with ${ref.read(authControllerProvider).valueOrNull?.fullName ?? 'me'}');
+              }),
           _CreateOption(
             icon: Icons.collections_outlined,
             color: PhlioColors.domainNews,

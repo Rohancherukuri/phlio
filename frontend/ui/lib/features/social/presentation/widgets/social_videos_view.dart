@@ -1,3 +1,5 @@
+import 'video_thumbnail.dart';
+import '../../../../shared/content/social_comments_sheet.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import '../../../../app/config/app_config.dart';
@@ -5,7 +7,6 @@ import 'creator_follow_button.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../design_system/colors.dart';
 import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../controllers/video_library.dart';
@@ -88,36 +89,45 @@ class _SocialVideosViewState extends State<SocialVideosView> {
     final recommended =
         videos.where((v) => !followed.contains(v.creator)).toList();
 
-    return ListView(
-      padding: const EdgeInsets.only(bottom: PhlioSpacing.xxl),
-      children: [
-        _sectionLabel('Following'),
-        // Followed creators' content — live and VOD interleaved, newest-first
-        // feel via the seed order.
-        for (final video in fromFollows)
-          SocialVideoCard(
+    final entries = <Object>[
+      if (fromFollows.isNotEmpty) 'Following',
+      ...fromFollows,
+      'Recommended for you',
+      ...recommended,
+    ];
+    return RefreshIndicator(
+      onRefresh: () => ref.refresh(socialVideoCatalogProvider.future),
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        cacheExtent: 250,
+        padding: const EdgeInsets.only(bottom: PhlioSpacing.xxl),
+        itemCount: entries.length + 1,
+        itemBuilder: (context, index) {
+          if (index == entries.length) {
+            if (catalog.isLoading)
+              return const Center(child: CircularProgressIndicator());
+            if (catalog.hasError)
+              return Center(
+                  child: TextButton(
+                      onPressed: () =>
+                          ref.invalidate(socialVideoCatalogProvider),
+                      child: const Text('Could not load videos. Retry')));
+            return videos.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('No videos yet. Publish the first one.'))
+                : const SizedBox.shrink();
+          }
+          final entry = entries[index];
+          if (entry is String) return _sectionLabel(entry);
+          final video = entry as PlayableVideo;
+          return SocialVideoCard(
+              key: ValueKey(video.id),
               video: socialVideoPresentation(video),
-              fallbackGradient: true,
-              onTap: () => ref.read(videoPlaybackProvider).open(video)),
-        _sectionLabel('Recommended for you'),
-        for (final video in recommended)
-          SocialVideoCard(
-            video: socialVideoPresentation(video),
-            fallbackGradient: true,
-            showFollowPill: true,
-            onTap: () => ref.read(videoPlaybackProvider).open(video),
-          ),
-        if (catalog.isLoading) const Center(child: CircularProgressIndicator()),
-        if (catalog.hasError)
-          Center(
-              child: TextButton(
-                  onPressed: () => ref.invalidate(socialVideoCatalogProvider),
-                  child: const Text('Could not load videos. Retry'))),
-        if (catalog.hasValue && videos.isEmpty)
-          const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No videos yet. Publish the first one.')),
-      ],
+              showFollowPill: !followed.contains(video.creator),
+              onTap: () => ref.read(videoPlaybackProvider).open(video));
+        },
+      ),
     );
   }
 
@@ -155,200 +165,87 @@ class SocialVideoCard extends ConsumerWidget {
   }
 
   Widget _content(BuildContext context, WidgetRef ref) {
-    final isLive = video.kind == SocialVideoKind.live;
     return Padding(
-      padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: fallbackGradient && video.thumbAsset.isEmpty
-                      ? DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                PhlioColors.brandViolet.withValues(alpha: 0.35),
-                                PhlioColors.surfaceElevated,
-                              ],
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(Icons.play_arrow_rounded,
-                                size: 44, color: PhlioColors.textSecondary),
-                          ),
-                        )
-                      : Image.network(
-                          AppConfig.mediaUrl(video.thumbAsset),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  PhlioColors.brandViolet
-                                      .withValues(alpha: 0.35),
-                                  PhlioColors.surfaceElevated,
-                                ],
-                              ),
-                            ),
-                            child: const Center(
-                              child: Icon(Icons.play_arrow_rounded,
-                                  size: 44, color: PhlioColors.textSecondary),
-                            ),
-                          ),
-                        ),
-                ),
-                if (isLive)
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: _liveBadge(),
-                  ),
-                Positioned(
-                  bottom: 10,
-                  left: 10,
-                  child: _overlayPill(video.metric),
-                ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  PhlioSpacing.lg, PhlioSpacing.sm, PhlioSpacing.lg, 0),
-              child: Row(
-                children: [
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Stack(fit: StackFit.expand, children: [
+                        VideoThumbnail(url: video.thumbAsset),
+                        Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                    color: Colors.black87,
+                                    borderRadius: BorderRadius.circular(4)),
+                                child: Text(video.metric,
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white)))),
+                      ])))),
+          const SizedBox(height: 12),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            GestureDetector(
+                onTap: () => context.push('/creator/${video.creator}'),
+                child: CircleAvatar(
+                    radius: 19,
+                    backgroundImage: video.avatarAsset.isEmpty
+                        ? null
+                        : NetworkImage(AppConfig.mediaUrl(video.avatarAsset)))),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  InkWell(
+                      onTap: onTap,
+                      child: Text(video.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.3,
+                              fontWeight: FontWeight.w600))),
+                  const SizedBox(height: 5),
                   GestureDetector(
-                    // Tap the creator's avatar/name to open their profile.
-                    onTap: () => context.push('/creator/${video.creator}'),
-                    child: ClipOval(
-                      child: Image.network(
-                        AppConfig.mediaUrl(video.avatarAsset),
-                        width: 36,
-                        height: 36,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 36,
-                          height: 36,
-                          color:
-                              PhlioColors.brandViolet.withValues(alpha: 0.25),
-                          alignment: Alignment.center,
-                          child: Text(
-                            video.creator.isEmpty
-                                ? '?'
-                                : video.creator[0].toUpperCase(),
-                            style: PhlioTypography.label
-                                .copyWith(color: PhlioColors.brandLavender),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: PhlioSpacing.sm),
-                  Expanded(
-                    child: GestureDetector(
                       onTap: () => context.push('/creator/${video.creator}'),
-                      child: Text(
-                        video.creator,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: PhlioTypography.bodyStrong,
-                      ),
-                    ),
-                  ),
-                  if (showFollowPill) ...[
-                    const SizedBox(width: PhlioSpacing.sm),
-                    CreatorFollowPill(creator: video.creator),
-                  ],
-                ],
-              ),
-            ),
+                      child: Text('@${video.creator}',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF858D9E)))),
+                ])),
+            PopupMenuButton<String>(
+                tooltip: 'Video options',
+                onSelected: (value) {
+                  if (value == 'comments')
+                    showSocialComments(context, video.playable!.id);
+                  else
+                    showContentShare(context, 'social/${video.playable!.id}');
+                },
+                itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'comments', child: Text('Comments')),
+                      PopupMenuItem(value: 'share', child: Text('Share'))
+                    ]),
+          ]),
+          if (showFollowPill)
+            Align(
+                alignment: Alignment.centerRight,
+                child: CreatorFollowPill(creator: video.creator)),
+          if (video.playable?.attribution != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  PhlioSpacing.lg, PhlioSpacing.xxs, PhlioSpacing.lg, 0),
-              child: Text(
-                video.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: PhlioTypography.body
-                    .copyWith(color: PhlioColors.textSecondary),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  PhlioSpacing.lg, PhlioSpacing.xs, PhlioSpacing.lg, 0),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: PhlioColors.surfaceElevated,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: PhlioColors.borderSubtle),
-                ),
-                child: Text(
-                  video.category,
-                  style: PhlioTypography.caption
-                      .copyWith(fontSize: 11, color: PhlioColors.textSecondary),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static Widget _liveBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: PhlioColors.danger,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text('LIVE',
-              style: PhlioTypography.label.copyWith(
-                fontSize: 11,
-                letterSpacing: 0.6,
-                color: Colors.white,
-              )),
-        ],
-      ),
-    );
-  }
-
-  static Widget _overlayPill(String metric) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        metric,
-        style: PhlioTypography.caption.copyWith(
-          fontSize: 11,
-          color: Colors.white,
-        ),
-      ),
-    );
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(video.playable!.attribution!,
+                    style: const TextStyle(
+                        fontSize: 10, height: 1.3, color: Color(0xFF858D9E)))),
+        ]));
   }
 }
 

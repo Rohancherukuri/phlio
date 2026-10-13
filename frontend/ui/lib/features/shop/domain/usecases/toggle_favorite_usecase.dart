@@ -7,5 +7,6 @@ class ToggleFavoriteUseCase {
 
   final ShopRepository _repository;
 
-  Future<Result<ProductEntity>> call(String productId) => _repository.toggleFavorite(productId);
+  Future<Result<ProductEntity>> call(String productId) =>
+      _repository.toggleFavorite(productId);
 }

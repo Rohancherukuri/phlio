@@ -16,6 +16,9 @@ class BookListingModel {
     required this.startsAt,
     required this.isFree,
     required this.tags,
+    this.imageUrl,
+    this.sourceUrl,
+    this.sourceName,
   });
 
   factory BookListingModel.fromJson(Map<String, dynamic> json) {
@@ -34,6 +37,9 @@ class BookListingModel {
       startsAt: json['starts_at'] != null ? DateTime.parse(json['starts_at'] as String) : null,
       isFree: json['is_free'] as bool? ?? false,
       tags: (json['tags'] as List<dynamic>? ?? []).cast<String>(),
+      imageUrl: json['image_url'] as String?,
+      sourceUrl: json['source_url'] as String?,
+      sourceName: json['source_name'] as String?,
     );
   }
 
@@ -51,6 +57,7 @@ class BookListingModel {
   final DateTime? startsAt;
   final bool isFree;
   final List<String> tags;
+  final String? imageUrl, sourceUrl, sourceName;
 
   BookListingEntity toEntity() => BookListingEntity(
         id: id,
@@ -67,6 +74,9 @@ class BookListingModel {
         startsAt: startsAt,
         isFree: isFree,
         tags: tags,
+        imageUrl: imageUrl,
+        sourceUrl: sourceUrl,
+        sourceName: sourceName,
       );
 }
 

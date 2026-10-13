@@ -14,17 +14,20 @@ import '../../domain/repositories/shop_repository.dart';
 import '../../domain/usecases/browse_products_usecase.dart';
 import '../../domain/usecases/toggle_favorite_usecase.dart';
 
-final shopRepositoryProvider = Provider<ShopRepository>((ref) => getIt<ShopRepository>());
+final shopRepositoryProvider =
+    Provider<ShopRepository>((ref) => getIt<ShopRepository>());
 
-final selectedShopCategoryProvider = StateProvider<ShopCategory?>((ref) => null);
+final selectedShopCategoryProvider =
+    StateProvider<ShopCategory?>((ref) => null);
 
-final productsControllerProvider = AsyncNotifierProvider<ProductsController, List<ProductEntity>>(
+final productsControllerProvider =
+    AsyncNotifierProvider<ProductsController, List<ProductEntity>>(
   ProductsController.new,
 );
 
 class ProductsController extends AsyncNotifier<List<ProductEntity>> {
-  late final BrowseProductsUseCase _browseUseCase;
-  late final ToggleFavoriteUseCase _toggleFavoriteUseCase;
+  late BrowseProductsUseCase _browseUseCase;
+  late ToggleFavoriteUseCase _toggleFavoriteUseCase;
 
   @override
   Future<List<ProductEntity>> build() async {
@@ -35,7 +38,8 @@ class ProductsController extends AsyncNotifier<List<ProductEntity>> {
     // Re-run automatically whenever the category filter changes.
     final category = ref.watch(selectedShopCategoryProvider);
     final result = await _browseUseCase(category: category);
-    return result.when(success: (page) => page.items, failure: (failure) => throw failure);
+    return result.when(
+        success: (page) => page.items, failure: (failure) => throw failure);
   }
 
   Future<void> toggleFavorite(String productId) async {
@@ -62,8 +66,10 @@ class ProductsController extends AsyncNotifier<List<ProductEntity>> {
   }
 }
 
-final featuredSellersProvider = FutureProvider.autoDispose<List<SellerEntity>>((ref) async {
+final featuredSellersProvider =
+    FutureProvider.autoDispose<List<SellerEntity>>((ref) async {
   final repository = ref.watch(shopRepositoryProvider);
   final result = await repository.featuredSellers();
-  return result.when(success: (sellers) => sellers, failure: (failure) => throw failure);
+  return result.when(
+      success: (sellers) => sellers, failure: (failure) => throw failure);
 });

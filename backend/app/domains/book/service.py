@@ -60,6 +60,8 @@ class BookService:
             raise ValidationAppError("Booking date cannot be in the past.")
 
         listing = await self.get_listing_or_raise(listing_id)
+        if listing.source_url:
+            raise ValidationAppError('This listing is booked through its original provider. Open the source link to confirm availability.')
         if await self._repository.listing_has_booking_on(
             listing_id=listing_id, user_id=user_id, date=date
         ):

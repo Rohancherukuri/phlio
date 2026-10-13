@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/social_comments_sheet.dart';
 import 'package:phlio/core/di/service_locator.dart';
 import 'package:phlio/core/network/api_client.dart';
 import 'content_surface_test.dart' show FakeApi;
@@ -61,6 +62,25 @@ MockPlayer player() {
 
 void main() {
   setUpAll(() => registerFallbackValue(Duration.zero));
+  test('Quality switching keeps position and preferences', () async {
+    final created = <PlayableVideo>[];
+    final p = player();
+    final c = VideoPlaybackController(factory: (source) {
+      created.add(source);
+      return p;
+    });
+    await c.open(video);
+    await c.setSpeed(1.5);
+    await c.setVolume(.5);
+    await c.setQuality({'label': '360p', 'url': '/360.mp4'});
+    expect(created.last.url, '/360.mp4');
+    expect(c.video!.id, video.id);
+    expect(c.qualityLabel, '360p');
+    expect(c.speed, 1.5);
+    expect(c.volume, .5);
+    verify(() => p.seekTo(const Duration(seconds: 30))).called(1);
+    c.dispose();
+  });
   testWidgets('Switching modes retains session, position and speed',
       (tester) async {
     final p = player();
@@ -184,6 +204,8 @@ void main() {
       await tester.pump();
       expect(find.text('Playback speed'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Close settings'));
+      await tester.pump();
       await tester.tap(find.byTooltip('Fullscreen'));
       await tester.pump();
       expect(c.mode, SocialPlayerMode.fullscreen);

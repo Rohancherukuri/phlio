@@ -50,6 +50,9 @@ class BookListing:
     starts_at: dt.datetime | None = None
     is_free: bool = False
     tags: list[str] = field(default_factory=list)
+    image_url: str | None = None
+    source_url: str | None = None
+    source_name: str | None = None
 
 
 @dataclass(slots=True)

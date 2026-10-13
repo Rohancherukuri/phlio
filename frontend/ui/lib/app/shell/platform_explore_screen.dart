@@ -31,6 +31,7 @@ import '../../features/social/presentation/widgets/social_explore_videos_view.da
 import '../../features/shop/domain/entities/product_entity.dart';
 import '../../features/shop/presentation/controllers/shop_controller.dart';
 import '../../features/shop/presentation/widgets/product_card.dart';
+import '../../features/book/presentation/screens/book_discovery_screen.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
 
@@ -56,13 +57,15 @@ class _PlatformExploreScreenState extends ConsumerState<PlatformExploreScreen> {
           _PayExplore(),
           SafeArea(child: SocialExploreVideosView()),
           RoomsExploreScreen(),
-          _BookExplore(),
+          BookDiscoveryScreen(explore: true),
           _ShopExplore(),
           PlatformCatalogScreen(platform: 'stream'),
           NewsScreen(explore: true),
           _AgentExplore(),
         ].indexed)
-          visited.contains(entry.$1) ? entry.$2 : const SizedBox.shrink()
+          visited.contains(entry.$1)
+              ? TickerMode(enabled: platform.index == entry.$1, child: entry.$2)
+              : const SizedBox.shrink()
       ],
     );
   }
@@ -388,7 +391,7 @@ class _ShopExplore extends ConsumerWidget {
                       (MediaQuery.sizeOf(context).width - 3 * PhlioSpacing.lg) /
                               2 +
                           MediaQuery.textScalerOf(context).scale(42) +
-                          110,
+                          158,
                 ),
                 itemCount: products.length,
                 itemBuilder: (context, index) => ProductCard(

@@ -150,3 +150,143 @@ of making hundreds of sequential authorization queries. Measured request time
 fell from 8.8 seconds to 0.145 seconds. Platform screens initialize on first visit,
 reducing startup requests. Confirmed video feed, clip playback and populated News
 cards on the connected Android phone after installing the update.
+
+## Social media and rich comments (2026-10-12)
+
+Social Videos use landscape thumbnails, duration badges and compact title/creator
+rows; Clips use an inline looping vertical player with mute, tap-to-pause, creator
+follow, like, comments, share and bookmark actions. Inactive tabs/platforms and
+background app lifecycle pause clips. Engagement counters use consistent 12px
+weights, subdued colors and compact K/M formatting.
+
+`import_licensed_social.py` replaces the existing 20 demo videos and 20 demo clips
+with real live-action excerpts from Tears of Steel, rather than synthetic title
+cards. Videos are 90 seconds; clips are 30 seconds, reframed vertically. These
+are excerpts of one film, not original productions by the fictional test users.
+Attribution is displayed in the feed and stored with metadata:
+(CC) Blender Foundation | mango.blender.org, CC BY 3.0.
+Source and licence: https://mango.blender.org/sharing/
+Original: https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov
+The importer runs last in Start-GraphDemo.ps1 -Seed so re-seeding does not leave
+placeholder videos. SQLite holds video URLs/durations, Surreal holds graph and
+attribution metadata, Redis caches discovery; local media supports HTTP ranges.
+
+Posts, videos and clips share `/social/content/{ref}/comments` and the same
+bottom sheet. Rich comments persist in `content_comment`; original post comments
+remain visible. Supported: text, searchable @mentions, JPEG/PNG/WebP, local
+animated GIFs, and the bundled Foxy stickers. Images/GIFs are capped at 10 MB and
+validated from bytes. Arbitrary URLs and documents are not accepted. Comment
+lists recheck object visibility and blocks even after Redis candidate caching.
+This is a local GIF picker, not a third-party searchable GIF service.
+
+## Thumbnails and realtime transport (2026-10-12)
+
+The licensed media importer now derives 80 separate thumbnails from actual
+footage: 20 Videos, 20 Clips, 20 image posts and 20 video posts. It rejects dark
+frames and near-duplicates using perceptual hashes (minimum Hamming distance 9).
+`backend/media/licensed_social/thumbnails.json` records each source and timestamp.
+Versioned cover URLs avoid stale Flutter image caches. Existing post IDs, likes,
+and comments are preserved. Video posts expose `thumbnail_url` through the API;
+new video/clip uploads also generate their own thumbnail with FFmpeg.
+
+Realtime audio/video uses the open-source LiveKit Flutter SDK 2.13.1 and SFU
+1.13.9. Rooms have membership-gated Join voice/Join video, responsive participant
+tiles, speaking indicators, muted voice entry and camera/microphone controls.
+Social has full-screen calls, local picture-in-picture, Go live in the + menu,
+and a Live now entry beside its tabs. Broadcast viewers receive subscribe-only
+media grants; only hosts can publish or end the broadcast. DM ring/accept/end
+remain authenticated API actions; media now goes through LiveKit rather than
+HTTP-polled WebRTC signalling. SDK adaptive stream/dynacast and reconnect handling
+reduce unnecessary bandwidth and recover temporary network changes.
+
+Windows local setup (no Docker required):
+
+```powershell
+cd backend
+./scripts/Start-Realtime.ps1 -Install
+./scripts/Start-GraphDemo.ps1
+```
+
+The installer writes random credentials into ignored `.env` and
+`data/livekit/local.yaml`. Restart already-running APIs after first installation.
+Subsequent GraphDemo starts reuse this server configuration. The phone must reach
+the configured LAN address on TCP 7880/7881 and UDP 50000–50100; update both YAML
+`rtc.node_ip` and `.env` `LIVEKIT_URL` if the host address changes. API secrets are
+never sent to Flutter. Tokens are short-lived and scoped to an authorized room.
+Use WSS/TLS, a reachable public address and TURN for real internet deployment;
+the local configuration is not an internet production deployment. Self-hosting
+avoids SDK usage fees but requires server/bandwidth capacity. No SDK can guarantee
+zero latency or uninterrupted service. Native background-call notifications,
+CallKit/ConnectionService, screen sharing, live chat and stream recording are
+not included in this change; call sessions are owned by their open screen.
+
+Verification: 107 backend tests, 117 Flutter tests, Android debug build. A real
+two-client local SFU smoke test received both audio and video frames. Repeat it:
+`uv run --with livekit python -m scripts.check_realtime`. No physical camera or
+microphone is used by that test. Remote-network and multi-phone testing remain
+deployment checks.
+
+### Social watch page and thumbnail loading (2026-10-12)
+
+The demo seed now preserves thumbnails belonging to imported media. Previously,
+re-seeding replaced those covers with `demo_graph/cover_*.jpg` even though the
+video URL still pointed to the licensed film. The importer restored 40 distinct
+video/clip frames. Local thumbnail URLs include a file-version query parameter
+so Flutter does not retain an old cover after replacement.
+
+Video catalog assembly batches creator, graph-object, metadata and block reads.
+Redis retains the revision/user-scoped result. Measured locally against the real
+database: cold 40-item feed improved from 2.675 seconds to 0.153 seconds;
+cached response was 0.041 seconds. These are local measurements, not an internet
+latency guarantee. Video cards are built lazily; Clips prefetch nearby covers.
+
+Opening a video shows a pinned player, creator/follow and engagement actions,
+then the same rich comment list/composer used by Clips. Modal comments use the
+root navigator and the composer remains at the bottom with keyboard handling.
+The idempotent comment seed adds four scene-related comments per demo video/clip
+without replacing user comments.
+
+Settings support speed, original or 360p data-saver sources, control locking,
+foreground audio-only playback, looping, volume and screen fit. Quality switches
+preserve position, speed and volume. Run `python -m scripts.prepare_video_renditions`
+after importing licensed media; `Start-GraphDemo.ps1 -Seed` does this automatically.
+The supplied files have one audio track and no captions; settings report this
+instead of offering nonexistent tracks. Casting and background audio services
+are not added by this watch-page change.
+
+Validation: 119 Flutter tests; 107 full backend tests plus a new passing catalog
+block/cache regression (six focused video tests). Analyzer reports no errors,
+but existing project lint warnings remain. All 40 distinct thumbnail responses
+and 40 original/data-saver HTTP-range responses verified. Android debug APK
+built and installed on the attached device; final interactive visual inspection
+was unavailable because the phone was locked.
+
+### Shop catalog, cart and local auth connectivity (2026-10-13)
+
+`python -m scripts.import_shop_catalog` imports a bounded public retailer catalog
+from Allbirds, ColourPop, Death Wish Coffee, West Paw and Keychron. The current
+import contains 40 products in six categories. Imported IDs are stable and
+re-running preserves favorite counts. Products and source attribution are stored
+in SurrealDB and registered with the shared content graph. Catalog responses use
+Redis for 60 seconds, with per-user keys and invalidation on favorites/imports.
+Original USD price snapshots and source URLs are shown; no exchange rate,
+inventory partnership or checkout capability is fabricated.
+
+Authenticated `/shop/cart` and `PUT /shop/cart/{product_id}` persist per-user
+quantities in SurrealDB. Zero removes a row; values outside 0–99 are rejected.
+Totals remain separated by currency. The Shop center navigation action opens
+the cart and shows its item count; product cards/details add products. Other
+platforms retain their existing center action.
+
+Videos and Clips now share an avatar/pill composer, emoji shortcut row, image,
+GIF and sticker controls. Send appears when a draft or attachment is present.
+Keyboard and large-text layout tests pass. Local login was verified on both
+8000 and 8002; GraphDemo startup now restores both Android USB reverse tunnels.
+These development localhost URLs require the PC backend and a connected USB
+tunnel; a standalone deployment must use a reachable API_BASE_URL.
+
+Validation: 122 Flutter tests and eight focused Shop backend tests passed.
+Live API checks verified all 40 product images, six category filters, login,
+and cart update/read/restore without modifying the user's cart.
+The Android build was installed and inspected on the connected phone: retailer
+photos render on Shop and the center cart action opens the authenticated cart.

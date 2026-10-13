@@ -20,6 +20,7 @@ router = APIRouter(prefix="/social", tags=["social"])
 class MediaAttachmentSchema(BaseModel):
     url: str
     kind: MediaKind
+    thumbnail_url: str | None = None
 
 
 class CreatePostRequest(BaseModel):
@@ -54,7 +55,7 @@ class PostResponse(BaseModel):
             id=post.id,
             author_id=post.author_id,
             text=post.text,
-            media=[MediaAttachmentSchema(url=m.url, kind=m.kind) for m in post.media],
+            media=[MediaAttachmentSchema(url=m.url, kind=m.kind, thumbnail_url=m.thumbnail_url) for m in post.media],
             tags=post.tags,
             like_count=post.like_count,
             comment_count=post.comment_count,
@@ -118,7 +119,7 @@ async def create_post(
     social_service: SocialService = Depends(get_social_service),
     current_user: User = Depends(get_current_user),
 ) -> PostResponse:
-    media = [MediaAttachment(url=m.url, kind=m.kind) for m in body.media]
+    media = [MediaAttachment(url=m.url, kind=m.kind, thumbnail_url=m.thumbnail_url) for m in body.media]
     post = await social_service.create_post(
         author_id=current_user.id, text=body.text, media=media, tags=body.tags
     )

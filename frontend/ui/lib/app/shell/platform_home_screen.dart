@@ -15,7 +15,7 @@ import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/book/presentation/screens/book_screen.dart';
+import '../../features/book/presentation/screens/book_discovery_screen.dart';
 import '../../features/pay/presentation/screens/pay_screen.dart';
 import '../../features/phlio_agent/presentation/screens/agent_screen.dart';
 import '../../features/rooms/presentation/screens/rooms_screen.dart';
@@ -46,13 +46,15 @@ class _PlatformHomeScreenState extends ConsumerState<PlatformHomeScreen> {
           PayScreen(),
           SocialHomeScreen(),
           RoomsScreen(),
-          BookScreen(),
+          BookDiscoveryScreen(),
           ShopScreen(),
           PlatformCatalogScreen(platform: 'stream'),
           NewsScreen(),
           AgentScreen(),
         ].indexed)
-          visited.contains(entry.$1) ? entry.$2 : const SizedBox.shrink()
+          visited.contains(entry.$1)
+              ? TickerMode(enabled: platform.index == entry.$1, child: entry.$2)
+              : const SizedBox.shrink()
       ],
     );
   }
