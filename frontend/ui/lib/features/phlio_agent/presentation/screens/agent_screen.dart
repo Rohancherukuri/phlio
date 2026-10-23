@@ -1,6 +1,7 @@
-// Phlio Agent screen — mirrors the reference "4. PHLIO AGENT" screen: a
-// fox header with a BETA badge and tagline, a scrolling chat transcript,
-// and a message composer.
+import 'package:phlio/shared/widgets/notifications_button.dart';
+// Phlio Agent (Foxy) screen — mirrors the reference "4. PHLIO AGENT"
+// screen: Foxy's header with a BETA badge and tagline, a scrolling chat
+// transcript, and a message composer.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,7 +48,8 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     _inputController.clear();
     setState(() => _isSending = true);
 
-    final result = await ref.read(agentControllerProvider.notifier).sendMessage(text);
+    final result =
+        await ref.read(agentControllerProvider.notifier).sendMessage(text);
     if (!mounted) return;
     result.when(
       success: (_) => _scrollToBottom(),
@@ -72,18 +74,23 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     final messagesAsync = ref.watch(agentControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(actions: const [PhlioNotificationsButton()],
         title: Row(
           children: [
-            Text('Phlio Agent', style: PhlioTypography.title),
+            const PhlioFox(size: 34, pose: PhlioFoxPose.hello, animate: false),
+            const SizedBox(width: PhlioSpacing.sm),
+            Text('Foxy', style: PhlioTypography.title),
             const SizedBox(width: PhlioSpacing.sm),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.sm, vertical: 2),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: PhlioSpacing.sm, vertical: 2),
               decoration: BoxDecoration(
-                color: PhlioColors.brandPurple.withOpacity(0.2),
+                color: PhlioColors.brandOrange.withValues(alpha: 0.18),
                 borderRadius: PhlioRadii.pillRadius,
               ),
-              child: Text('BETA', style: PhlioTypography.caption.copyWith(color: PhlioColors.brandPurple)),
+              child: Text('BETA',
+                  style: PhlioTypography.caption
+                      .copyWith(color: PhlioColors.brandOrange)),
             ),
           ],
         ),
@@ -93,8 +100,11 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
           Expanded(
             child: messagesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const Center(child: Text('Something went wrong.')),
-              data: (messages) => messages.isEmpty ? _buildEmptyState() : _buildTranscript(messages),
+              error: (_, __) =>
+                  const Center(child: Text('Something went wrong.')),
+              data: (messages) => messages.isEmpty
+                  ? _buildEmptyState()
+                  : _buildTranscript(messages),
             ),
           ),
           _buildComposer(),
@@ -105,17 +115,19 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
+        key: const ValueKey('agent-welcome-scroll'),
         padding: const EdgeInsets.all(PhlioSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const PhlioFox(size: 96, pose: PhlioFoxPose.idle),
+            const PhlioFox(size: 104, pose: PhlioFoxPose.happy),
             const SizedBox(height: PhlioSpacing.lg),
-            Text('Your plan, my priority.', style: PhlioTypography.headline),
+            Text('Your plan, my priority.',
+                textAlign: TextAlign.center, style: PhlioTypography.headline),
             const SizedBox(height: PhlioSpacing.xs),
             Text(
-              'I can help you plan, book, shop, pay and more.',
+              "I'm Foxy — I can help you plan, book, shop and pay.",
               textAlign: TextAlign.center,
               style: PhlioTypography.body,
             ),
@@ -135,7 +147,8 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
       controller: _scrollController,
       padding: const EdgeInsets.all(PhlioSpacing.lg),
       itemCount: messages.length,
-      itemBuilder: (context, index) => AgentMessageBubble(message: messages[index]),
+      itemBuilder: (context, index) =>
+          AgentMessageBubble(message: messages[index]),
     );
   }
 
@@ -148,7 +161,8 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
           children: [
             Expanded(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg),
                 decoration: BoxDecoration(
                   color: PhlioColors.surfaceInput,
                   borderRadius: PhlioRadii.pillRadius,
@@ -157,22 +171,30 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
                 child: TextField(
                   controller: _inputController,
                   style: PhlioTypography.bodyLarge,
-                  decoration: const InputDecoration(hintText: 'Ask me anything...', border: InputBorder.none),
+                  decoration: const InputDecoration(
+                      hintText: 'Ask me anything...',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false),
                   onSubmitted: (_) => _send(),
                 ),
               ),
             ),
             const SizedBox(width: PhlioSpacing.sm),
             Container(
-              decoration: const BoxDecoration(gradient: PhlioColors.brandGradient, shape: BoxShape.circle),
+              decoration: const BoxDecoration(
+                  gradient: PhlioColors.brandGradient, shape: BoxShape.circle),
               child: IconButton(
                 icon: _isSending
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: PhlioColors.textOnBrand),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: PhlioColors.textOnBrand),
                       )
-                    : const Icon(Icons.arrow_upward_rounded, color: PhlioColors.textOnBrand),
+                    : const Icon(Icons.arrow_upward_rounded,
+                        color: PhlioColors.textOnBrand),
                 onPressed: _isSending ? null : () => _send(),
               ),
             ),
@@ -202,7 +224,8 @@ class _SuggestionChip extends StatelessWidget {
           borderRadius: PhlioRadii.lgRadius,
           border: Border.all(color: PhlioColors.borderSubtle),
         ),
-        child: Text(text, style: PhlioTypography.body, textAlign: TextAlign.center),
+        child: Text(text,
+            style: PhlioTypography.body, textAlign: TextAlign.center),
       ),
     );
   }

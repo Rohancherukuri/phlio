@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../design_system/colors.dart';
@@ -14,6 +15,11 @@ class RoomCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ContentSurface(
+        platform: 'rooms', contentId: room.id, child: _content(context));
+  }
+
+  Widget _content(BuildContext context) {
     return PhlioCard(
       onTap: onTap,
       child: Row(
@@ -48,7 +54,8 @@ class RoomCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Icon(Icons.groups_outlined, size: 16, color: PhlioColors.textMuted),
+              const Icon(Icons.groups_outlined,
+                  size: 16, color: PhlioColors.textMuted),
               const SizedBox(height: 2),
               Text('${room.memberCount}', style: PhlioTypography.caption),
             ],

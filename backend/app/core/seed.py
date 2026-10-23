@@ -21,8 +21,17 @@ import datetime as dt
 import logging
 
 from app.core.container import Container
+from app.domains.activity.entities import ActivityItem, ActivityKind
+from app.domains.book.entities import BookCategory, BookListing, Booking
 from app.domains.identity.entities import User
-from app.domains.rooms.entities import Room, RoomCategory, RoomMessage
+from app.domains.pay.entities import Transaction, TransactionType, Wallet
+from app.domains.rooms.entities import (
+    MessageAttachment,
+    MessageReaction,
+    Room,
+    RoomCategory,
+    RoomMessage,
+)
 from app.domains.shop.entities import Product, ProductCondition, Seller, ShopCategory
 from app.domains.social.entities import Post
 from app.infrastructure.security.password import hash_password
@@ -137,6 +146,39 @@ async def seed_memory_backend(container: Container) -> None:
         )
     )
 
+    # A document drop in the tech room: the setup guide as a PDF card plus a
+    # snapshot of the rig, with a couple of reactions riding on the documents
+    # (Foxy sticker + emoji) so the previews don't render bare.
+    await rooms_repo.add_message(
+        RoomMessage(
+            id="msg_seed_4",
+            room_id=tech_room.id,
+            author_id=neha.id,
+            text="Full write-up of the Ollama setup — model choices, quant settings, everything:",
+            attachments=[
+                MessageAttachment(
+                    id="att_seed_1",
+                    kind="document",
+                    name="local-llm-setup-guide.pdf",
+                    size=1_874_432,
+                    mime="application/pdf",
+                ),
+                MessageAttachment(
+                    id="att_seed_2",
+                    kind="image",
+                    name="rig-photo.png",
+                    size=482_560,
+                    mime="image/png",
+                    value="emoji_foxy_good_job",
+                ),
+            ],
+            reactions=[
+                MessageReaction(kind="emoji", value="🔥", user_id=arjun.id),
+                MessageReaction(kind="sticker", value="costume_wizard", user_id=arjun.id),
+            ],
+        )
+    )
+
     # -- Shop (Art & Handmade category) ------------------------------------
     kiara_seller = Seller(
         id="sel_kiara",
@@ -224,6 +266,179 @@ async def seed_memory_backend(container: Container) -> None:
         )
     )
 
+    # -- Book listings (echo the reference Agent plan: movie → dinner →
+    # -- hangout, plus a local activity) ------------------------------------
+    book_repo = container.book_repository
+    sat_7pm = now.replace(hour=19, minute=0, second=0, microsecond=0)
+    listings = [
+        BookListing(
+            id="bl_movie_kingdom",
+            title="Movie: Kingdom",
+            category=BookCategory.ENTERTAINMENT,
+            venue="PVR Nexus",
+            location_note="7:00 PM show",
+            description="Prime-time screening, recliner seats available.",
+            price_min_minor_units=1_200_00,
+            price_max_minor_units=1_500_00,
+            duration_label="~3h",
+            rating=4.6,
+            starts_at=sat_7pm,
+            tags=["movie", "weekend"],
+        ),
+        BookListing(
+            id="bl_dinner_courtyard",
+            title="Dinner: The Courtyard",
+            category=BookCategory.MEET,
+            venue="The Courtyard",
+            location_note="1.5 km from PVR",
+            description="Alfresco dinner, great for groups.",
+            price_min_minor_units=1_800_00,
+            price_max_minor_units=2_200_00,
+            duration_label="~2h",
+            rating=4.7,
+            tags=["dinner", "group"],
+        ),
+        BookListing(
+            id="bl_hangout_brewboard",
+            title="Post-movie hangout",
+            category=BookCategory.MEET,
+            venue="Brew & Board (Café)",
+            location_note="Great for late-night chats",
+            description="Board games, brews and bites.",
+            price_min_minor_units=450_00,
+            price_max_minor_units=700_00,
+            duration_label="~1.5h",
+            rating=4.4,
+            tags=["cafe", "games"],
+        ),
+        BookListing(
+            id="bl_badminton_court",
+            title="Badminton Court · Hitech City",
+            category=BookCategory.SPORTS_AND_ACTIVITIES,
+            venue="Smash Arena",
+            location_note="Near Hitech City metro",
+            description="Wooden court, all skill levels welcome.",
+            price_min_minor_units=300_00,
+            price_max_minor_units=300_00,
+            duration_label="1h slot",
+            rating=4.5,
+            tags=["sports", "morning"],
+        ),
+        BookListing(
+            id="bl_sunrise_walk",
+            title="Sunrise Walk & Chai Meetup",
+            category=BookCategory.MEET,
+            venue="KBR Park",
+            location_note="Free · every weekend",
+            description="Guided walking group, chai on the house.",
+            price_min_minor_units=0,
+            price_max_minor_units=0,
+            duration_label="1.5h",
+            rating=4.8,
+            is_free=True,
+            tags=["free", "morning"],
+        ),
+    ]
+    for listing in listings:
+        await book_repo.seed_listing(listing)
+
+    # A sample confirmed booking so "My Bookings" isn't empty for Arjun.
+    await book_repo.create_booking(
+        Booking(
+            id="bkg_seed_1",
+            user_id=arjun.id,
+            listing_id="bl_badminton_court",
+            title="Badminton Court · Hitech City",
+            venue="Smash Arena",
+            date=(now + dt.timedelta(days=2)).date(),
+            time=dt.time(18, 30),
+            participants=4,
+            estimated_total_min_minor_units=300_00,
+            estimated_total_max_minor_units=300_00,
+        )
+    )
+
+    # -- Pay (simulated wallet for the demo user) ----------------------------
+    pay_repo = container.pay_repository
+    await pay_repo.seed_wallet(
+        Wallet(user_id=arjun.id, balance_minor_units=4_280_50, upi_handle="arjun@phlio")
+    )
+    for txn in (
+        Transaction(
+            id="txn_seed_1",
+            user_id=arjun.id,
+            type=TransactionType.RECEIVE,
+            counterparty="Neha Kapoor",
+            amount_minor_units=650_00,
+            note="Your share for dinner 😄",
+            created_at=now - dt.timedelta(hours=26),
+        ),
+        Transaction(
+            id="txn_seed_2",
+            user_id=arjun.id,
+            type=TransactionType.SEND,
+            counterparty="Kiara Mehta",
+            amount_minor_units=2_499_00,
+            note="Handcrafted Wooden Lamp",
+            created_at=now - dt.timedelta(days=3),
+        ),
+        Transaction(
+            id="txn_seed_3",
+            user_id=arjun.id,
+            type=TransactionType.SEND,
+            counterparty="Smash Arena",
+            amount_minor_units=300_00,
+            note="Badminton court booking",
+            created_at=now - dt.timedelta(days=5),
+        ),
+    ):
+        await pay_repo.seed_transaction(txn)
+
+    # -- Activity feed --------------------------------------------------------
+    activity_repo = container.activity_repository
+    for item in (
+        ActivityItem(
+            id="act_seed_1",
+            user_id=arjun.id,
+            kind=ActivityKind.BOOK,
+            title="Booking confirmed 🎾",
+            body="Badminton Court · Smash Arena, 6:30 PM in 2 days.",
+            icon="🎟️",
+            ref_id="bkg_seed_1",
+            created_at=now - dt.timedelta(hours=1),
+        ),
+        ActivityItem(
+            id="act_seed_2",
+            user_id=arjun.id,
+            kind=ActivityKind.PAY,
+            title="Neha sent you ₹650",
+            body="Your share for dinner 😄",
+            icon="💸",
+            ref_id="txn_seed_1",
+            created_at=now - dt.timedelta(hours=26),
+        ),
+        ActivityItem(
+            id="act_seed_3",
+            user_id=arjun.id,
+            kind=ActivityKind.SOCIAL,
+            title="Kiara posted in Art & Creators",
+            body='"Turning scraps into stories…" — see what she made.',
+            icon="✨",
+            created_at=now - dt.timedelta(hours=30),
+        ),
+        ActivityItem(
+            id="act_seed_4",
+            user_id=arjun.id,
+            kind=ActivityKind.AGENT,
+            title="Foxy has a plan idea",
+            body="A fun Saturday within ₹4,000 — movie, dinner and a hangout.",
+            icon="🦊",
+            created_at=now - dt.timedelta(hours=40),
+        ),
+    ):
+        await activity_repo.seed_item(item)
+
     logger.info(
-        "seed.completed users=3 rooms=3 products=3 sellers=2 posts=3",
+        "seed.completed users=3 rooms=3 products=3 sellers=2 posts=3 "
+        "listings=5 bookings=1 wallet=1 transactions=3 activity=4",
     )

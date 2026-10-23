@@ -39,7 +39,8 @@ class PhlioPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = size == PhlioButtonSize.large ? 56.0 : 46.0;
+    final height = (size == PhlioButtonSize.large ? 56.0 : 46.0) *
+        (MediaQuery.textScalerOf(context).scale(16) / 16).clamp(1.0, 2.0);
     final disabled = onPressed == null || isLoading;
 
     return Opacity(
@@ -58,7 +59,8 @@ class PhlioPrimaryButton extends StatelessWidget {
               borderRadius: PhlioRadii.pillRadius,
               onTap: isLoading ? null : onPressed,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.xl),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: PhlioSpacing.xl),
                 child: Center(
                   child: isLoading
                       ? const SizedBox(
@@ -66,19 +68,26 @@ class PhlioPrimaryButton extends StatelessWidget {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.4,
-                            valueColor: AlwaysStoppedAnimation(PhlioColors.textOnBrand),
+                            valueColor:
+                                AlwaysStoppedAnimation(PhlioColors.textOnBrand),
                           ),
                         )
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
+                            Flexible(
+                                child: Text(
                               label,
-                              style: PhlioTypography.button.copyWith(color: PhlioColors.textOnBrand),
-                            ),
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: PhlioTypography.button
+                                  .copyWith(color: PhlioColors.textOnBrand),
+                            )),
                             if (icon != null) ...[
                               const SizedBox(width: PhlioSpacing.sm),
-                              Icon(icon, size: 18, color: PhlioColors.textOnBrand),
+                              Icon(icon,
+                                  size: 18, color: PhlioColors.textOnBrand),
                             ],
                           ],
                         ),
@@ -111,7 +120,8 @@ class PhlioSecondaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = size == PhlioButtonSize.large ? 56.0 : 46.0;
+    final height = (size == PhlioButtonSize.large ? 56.0 : 46.0) *
+        (MediaQuery.textScalerOf(context).scale(16) / 16).clamp(1.0, 2.0);
     return SizedBox(
       width: expand ? double.infinity : null,
       height: height,
@@ -121,7 +131,9 @@ class PhlioSecondaryButton extends StatelessWidget {
           side: const BorderSide(color: PhlioColors.border),
           shape: RoundedRectangleBorder(borderRadius: PhlioRadii.pillRadius),
         ),
-        child: Text(label, style: PhlioTypography.button.copyWith(color: PhlioColors.textPrimary)),
+        child: Text(label,
+            style: PhlioTypography.button
+                .copyWith(color: PhlioColors.textPrimary)),
       ),
     );
   }
@@ -147,13 +159,16 @@ class PhlioChipButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? PhlioColors.brandPurple.withOpacity(0.18) : PhlioColors.surfaceElevated,
+      color: selected
+          ? PhlioColors.brandPurple.withOpacity(0.18)
+          : PhlioColors.surfaceElevated,
       borderRadius: PhlioRadii.pillRadius,
       child: InkWell(
         borderRadius: PhlioRadii.pillRadius,
         onTap: onPressed,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.sm),
+          padding: const EdgeInsets.symmetric(
+              horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.sm),
           decoration: BoxDecoration(
             borderRadius: PhlioRadii.pillRadius,
             border: Border.all(
@@ -164,13 +179,19 @@ class PhlioChipButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 16, color: selected ? PhlioColors.brandPurple : PhlioColors.textSecondary),
+                Icon(icon,
+                    size: 16,
+                    color: selected
+                        ? PhlioColors.brandPurple
+                        : PhlioColors.textSecondary),
                 const SizedBox(width: PhlioSpacing.xs),
               ],
               Text(
                 label,
                 style: PhlioTypography.label.copyWith(
-                  color: selected ? PhlioColors.textPrimary : PhlioColors.textSecondary,
+                  color: selected
+                      ? PhlioColors.textPrimary
+                      : PhlioColors.textSecondary,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),

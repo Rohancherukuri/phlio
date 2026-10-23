@@ -71,3 +71,67 @@ async def test_comment_on_missing_post_is_404(client: AsyncClient, auth_headers:
         json={"text": "Hi"},
     )
     assert response.status_code == 404
+
+
+async def test_comment_with_sticker(client, auth_headers):
+    """Comments accept a Foxy sticker id (blueprint section 16)."""
+    response = await client.post(
+        "/api/v1/social/posts/pst_seed_1/comments",
+        json={"text": "", "sticker_id": "wave"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["sticker_id"] == "wave"
+
+    listed = await client.get("/api/v1/social/posts/pst_seed_1/comments", headers=auth_headers)
+    assert any(c["sticker_id"] == "wave" for c in listed.json()["items"])
+
+
+async def test_comment_with_unknown_sticker_rejected(client, auth_headers):
+    response = await client.post(
+        "/api/v1/social/posts/pst_seed_1/comments",
+        json={"text": "", "sticker_id": "not_a_fox"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+async def test_author_profiles_and_paginated_posts(client: AsyncClient, auth_headers: dict) -> None:
+    me = (await client.get("/api/v1/auth/me", headers=auth_headers)).json()
+    by_id = await client.get(f"/api/v1/users/{me['id']}")
+    assert by_id.status_code == 200
+    assert by_id.json()["username"] == me["username"]
+    assert "email" not in by_id.json()
+    assert "phone_number" not in by_id.json()
+    made = []
+    for kind in (None, "image", "video"):
+        response = await client.post(
+            "/api/v1/social/posts",
+            headers=auth_headers,
+            json={
+                "text": f"Author content {kind}",
+                "media": [] if kind is None else [{"url": f"https://example.com/{kind}", "kind": kind}],
+            },
+        )
+        assert response.status_code == 201
+        made.append(response.json()["id"])
+    items = []
+    cursor = None
+    while True:
+        params = {"limit": 1}
+        if cursor:
+            params["cursor"] = cursor
+        page = await client.get(f"/api/v1/users/{me['username']}/posts", headers=auth_headers, params=params)
+        assert page.status_code == 200, page.text
+        items.extend(page.json()["items"])
+        cursor = page.json()["meta"]["next_cursor"]
+        if cursor is None:
+            break
+    assert set(made).issubset({item["id"] for item in items})
+    assert all(item["author_id"] == me["id"] for item in items)
+    assert len({item["id"] for item in items}) == len(items)
+    by_id_posts = await client.get(f"/api/v1/users/{me['id']}/posts", headers=auth_headers)
+    assert by_id_posts.status_code == 200
+    missing = await client.get("/api/v1/users/nonexistent/posts", headers=auth_headers)
+    assert missing.status_code == 404

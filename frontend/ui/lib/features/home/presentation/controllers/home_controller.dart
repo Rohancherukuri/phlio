@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/service_locator.dart';
@@ -7,6 +8,7 @@ import '../../domain/repositories/home_repository.dart';
 final homeRepositoryProvider = Provider<HomeRepository>((ref) => getIt<HomeRepository>());
 
 final homeOverviewProvider = FutureProvider.autoDispose<HomeOverviewEntity>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
   final repository = ref.watch(homeRepositoryProvider);
   final result = await repository.getOverview();
   return result.when(success: (overview) => overview, failure: (failure) => throw failure);

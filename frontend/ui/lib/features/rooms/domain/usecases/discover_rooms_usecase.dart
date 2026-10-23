@@ -8,7 +8,8 @@ class DiscoverRoomsUseCase {
 
   final RoomsRepository _repository;
 
-  Future<Result<PaginatedResponse<RoomEntity>>> call({RoomCategory? category, String? cursor}) {
+  Future<Result<PaginatedResponse<RoomEntity>>> call(
+      {RoomCategory? category, String? cursor}) {
     return _repository.discover(category: category, cursor: cursor);
   }
 }

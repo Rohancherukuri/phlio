@@ -19,6 +19,8 @@ class UserEntity extends Equatable {
     required this.isVerified,
     required this.createdAt,
     this.avatarUrl,
+    this.dateOfBirth,
+    this.phoneNumber,
   });
 
   final String id;
@@ -26,11 +28,24 @@ class UserEntity extends Equatable {
   final String fullName;
   final String email;
   final String? avatarUrl;
+  final DateTime? dateOfBirth;
+  final String? phoneNumber;
   final String bio;
   final List<String> interests;
   final bool isVerified;
   final DateTime createdAt;
 
   @override
-  List<Object?> get props => [id, username, fullName, email, avatarUrl, bio, interests, isVerified];
+  List<Object?> get props => [
+        id,
+        username,
+        fullName,
+        email,
+        avatarUrl,
+        bio,
+        interests,
+        isVerified,
+        dateOfBirth,
+        phoneNumber
+      ];
 }

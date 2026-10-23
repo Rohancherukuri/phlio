@@ -49,7 +49,7 @@ final class ResultFailure<T> extends Result<T> {
 class Failure {
   const Failure({required this.code, required this.message});
 
-  const Failure.network() : code = 'network_error', message = 'Check your connection and try again.';
+  const Failure.network() : code = 'network_error', message = 'Unable to reach Phlio. Please try again shortly.';
 
   const Failure.unknown([String? detail])
       : code = 'unknown_error',

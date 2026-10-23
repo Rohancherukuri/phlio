@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Room discovery state management (Riverpod).
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ final selectedRoomCategoryProvider =
 
 final discoverRoomsProvider =
     FutureProvider.autoDispose<List<RoomEntity>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
   final category = ref.watch(selectedRoomCategoryProvider);
   final repository = ref.watch(roomsRepositoryProvider);
   final useCase = DiscoverRoomsUseCase(repository);
@@ -29,6 +31,7 @@ final discoverRoomsProvider =
 
 final myRoomsProvider =
     FutureProvider.autoDispose<List<RoomEntity>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
   final repository = ref.watch(roomsRepositoryProvider);
   final result = await repository.myRooms();
   return result.when(
@@ -37,3 +40,20 @@ final myRoomsProvider =
 
 final joinRoomProvider = Provider<JoinRoomUseCase>(
     (ref) => JoinRoomUseCase(ref.watch(roomsRepositoryProvider)));
+
+final roomsDirectoryProvider =
+    FutureProvider.autoDispose<List<RoomEntity>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+  final repository = ref.watch(roomsRepositoryProvider);
+  final rooms = <RoomEntity>[];
+  String? cursor;
+  do {
+    final result = await repository.discover(cursor: cursor);
+    final page =
+        result.when(success: (value) => value, failure: (error) => throw error);
+    rooms.addAll(page.items);
+    if (!page.hasMore || page.nextCursor == cursor) break;
+    cursor = page.nextCursor;
+  } while (cursor != null);
+  return rooms;
+});

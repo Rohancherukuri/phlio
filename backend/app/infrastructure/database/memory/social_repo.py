@@ -46,6 +46,11 @@ class InMemorySocialRepository:
             self._posts_newest_first.sort(key=lambda p: p.created_at, reverse=True)
             return post
 
+    async def update_text(self, post_id: str, text: str):
+        async with self._lock:
+            self._posts[post_id].text = text
+        return self._posts[post_id]
+
     async def get_post(self, post_id: str) -> Post | None:
         return self._posts.get(post_id)
 
@@ -57,6 +62,9 @@ class InMemorySocialRepository:
     ) -> tuple[list[Post], str | None]:
         mine = [p for p in self._posts_newest_first if p.author_id == author_id]
         return _paginate(mine, cursor=cursor, limit=limit)
+
+    async def liked_post_ids(self, post_ids, user_id):
+        return {pid for pid in post_ids if await self.is_liked_by(pid, user_id)}
 
     async def is_liked_by(self, post_id: str, user_id: str) -> bool:
         return (post_id, user_id) in self._likes

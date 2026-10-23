@@ -23,7 +23,8 @@ class ProductModel {
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
       category: ShopCategory.fromApiValue(json['category'] as String),
-      condition: ProductCondition.fromApiValue(json['condition'] as String? ?? 'new'),
+      condition:
+          ProductCondition.fromApiValue(json['condition'] as String? ?? 'new'),
       priceMinorUnits: json['price_minor_units'] as int,
       currency: json['currency'] as String? ?? 'INR',
       imageUrls: (json['image_urls'] as List<dynamic>? ?? []).cast<String>(),

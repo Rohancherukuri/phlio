@@ -9,7 +9,9 @@ repository) because they are true regardless of transport or storage:
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
+import re
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -43,6 +45,8 @@ class IdentityService:
         email: str,
         password: str,
         interests: list[str] | None = None,
+        date_of_birth: dt.date | None = None,
+        phone_number: str | None = None,
     ) -> tuple[User, TokenPair]:
         username_normalized = username.strip().lower()
         email_normalized = email.strip().lower()
@@ -53,6 +57,9 @@ class IdentityService:
         if await self._repository.get_by_email(email_normalized) is not None:
             logger.info("identity.register_rejected reason=email_taken")
             raise ConflictError("An account with that email already exists.", code="email_taken")
+
+        if phone_number and await self._repository.get_by_phone(phone_number) is not None:
+            raise ConflictError("An account with that phone number already exists.", code="phone_taken")
 
         user_id = await self._core_engine.generate_id("usr")
         # bcrypt hashing is CPU-bound; run off the event loop.
@@ -67,6 +74,8 @@ class IdentityService:
             avatar_url=None,
             bio="",
             interests=interests or [],
+            date_of_birth=date_of_birth,
+            phone_number=phone_number,
         )
         created = await self._repository.create_user(user)
         tokens = issue_token_pair(created.id, self._settings)
@@ -79,10 +88,13 @@ class IdentityService:
             identifier_normalized
         ) or await self._repository.get_by_email(identifier_normalized)
 
+        if user is None and identifier_normalized.startswith("+"):
+            user = await self._repository.get_by_phone(re.sub(r"[\s()\-]", "", identifier_normalized))
+
         # Deliberately identical error for "no such user" and "wrong
         # password" — distinguishing them lets an attacker enumerate valid
         # usernames/emails.
-        invalid = UnauthorizedError("Incorrect username/email or password.")
+        invalid = UnauthorizedError("Incorrect username, email, phone number or password.")
         if user is None:
             logger.info("identity.login_rejected reason=no_such_user")
             raise invalid
@@ -101,7 +113,9 @@ class IdentityService:
         return user
 
     async def get_public_profile_by_username(self, username: str):
-        user = await self._repository.get_by_username(username.strip().lower())
+        user = await self._repository.get_by_username(username.strip().lower().lstrip("@"))
+        if user is None:
+            user = await self._repository.get_by_id(username.strip())
         if user is None:
             raise NotFoundError("User not found.")
         return user.public_profile()

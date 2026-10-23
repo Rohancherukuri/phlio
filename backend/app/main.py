@@ -11,13 +11,15 @@ demo seed data, then exposes the `app` object uvicorn serves.
 from __future__ import annotations
 
 import logging
+import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.container import build_container
 from app.core.logging import configure_logging
 from app.middleware.error_handler import register_exception_handlers
@@ -34,7 +36,7 @@ logger = logging.getLogger("phlio.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
+    settings = app.state.settings
     container = await build_container(settings)
     app.state.container = container
 
@@ -50,12 +52,30 @@ async def lifespan(app: FastAPI):
         settings.database_backend,
         type(container.agent_planner).__name__,
     )
-    yield
+    from app.infrastructure.outbox import run as deliver_outbox
+    worker = asyncio.create_task(deliver_outbox(container))
+    from app.domains.graph.news import run as refresh_news
+    news_worker = asyncio.create_task(refresh_news(container)) if settings.news_ingestion_enabled else None
+    try:
+        yield
+    finally:
+        if news_worker:
+            news_worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await news_worker
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
+    await container.cache.close()
+    if container.graph.store.db:
+        await container.graph.store.db.close()
+    container.messaging_service.db.close()
+    container.social_video_service.db.close()
     logger.info("Phlio API shutting down.")
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
 
     app = FastAPI(
         title=settings.app_name,
@@ -65,6 +85,8 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         lifespan=lifespan,
     )
+
+    app.state.settings = settings
 
     # Order matters: middleware runs outside-in on the way in, inside-out on
     # the way out. Request ID must be assigned before RequestLogging runs so
@@ -81,6 +103,24 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    from app.api.v1.music import callback_router
+    app.include_router(callback_router)
+
+    # Room uploads land in settings.media_root (streamed to disk by
+    # MediaStorage) and are served back origin-relative under /media so
+    # attachment urls stay deploy-host agnostic.
+    from fastapi.staticfiles import StaticFiles
+
+    from app.core.container import media_root_path
+
+    @app.middleware("http")
+    async def cache_recorded_media(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith('/media/live_recordings/') and response.status_code in (200,206,304):
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
+
+    app.mount("/media", StaticFiles(directory=media_root_path(settings)), name="media")
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

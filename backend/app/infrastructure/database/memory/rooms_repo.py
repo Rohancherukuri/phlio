@@ -66,6 +66,21 @@ class InMemoryRoomsRepository:
             messages.sort(key=lambda m: m.created_at, reverse=True)
             return message
 
+    async def get_message(self, room_id: str, message_id: str) -> RoomMessage | None:
+        for message in self._messages_by_room.get(room_id, []):
+            if message.id == message_id:
+                return message
+        return None
+
+    async def update_message(self, message: RoomMessage) -> RoomMessage:
+        # The in-memory store keeps live dataclass instances, so reaction
+        # edits made on the instance are already "persisted"; the call just
+        # re-sorts and hands it back for symmetry with the real repos.
+        async with self._lock:
+            messages = self._messages_by_room.get(message.room_id, [])
+            messages.sort(key=lambda m: m.created_at, reverse=True)
+            return message
+
     async def list_messages(
         self, room_id: str, *, cursor: str | None, limit: int
     ) -> tuple[list[RoomMessage], str | None]:

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.domains.book.entities import BookListing
+from app.domains.book.service import BookService
 from app.domains.rooms.entities import Room
 from app.domains.rooms.service import RoomsService
 from app.domains.shop.entities import Product
@@ -66,6 +68,18 @@ TOOL_SPECS: list[dict] = [
             },
         },
     },
+    {
+        "name": "search_listings",
+        "description": "Find bookable experiences (movies, dinners, activities) "
+        "on Phlio Book under a maximum price.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "max_price_minor_units": {"type": "integer"},
+                "limit": {"type": "integer", "default": 3},
+            },
+        },
+    },
 ]
 
 
@@ -81,6 +95,16 @@ class AgentTools:
     rooms_service: RoomsService
     shop_service: ShopService
     social_service: SocialService
+    book_service: BookService
+
+    graph: object | None = None
+    viewer_id: str | None = None
+
+    async def get_shared_object_preferences(self, *, participants: list[str], platform: str, purpose: str, verbs: list[str]):
+        from fastapi import HTTPException
+        if self.graph is None or self.viewer_id is None:
+            raise HTTPException(403, "Authenticated context is required.")
+        return await self.graph.foxy_context(self.viewer_id, participants, platform, purpose, verbs)
 
     async def search_rooms(self, *, category: str | None = None, limit: int = 3) -> list[Room]:
         from app.domains.rooms.entities import RoomCategory
@@ -92,7 +116,7 @@ class AgentTools:
             except ValueError:
                 parsed_category = None
         rooms, _ = await self.rooms_service.discover(category=parsed_category, cursor=None, limit=limit)
-        return rooms
+        return [r for r in rooms if not r.is_private or (self.viewer_id and await self.rooms_service._repository.is_member(r.id, self.viewer_id))]
 
     async def search_products(
         self, *, max_price_minor_units: int | None = None, limit: int = 3
@@ -110,3 +134,14 @@ class AgentTools:
         if tag:
             posts = [p for p in posts if tag.lower() in p.tags] or posts[:limit]
         return posts[:limit]
+
+    async def search_listings(
+        self, *, max_price_minor_units: int | None = None, limit: int = 3
+    ) -> list[BookListing]:
+        listings, _ = await self.book_service.browse(
+            category=None,
+            max_price_minor_units=max_price_minor_units,
+            cursor=None,
+            limit=limit,
+        )
+        return listings

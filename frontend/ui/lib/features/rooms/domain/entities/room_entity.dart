@@ -18,7 +18,8 @@ enum RoomCategory {
   final String emoji;
 
   static RoomCategory fromApiValue(String value) =>
-      RoomCategory.values.firstWhere((c) => c.apiValue == value, orElse: () => RoomCategory.localNearby);
+      RoomCategory.values.firstWhere((c) => c.apiValue == value,
+          orElse: () => RoomCategory.localNearby);
 }
 
 class RoomEntity extends Equatable {

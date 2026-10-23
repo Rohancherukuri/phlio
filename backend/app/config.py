@@ -15,6 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +34,15 @@ class Settings(BaseSettings):
     debug: bool = True
     app_name: str = "Phlio API"
     api_v1_prefix: str = "/api/v1"
+    giphy_api_key: str = Field(default="", repr=False)
+    # Spotify OAuth configuration. Keep credentials out of Settings repr/logs.
+    # A client ID alone does not enable account linking or music playback.
+    spotify_client_id: str = Field(default="", repr=False)
+    music_database: str = 'data/music.sqlite3'
+    spotify_callback_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPOTIFY_CALLBACK_URL", "SPOTIFY_REDIRECT_URI"),
+    )
 
     # --- Persistence -------------------------------------------------------
     # "memory": zero-setup, seeded in-process repositories (default; used in
@@ -46,7 +56,25 @@ class Settings(BaseSettings):
     surreal_user: str = "root"
     surreal_password: str = "root"
 
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    news_ingestion_enabled: bool = False
+    redis_enabled: bool = False
+    redis_namespace: str = "development"
+
+    # Room file uploads stream here (see app/infrastructure/media_storage.py)
+    # and are served back under /media by StaticFiles in main.py.
+    media_root: str = "media"
+
+    social_video_database: str = 'data/social_videos.sqlite3'
+    messaging_database: str = 'data/messages.sqlite3'
+    livekit_url: str = ''
+    livekit_api_url: str = ''
+    livekit_api_key: str = ''
+    livekit_api_secret: str = ''
+    messaging_media_root: str = 'data/dm_files'
+    calls_ice_servers: list[dict] = Field(
+        default_factory=lambda: [{'urls': 'stun:stun.l.google.com:19302'}]
+    )
 
     # --- Auth --------------------------------------------------------------
     jwt_secret: str = "dev-only-change-me-dev-only-change-me"

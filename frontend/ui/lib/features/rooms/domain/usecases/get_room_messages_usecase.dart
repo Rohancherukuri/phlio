@@ -8,7 +8,8 @@ class GetRoomMessagesUseCase {
 
   final RoomsRepository _repository;
 
-  Future<Result<PaginatedResponse<RoomMessageEntity>>> call(String roomId, {String? cursor}) {
+  Future<Result<PaginatedResponse<RoomMessageEntity>>> call(String roomId,
+      {String? cursor}) {
     return _repository.getMessages(roomId, cursor: cursor);
   }
 }

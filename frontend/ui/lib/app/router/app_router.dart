@@ -1,50 +1,56 @@
+import '../../shared/content/content_surface.dart';
 // App routing (go_router).
 //
 // Route shape:
 //   /splash                          — session bootstrap (see onboarding/presentation/splash_screen.dart)
 //   /login, /signup                  — auth flow, outside the bottom-nav shell
-//   StatefulShellRoute (bottom nav):  — see app/shell/app_shell.dart for why
-//   only Home/Explore(Rooms)/Activity/Profile are tabs
-//     /home
-//     /rooms, /rooms/:roomId
-//     /activity
-//     /profile
-//   /social                          — pushed as its own destination, not a shell tab
-//   /shop                            — same
-//   /agent                           — same
+//   StatefulShellRoute (bottom nav):  — see app/shell/app_shell.dart
+//     /home      — current platform's home (platform picked via the App Tray)
+//     /explore   — current platform's discovery surface
+//     /profile   — shared across all platforms
+//   /activity                        — pushed full-screen (cross-domain feed,
+//                                      filtered by the current platform)
+//   /rooms/:roomId                   — pushed full-screen room detail
+//
+// Platforms (Pay, Social, Rooms, Book, Shop, Stream, News, Agent) are NOT
+// routes — they are state (`currentPlatformProvider`), flipped from the App
+// Tray, quick actions, the create sheet and the Agent plan card. The Home
+// and Explore branches render platform-switched `IndexedStack`s so each
+// platform keeps its own live surface.
 //
 // Auth guarding lives entirely in `redirect`, driven by
 // `authControllerProvider`'s `AsyncValue<UserEntity?>`: still loading ->
 // stay on splash; null -> force to /login (unless already on an auth
 // route); non-null -> bounce away from /login|/signup|/splash into /home.
-// This is the single source of truth for "can this route be shown" — no
-// screen re-checks auth itself.
 //
-// Transitions: top-level pushed destinations (/social, /shop, /agent) and
-// the auth flow use `_fadeThroughPage` — a deliberate fade+slight-rise
-// transition (see that function) rather than each platform's raw default,
-// so navigation feels like one consistent product instead of "whatever the
-// OS does." Tab switches inside the bottom-nav shell are intentionally
-// instant (no transition) — that's the correct, native feel for a bottom
-// nav, and `StatefulShellRoute.indexedStack` gives it for free.
+// Transitions: pushed destinations use `_fadeThroughPage` — a deliberate
+// fade+slight-rise transition rather than each platform's raw default.
+// Tab switches inside the bottom-nav shell are intentionally instant (no
+// transition) — that's the correct, native feel for a bottom nav, and
+// `StatefulShellRoute.indexedStack` gives it for free.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/activity/presentation/screens/activity_screen.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/authentication/presentation/screens/login_screen.dart';
 import '../../features/authentication/presentation/screens/signup_screen.dart';
-import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
-import '../../features/phlio_agent/presentation/screens/agent_screen.dart';
+import '../../features/pay/presentation/screens/qr_scanner_screen.dart';
+import '../../features/rooms/presentation/screens/dm_screen.dart';
+import '../../features/rooms/presentation/screens/call_screen.dart';
 import '../../features/rooms/presentation/screens/room_detail_screen.dart';
-import '../../features/rooms/presentation/screens/rooms_screen.dart';
-import '../../features/shop/presentation/screens/shop_screen.dart';
-import '../../features/social/presentation/screens/social_feed_screen.dart';
-import '../shell/activity_placeholder_screen.dart';
+import '../../features/social/presentation/screens/creator_profile_screen.dart';
 import '../shell/app_shell.dart';
+import '../shell/platform_explore_screen.dart';
+import '../shell/platform_home_screen.dart';
+import '../shell/profile_dashboard_screen.dart';
 import '../shell/profile_screen.dart';
+import '../shell/settings_screen.dart';
+import '../shell/account_switcher.dart';
+import '../../features/rooms/presentation/screens/chats_inbox_screen.dart';
 
 /// Bridges Riverpod state changes to `GoRouter`'s `Listenable`-based
 /// `refreshListenable` API, so a login/logout immediately re-runs
@@ -57,15 +63,15 @@ class _RouterRefreshNotifier extends ChangeNotifier {
 
 /// A fade + gentle upward-slide page transition — deliberately understated
 /// (no full-screen slide-from-the-side, no bounce) so it reads as polish
-/// rather than decoration. Used for every top-level destination in the app
-/// (see the module doc-comment for which routes skip it and why).
+/// rather than decoration. Used for every pushed destination in the app.
 CustomTransitionPage<void> _fadeThroughPage(Widget child) {
   return CustomTransitionPage<void>(
     child: child,
     transitionDuration: const Duration(milliseconds: 260),
     reverseTransitionDuration: const Duration(milliseconds: 200),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      final curved =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
       return FadeTransition(
         opacity: curved,
         child: Transform.translate(
@@ -79,6 +85,7 @@ CustomTransitionPage<void> _fadeThroughPage(Widget child) {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = _RouterRefreshNotifier(ref);
+  String? pendingSharedContent;
 
   return GoRouter(
     initialLocation: '/splash',
@@ -86,6 +93,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final authState = ref.read(authControllerProvider);
       final location = state.matchedLocation;
+      if (state.uri.path.startsWith('/shared/') ||
+          state.uri.path.startsWith('/creator/'))
+        pendingSharedContent = state.uri.path;
       const authRoutes = ['/login', '/signup'];
 
       if (authState.isLoading) {
@@ -96,11 +106,34 @@ final routerProvider = Provider<GoRouter>((ref) {
       final onAuthRoute = authRoutes.contains(location);
 
       if (!isSignedIn && !onAuthRoute) return '/login';
-      if (isSignedIn && (onAuthRoute || location == '/splash')) return '/home';
+      if (isSignedIn && (onAuthRoute || location == '/splash')) {
+        final next = pendingSharedContent;
+        pendingSharedContent = null;
+        return next ?? '/home';
+      }
+      if (isSignedIn) pendingSharedContent = null;
       return null;
     },
     routes: [
-      GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
+      GoRoute(
+          path: '/chats',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const ChatsInboxScreen())),
+      GoRoute(
+          path: '/settings',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const SettingsScreen())),
+      GoRoute(
+          path: '/add-account',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const AddAccountScreen())),
+      GoRoute(
+          path: '/shared/:platform/:ref',
+          builder: (context, state) => ContentDetailScreen(
+              path:
+                  '${state.pathParameters['platform']}/${state.pathParameters['ref']}')),
+      GoRoute(
+          path: '/splash', builder: (context, state) => const SplashScreen()),
       GoRoute(
         path: '/login',
         pageBuilder: (context, state) => _fadeThroughPage(const LoginScreen()),
@@ -109,45 +142,91 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/signup',
         pageBuilder: (context, state) => _fadeThroughPage(const SignupScreen()),
       ),
-
       GoRoute(
-        path: '/social',
-        pageBuilder: (context, state) => _fadeThroughPage(const SocialFeedScreen()),
+        path: '/activity',
+        pageBuilder: (context, state) =>
+            _fadeThroughPage(const ActivityScreen()),
       ),
       GoRoute(
-        path: '/shop',
-        pageBuilder: (context, state) => _fadeThroughPage(const ShopScreen()),
+        path: '/profile-dashboard',
+        pageBuilder: (context, state) => _fadeThroughPage(
+          ProfileDashboardScreen(postCount: state.extra as int? ?? 0),
+        ),
       ),
       GoRoute(
-        path: '/agent',
-        pageBuilder: (context, state) => _fadeThroughPage(const AgentScreen()),
+        path: '/qr-scanner',
+        pageBuilder: (context, state) =>
+            _fadeThroughPage(const QrScannerScreen()),
       ),
-
+      GoRoute(
+        path: '/call/:callId',
+        builder: (context, state) {
+          final data = state.extra as Map<String, dynamic>? ?? {};
+          return CallScreen(
+              callId: state.pathParameters['callId']!,
+              name: data['name'] as String? ?? 'Call',
+              video: data['video'] == true,
+              incoming: data['incoming'] == true);
+        },
+      ),
+      GoRoute(
+        path: '/dm/:username',
+        pageBuilder: (context, state) => _fadeThroughPage(
+          DmScreen(username: state.pathParameters['username']!),
+        ),
+      ),
+      GoRoute(
+        path: '/creator/:username',
+        redirect: (context, state) {
+          final me = ref.read(authControllerProvider).valueOrNull;
+          final target = state.pathParameters['username'];
+          return me != null && (target == me.id || target == me.username)
+              ? '/profile'
+              : null;
+        },
+        pageBuilder: (context, state) => _fadeThroughPage(
+          CreatorProfileScreen(username: state.pathParameters['username']!),
+        ),
+      ),
+      GoRoute(
+        path: '/rooms/:roomId',
+        pageBuilder: (context, state) => _fadeThroughPage(
+          RoomDetailScreen(roomId: state.pathParameters['roomId']!),
+        ),
+      ),
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => AppShell(navigationShell: navigationShell),
+        builder: (context, state, navigationShell) =>
+            AppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(routes: [
-            GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+            GoRoute(
+                path: '/home',
+                builder: (context, state) => Consumer(
+                    builder: (context, ref, _) => PlatformHomeScreen(
+                        key: ValueKey(ref
+                            .watch(authControllerProvider)
+                            .valueOrNull
+                            ?.id)))),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
-              path: '/rooms',
-              builder: (context, state) => const RoomsScreen(),
-              routes: [
-                GoRoute(
-                  path: ':roomId',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    RoomDetailScreen(roomId: state.pathParameters['roomId']!),
-                  ),
-                ),
-              ],
-            ),
+                path: '/explore',
+                builder: (context, state) => Consumer(
+                    builder: (context, ref, _) => PlatformExploreScreen(
+                        key: ValueKey(ref
+                            .watch(authControllerProvider)
+                            .valueOrNull
+                            ?.id)))),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/activity', builder: (context, state) => const ActivityPlaceholderScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen()),
+            GoRoute(
+                path: '/profile',
+                builder: (context, state) => Consumer(
+                    builder: (context, ref, _) => ProfileScreen(
+                        key: ValueKey(ref
+                            .watch(authControllerProvider)
+                            .valueOrNull
+                            ?.id)))),
           ]),
         ],
       ),

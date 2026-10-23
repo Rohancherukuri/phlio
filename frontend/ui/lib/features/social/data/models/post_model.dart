@@ -1,19 +1,25 @@
 import '../../domain/entities/post_entity.dart';
 
 class MediaAttachmentModel {
-  const MediaAttachmentModel({required this.url, required this.kind});
+  const MediaAttachmentModel(
+      {required this.url, required this.kind, this.thumbnailUrl});
 
   factory MediaAttachmentModel.fromJson(Map<String, dynamic> json) {
     return MediaAttachmentModel(
       url: json['url'] as String,
-      kind: (json['kind'] as String) == 'video' ? MediaKind.video : MediaKind.image,
+      thumbnailUrl: json['thumbnail_url'] as String?,
+      kind: (json['kind'] as String) == 'video'
+          ? MediaKind.video
+          : MediaKind.image,
     );
   }
 
   final String url;
   final MediaKind kind;
+  final String? thumbnailUrl;
 
-  MediaAttachmentEntity toEntity() => MediaAttachmentEntity(url: url, kind: kind);
+  MediaAttachmentEntity toEntity() =>
+      MediaAttachmentEntity(url: url, kind: kind, thumbnailUrl: thumbnailUrl);
 }
 
 class PostModel {

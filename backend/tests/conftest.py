@@ -21,9 +21,19 @@ from app.main import create_app
 
 
 @pytest.fixture
-def settings() -> Settings:
+def settings(tmp_path) -> Settings:
     return Settings(
         database_backend="memory",
+        redis_enabled=False,
+        livekit_url="",
+        livekit_api_key="",
+        livekit_api_secret="",
+        news_ingestion_enabled=False,
+        messaging_database=":memory:",
+        social_video_database=":memory:",
+        music_database=str(tmp_path / "music.sqlite3"),
+        media_root=str(tmp_path / "media"),
+        messaging_media_root=str(tmp_path / "dm_files"),
         jwt_secret="test-secret-at-least-32-bytes-long-for-hs256",
         debug=True,
     )
@@ -33,7 +43,7 @@ def settings() -> Settings:
 async def client(settings: Settings):
     """An `httpx.AsyncClient` wired to a freshly-built app, seeded with the
     same demo data used in local development."""
-    app = create_app()
+    app = create_app(settings)
     container = await build_container(settings)
     await seed_memory_backend(container)
     app.state.container = container

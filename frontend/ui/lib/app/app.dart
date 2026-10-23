@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router/app_router.dart';
+import '../features/social/presentation/widgets/social_video_player.dart';
+import '../features/rooms/presentation/widgets/incoming_call_banner.dart';
 import 'theme/app_theme.dart';
 
 class PhlioApp extends ConsumerWidget {
@@ -23,6 +25,16 @@ class PhlioApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
       routerConfig: router,
+      // The builder sits above the router's Navigator. Global controls need
+      // their own Overlay ancestor for tooltips, independent of route overlays.
+      builder: (context, child) => Overlay.wrap(
+          child: Stack(
+        children: [
+          child!,
+          const SocialVideoPlayer(),
+          IncomingCallBanner(router: router),
+        ],
+      )),
     );
   }
 }

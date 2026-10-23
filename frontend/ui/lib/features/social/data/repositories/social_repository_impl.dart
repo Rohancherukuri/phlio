@@ -16,7 +16,8 @@ class SocialRepositoryImpl implements SocialRepository {
   final SocialRemoteDataSource _remoteDataSource;
 
   @override
-  Future<Result<PaginatedResponse<PostEntity>>> getFeed({String? cursor}) async {
+  Future<Result<PaginatedResponse<PostEntity>>> getFeed(
+      {String? cursor}) async {
     try {
       final json = await _remoteDataSource.getFeed(cursor: cursor);
       final page = PaginatedResponse<PostEntity>.fromJson(
@@ -30,9 +31,13 @@ class SocialRepositoryImpl implements SocialRepository {
   }
 
   @override
-  Future<Result<PostEntity>> createPost({required String text, required List<String> tags}) async {
+  Future<Result<PostEntity>> createPost(
+      {required String text,
+      required List<String> tags,
+      String? musicId}) async {
     try {
-      final post = await _remoteDataSource.createPost(text: text, tags: tags);
+      final post = await _remoteDataSource.createPost(
+          text: text, tags: tags, musicId: musicId);
       return Result.success(post.toEntity());
     } on DioException catch (e) {
       return Result.failure(mapDioErrorToFailure(e));
@@ -50,9 +55,11 @@ class SocialRepositoryImpl implements SocialRepository {
   }
 
   @override
-  Future<Result<CommentEntity>> addComment({required String postId, required String text}) async {
+  Future<Result<CommentEntity>> addComment(
+      {required String postId, required String text, String? stickerId}) async {
     try {
-      final comment = await _remoteDataSource.addComment(postId: postId, text: text);
+      final comment = await _remoteDataSource.addComment(
+          postId: postId, text: text, stickerId: stickerId);
       return Result.success(comment.toEntity());
     } on DioException catch (e) {
       return Result.failure(mapDioErrorToFailure(e));
@@ -60,7 +67,8 @@ class SocialRepositoryImpl implements SocialRepository {
   }
 
   @override
-  Future<Result<PaginatedResponse<CommentEntity>>> getComments(String postId, {String? cursor}) async {
+  Future<Result<PaginatedResponse<CommentEntity>>> getComments(String postId,
+      {String? cursor}) async {
     try {
       final json = await _remoteDataSource.getComments(postId, cursor: cursor);
       final page = PaginatedResponse<CommentEntity>.fromJson(

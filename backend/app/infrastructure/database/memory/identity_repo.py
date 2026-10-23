@@ -24,6 +24,9 @@ class InMemoryIdentityRepository:
     async def get_by_id(self, user_id: str) -> User | None:
         return self._by_id.get(user_id)
 
+    async def get_many(self, user_ids: list[str]) -> list[User]:
+        return [self._by_id[uid] for uid in set(user_ids) if uid in self._by_id]
+
     async def get_by_username(self, username: str) -> User | None:
         user_id = self._by_username.get(username)
         return self._by_id.get(user_id) if user_id else None
@@ -31,6 +34,15 @@ class InMemoryIdentityRepository:
     async def get_by_email(self, email: str) -> User | None:
         user_id = self._by_email.get(email)
         return self._by_id.get(user_id) if user_id else None
+
+    async def get_by_phone(self, phone_number: str) -> User | None:
+        return next((u for u in self._by_id.values() if u.phone_number == phone_number), None)
+
+    async def search_users(self, query: str, limit: int = 30) -> list[User]:
+        q = query.casefold().lstrip("@")
+        return [u for u in self._by_id.values() if q in u.username.casefold() or q in u.full_name.casefold()][
+            :limit
+        ]
 
     async def update_user(self, user: User) -> User:
         async with self._lock:

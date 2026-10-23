@@ -22,7 +22,11 @@ final _logger = createLogger('phlio.api');
 /// Paths that must NOT get an Authorization header attached (they either
 /// don't require auth or, in the refresh endpoint's case, need to avoid a
 /// circular dependency on the very token they're refreshing).
-const _unauthenticatedPaths = ['/auth/login', '/auth/register', '/auth/refresh'];
+const _unauthenticatedPaths = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+];
 
 /// Request-options key used to stash the start time for duration logging —
 /// namespaced so it can't collide with anything the retry logic in
@@ -30,8 +34,17 @@ const _unauthenticatedPaths = ['/auth/login', '/auth/register', '/auth/refresh']
 const _startTimeExtraKey = 'phlio_request_start_time';
 
 class ApiClient {
-  ApiClient({required TokenStorage tokenStorage, this.onSessionExpired})
+  ApiClient(
+      {required TokenStorage tokenStorage,
+      this.onSessionExpired,
+      Dio? refreshClient,})
       : _tokenStorage = tokenStorage,
+        _refreshClient = refreshClient ??
+            Dio(BaseOptions(
+                baseUrl: AppConfig.apiBaseUrl,
+                connectTimeout: const Duration(seconds: 30),
+                sendTimeout: const Duration(seconds: 30),
+                receiveTimeout: const Duration(seconds: 45),),),
         dio = Dio(
           BaseOptions(
             baseUrl: AppConfig.apiBaseUrl,
@@ -50,7 +63,8 @@ class ApiClient {
             handler.next(options);
           },
           onResponse: (response, handler) {
-            _logRequestOutcome(response.requestOptions, statusCode: response.statusCode);
+            _logRequestOutcome(response.requestOptions,
+                statusCode: response.statusCode,);
             handler.next(response);
           },
           onError: (error, handler) {
@@ -67,6 +81,7 @@ class ApiClient {
   }
 
   final Dio dio;
+  final Dio _refreshClient;
   final TokenStorage _tokenStorage;
 
   /// Invoked when a request fails auth *and* refreshing the token also
@@ -76,7 +91,13 @@ class ApiClient {
 
   bool _isRefreshing = false;
 
-  Future<void> _onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  Future<void> _onRequest(
+      RequestOptions options, RequestInterceptorHandler handler,) async {
+    if (options.path.startsWith('/auth/')) {
+      options.connectTimeout = const Duration(seconds: 30);
+      options.sendTimeout = const Duration(seconds: 30);
+      options.receiveTimeout = const Duration(seconds: 45);
+    }
     final isUnauthenticated = _unauthenticatedPaths.any(options.path.contains);
     if (!isUnauthenticated) {
       final token = await _tokenStorage.accessToken;
@@ -87,12 +108,43 @@ class ApiClient {
     handler.next(options);
   }
 
-  Future<void> _onError(DioException error, ErrorInterceptorHandler handler) async {
+  Future<void> _onError(
+      DioException error, ErrorInterceptorHandler handler,) async {
+    final request = error.requestOptions;
+    final transient = [
+      DioExceptionType.connectionError,
+      DioExceptionType.connectionTimeout,
+      DioExceptionType.sendTimeout,
+      DioExceptionType.receiveTimeout,
+    ].contains(error.type);
+    if (request.path == '/auth/login' &&
+        transient &&
+        request.extra['login_retry'] != true &&
+        !(request.cancelToken?.isCancelled ?? false)) {
+      request.extra['login_retry'] = true;
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      try {
+        handler.resolve(await dio.fetch(request));
+      } on DioException catch (retryError) {
+        handler.next(retryError);
+      }
+      return;
+    }
     final isUnauthorized = error.response?.statusCode == 401;
     final alreadyRetried = error.requestOptions.extra['retried'] == true;
-    final isAuthEndpoint = _unauthenticatedPaths.any(error.requestOptions.path.contains);
+    final isAuthEndpoint =
+        _unauthenticatedPaths.any(error.requestOptions.path.contains);
 
     if (!isUnauthorized || alreadyRetried || isAuthEndpoint || _isRefreshing) {
+      handler.next(error);
+      return;
+    }
+
+    // A response from the previous account must never refresh or sign out
+    // the newly selected account.
+    final sessionToken = await _tokenStorage.accessToken;
+    if (error.requestOptions.headers['Authorization'] !=
+        'Bearer $sessionToken') {
       handler.next(error);
       return;
     }
@@ -108,11 +160,15 @@ class ApiClient {
         return;
       }
 
-      final refreshResponse = await Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)).post(
+      final refreshResponse = await _refreshClient.post(
         '/auth/refresh',
         data: {'refresh_token': refreshToken},
       );
       final newAccessToken = refreshResponse.data['access_token'] as String;
+      if (await _tokenStorage.accessToken != sessionToken) {
+        handler.next(error);
+        return;
+      }
       await _tokenStorage.updateAccessToken(newAccessToken);
       _logger.info('Token refresh succeeded — retrying original request.');
 
@@ -122,10 +178,20 @@ class ApiClient {
       final retryResponse = await dio.fetch(retryOptions);
       handler.resolve(retryResponse);
     } on DioException catch (refreshError) {
-      _logger.error('Token refresh failed — forcing sign-out.', error: refreshError);
-      await _tokenStorage.clearTokens();
-      onSessionExpired?.call();
-      handler.next(error);
+      final rejected = refreshError.response?.statusCode == 401 ||
+          refreshError.response?.statusCode == 403;
+      if (rejected && await _tokenStorage.accessToken == sessionToken) {
+        await _tokenStorage.clearTokens();
+        onSessionExpired?.call();
+      }
+      // A timeout or server outage does not invalidate a saved session.
+      handler.next(rejected
+          ? error
+          : DioException(
+              requestOptions: error.requestOptions,
+              type: refreshError.type,
+              response: refreshError.response,
+              message: refreshError.message,),);
     } finally {
       _isRefreshing = false;
     }
@@ -136,11 +202,15 @@ class ApiClient {
 /// and duration — the same shape as the backend's
 /// `app/middleware/request_logging.py`, so a "what happened" question can
 /// be answered by reading either side's logs the same way.
-void _logRequestOutcome(RequestOptions options, {int? statusCode, String? errorMessage}) {
+void _logRequestOutcome(RequestOptions options,
+    {int? statusCode, String? errorMessage,}) {
   final startTime = options.extra[_startTimeExtraKey] as DateTime?;
-  final durationMs = startTime != null ? DateTime.now().difference(startTime).inMilliseconds : null;
+  final durationMs = startTime != null
+      ? DateTime.now().difference(startTime).inMilliseconds
+      : null;
   final durationTag = durationMs != null ? ' (${durationMs}ms)' : '';
-  final message = '${options.method} ${options.path} -> ${statusCode ?? 'ERR'}$durationTag';
+  final message =
+      '${options.method} ${options.path} -> ${statusCode ?? 'ERR'}$durationTag';
 
   if (errorMessage != null) {
     _logger.warning('$message — $errorMessage');

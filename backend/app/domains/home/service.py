@@ -13,14 +13,14 @@ from app.domains.social.service import SocialService
 logger = logging.getLogger("phlio.home")
 
 # The eight Phlio domains, in the order Phlio_Final_Product_Blueprint.md
-# section 3 lists them. Only Social, Rooms, Shop, and Agent are backed by
-# real domains in this build stage (Stage 1-3 of section 44); Pay, Book,
-# Stream, and News are represented honestly as roadmap, not omitted.
+# section 3 lists them. Social, Rooms, Shop, Agent, Book and Pay are backed
+# by real domains in this build stage (Stage 1-4 of section 44); Stream and
+# News are represented honestly as roadmap, not omitted.
 _QUICK_ACTIONS = [
-    QuickAction(QuickActionKind.PAY, "Pay", is_available=False),
+    QuickAction(QuickActionKind.PAY, "Pay", is_available=True),
     QuickAction(QuickActionKind.SOCIAL, "Social", is_available=True),
     QuickAction(QuickActionKind.ROOMS, "Rooms", is_available=True),
-    QuickAction(QuickActionKind.BOOK, "Book", is_available=False),
+    QuickAction(QuickActionKind.BOOK, "Book", is_available=True),
     QuickAction(QuickActionKind.SHOP, "Shop", is_available=True),
     QuickAction(QuickActionKind.STREAM, "Stream", is_available=False),
     QuickAction(QuickActionKind.NEWS, "News", is_available=False),

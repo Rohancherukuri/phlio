@@ -28,3 +28,12 @@ frontend/ui/.idea/
 .vscode/
 .idea/
 *.swp
+
+# Private messages and attachment storage
+backend/data/
+
+# Reproducible synthetic graph media; regenerate with seed_social_graph.py
+backend/media/demo_graph/
+backend/media/licensed_social/
+# Downloaded test portraits; regenerate with add_profile_test_followers.py
+backend/media/test_followers/

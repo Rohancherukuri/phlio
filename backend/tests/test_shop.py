@@ -8,6 +8,28 @@ from httpx import AsyncClient
 pytestmark = pytest.mark.asyncio
 
 
+async def test_cart_quantity_totals_validation_and_removal(client, auth_headers):
+    assert (await client.get('/api/v1/shop/cart')).status_code == 401
+    product = (await client.get('/api/v1/shop/products', headers=auth_headers)).json()['items'][0]
+    path = '/api/v1/shop/cart/' + product['id']
+    result = await client.put(path, headers=auth_headers, json={'quantity': 2})
+    assert result.status_code == 200
+    assert result.json()['totals'][product['currency']] == 2 * product['price_minor_units']
+    assert (await client.get('/api/v1/shop/cart', headers=auth_headers)).json()['count'] == 2
+    for quantity in (-1, 100):
+        assert (await client.put(path, headers=auth_headers, json={'quantity': quantity})).status_code == 422
+    assert (await client.put('/api/v1/shop/cart/missing', headers=auth_headers, json={'quantity': 1})).status_code == 404
+    assert (await client.put(path, headers=auth_headers, json={'quantity': 0})).json()['count'] == 0
+
+
+async def test_cart_is_scoped_to_signed_in_user(client, auth_headers):
+    product = (await client.get('/api/v1/shop/products', headers=auth_headers)).json()['items'][0]
+    await client.put('/api/v1/shop/cart/'+product['id'], headers=auth_headers, json={'quantity': 3})
+    login = await client.post('/api/v1/auth/login', json={'identifier': 'neha', 'password': 'password123'})
+    other = {'Authorization':'Bearer '+login.json()['tokens']['access_token']}
+    assert (await client.get('/api/v1/shop/cart', headers=other)).json()['items'] == []
+
+
 async def test_browse_returns_seeded_products(client: AsyncClient, auth_headers: dict) -> None:
     response = await client.get("/api/v1/shop/products", headers=auth_headers)
     assert response.status_code == 200

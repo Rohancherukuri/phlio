@@ -41,6 +41,10 @@ def _row_to_user(row: dict) -> User:
         interests=row.get("interests", []),
         created_at=row.get("created_at") or dt.datetime.now(dt.UTC),
         is_verified=row.get("is_verified", False),
+        is_creator=row.get("is_creator", False),
+        is_test_user=row.get("is_test_user", False),
+        phone_number=row.get("phone_number"),
+        date_of_birth=dt.date.fromisoformat(row["date_of_birth"]) if row.get("date_of_birth") else None,
     )
 
 
@@ -55,6 +59,10 @@ def _user_to_row(user: User) -> dict:
         "interests": user.interests,
         "is_verified": user.is_verified,
         "created_at": user.created_at,
+        "is_creator": user.is_creator,
+        "is_test_user": user.is_test_user,
+        "phone_number": user.phone_number,
+        "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
     }
 
 
@@ -74,6 +82,14 @@ class SurrealIdentityRepository:
             return None
         return _row_to_user(row[0] if isinstance(row, list) else row)
 
+    async def get_many(self, user_ids: list[str]) -> list[User]:
+        from app.infrastructure.database.surreal.client import record
+        if not user_ids:
+            return []
+        rows = await self._db.rows('SELECT * FROM user WHERE id IN $ids',
+            {'ids': [record('user:' + uid) for uid in set(user_ids)]})
+        return [_row_to_user(row) for row in rows]
+
     async def get_by_username(self, username: str) -> User | None:
         rows = await self._db.query(
             f"SELECT * FROM {_TABLE} WHERE username = $username LIMIT 1",
@@ -90,8 +106,24 @@ class SurrealIdentityRepository:
         records = rows[0]["result"] if rows and rows[0].get("result") else []
         return _row_to_user(records[0]) if records else None
 
+    async def get_by_phone(self, phone_number: str) -> User | None:
+        rows = await self._db.query(
+            f"SELECT * FROM {_TABLE} WHERE phone_number = $phone LIMIT 1", {"phone": phone_number}
+        )
+        records = rows[0]["result"] if rows and rows[0].get("result") else []
+        return _row_to_user(records[0]) if records else None
+
     async def update_user(self, user: User) -> User:
         record_id = f"{_TABLE}:{user.id}"
         result = await self._db.merge(record_id, _user_to_row(user))
         row = result[0] if isinstance(result, list) else result
         return _row_to_user(row)
+
+    async def search_users(self, query: str, limit: int = 30) -> list[User]:
+        rows = await self._db.query(
+            "SELECT * FROM user WHERE string::contains(string::lowercase(username), $q) "
+            "OR string::contains(string::lowercase(full_name), $q) LIMIT $limit",
+            {"q": query.lower().lstrip("@"), "limit": limit},
+        )
+        records = rows[0]["result"] if rows and rows[0].get("result") else []
+        return [_row_to_user(row) for row in records]

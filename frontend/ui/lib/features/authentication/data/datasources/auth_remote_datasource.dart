@@ -19,6 +19,8 @@ class AuthRemoteDataSource {
     required String email,
     required String password,
     required List<String> interests,
+    String? dateOfBirth,
+    String? phoneNumber,
   }) async {
     final response = await _apiClient.dio.post(
       '/auth/register',
@@ -28,12 +30,15 @@ class AuthRemoteDataSource {
         'email': email,
         'password': password,
         'interests': interests,
+        if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+        if (phoneNumber != null) 'phone_number': phoneNumber,
       },
     );
     return AuthResponseModel.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<AuthResponseModel> login({required String identifier, required String password}) async {
+  Future<AuthResponseModel> login(
+      {required String identifier, required String password}) async {
     final response = await _apiClient.dio.post(
       '/auth/login',
       data: {'identifier': identifier, 'password': password},

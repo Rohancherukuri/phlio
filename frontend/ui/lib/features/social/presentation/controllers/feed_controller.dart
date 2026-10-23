@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Social feed state management (Riverpod).
 //
 // `FeedState` carries pagination info alongside the loaded posts so the
@@ -9,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/result/result.dart';
+import '../../domain/entities/comment_entity.dart';
 import '../../domain/entities/post_entity.dart';
 import '../../domain/repositories/social_repository.dart';
 import '../../domain/usecases/add_comment_usecase.dart';
@@ -17,14 +19,22 @@ import '../../domain/usecases/get_feed_usecase.dart';
 import '../../domain/usecases/toggle_like_usecase.dart';
 
 class FeedState {
-  const FeedState({required this.posts, required this.nextCursor, required this.hasMore, this.isLoadingMore = false});
+  const FeedState(
+      {required this.posts,
+      required this.nextCursor,
+      required this.hasMore,
+      this.isLoadingMore = false});
 
   final List<PostEntity> posts;
   final String? nextCursor;
   final bool hasMore;
   final bool isLoadingMore;
 
-  FeedState copyWith({List<PostEntity>? posts, String? nextCursor, bool? hasMore, bool? isLoadingMore}) {
+  FeedState copyWith(
+      {List<PostEntity>? posts,
+      String? nextCursor,
+      bool? hasMore,
+      bool? isLoadingMore}) {
     return FeedState(
       posts: posts ?? this.posts,
       nextCursor: nextCursor ?? this.nextCursor,
@@ -34,18 +44,31 @@ class FeedState {
   }
 }
 
-final socialRepositoryProvider = Provider<SocialRepository>((ref) => getIt<SocialRepository>());
+final socialRepositoryProvider =
+    Provider<SocialRepository>((ref) => getIt<SocialRepository>());
 
-final feedControllerProvider = AsyncNotifierProvider<FeedController, FeedState>(FeedController.new);
+final feedControllerProvider =
+    AsyncNotifierProvider<FeedController, FeedState>(FeedController.new);
+
+/// Comments for one post, fetched when the comments sheet opens. Invalidated
+/// after every successful add so the list refetches with the new comment.
+final commentsProvider = FutureProvider.autoDispose
+    .family<List<CommentEntity>, String>((ref, postId) async {
+  final repository = ref.watch(socialRepositoryProvider);
+  final result = await repository.getComments(postId);
+  return result.when(
+      success: (page) => page.items, failure: (failure) => throw failure);
+});
 
 class FeedController extends AsyncNotifier<FeedState> {
-  late final GetFeedUseCase _getFeedUseCase;
-  late final CreatePostUseCase _createPostUseCase;
-  late final ToggleLikeUseCase _toggleLikeUseCase;
-  late final AddCommentUseCase _addCommentUseCase;
+  late GetFeedUseCase _getFeedUseCase;
+  late CreatePostUseCase _createPostUseCase;
+  late ToggleLikeUseCase _toggleLikeUseCase;
+  late AddCommentUseCase _addCommentUseCase;
 
   @override
   Future<FeedState> build() async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
     final repository = ref.read(socialRepositoryProvider);
     _getFeedUseCase = GetFeedUseCase(repository);
     _createPostUseCase = CreatePostUseCase(repository);
@@ -58,8 +81,12 @@ class FeedController extends AsyncNotifier<FeedState> {
   Future<FeedState> _loadFirstPage() async {
     final result = await _getFeedUseCase();
     return result.when(
-      success: (page) => FeedState(posts: page.items, nextCursor: page.nextCursor, hasMore: page.hasMore),
-      failure: (failure) => throw failure, // surfaces as AsyncError; screen shows PhlioErrorView
+      success: (page) => FeedState(
+          posts: page.items,
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore),
+      failure: (failure) =>
+          throw failure, // surfaces as AsyncError; screen shows PhlioErrorView
     );
   }
 
@@ -89,8 +116,8 @@ class FeedController extends AsyncNotifier<FeedState> {
     );
   }
 
-  Future<Result<void>> createPost(String text) async {
-    final result = await _createPostUseCase(text: text);
+  Future<Result<void>> createPost(String text, {String? musicId}) async {
+    final result = await _createPostUseCase(text: text, musicId: musicId);
     return result.when(
       success: (post) {
         final current = state.valueOrNull;
@@ -130,10 +157,16 @@ class FeedController extends AsyncNotifier<FeedState> {
     );
   }
 
-  Future<Result<void>> addComment({required String postId, required String text}) async {
-    final result = await _addCommentUseCase(postId: postId, text: text);
+  Future<Result<void>> addComment({
+    required String postId,
+    required String text,
+    String? stickerId,
+  }) async {
+    final result = await _addCommentUseCase(
+        postId: postId, text: text, stickerId: stickerId);
     return result.when(
       success: (_) {
+        ref.invalidate(commentsProvider(postId));
         final current = state.valueOrNull;
         if (current != null) {
           final updated = [

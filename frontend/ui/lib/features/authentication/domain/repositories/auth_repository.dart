@@ -15,6 +15,8 @@ abstract interface class AuthRepository {
     required String email,
     required String password,
     required List<String> interests,
+    String? dateOfBirth,
+    String? phoneNumber,
   });
 
   Future<Result<(UserEntity, AuthTokensEntity)>> login({

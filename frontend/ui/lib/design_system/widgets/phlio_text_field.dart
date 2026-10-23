@@ -26,6 +26,8 @@ class PhlioTextField extends StatefulWidget {
     this.onChanged,
     this.autofillHints,
     this.enabled = true,
+    this.readOnly = false,
+    this.onTap,
   });
 
   final String hintText;
@@ -39,6 +41,8 @@ class PhlioTextField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final Iterable<String>? autofillHints;
   final bool enabled;
+  final bool readOnly;
+  final VoidCallback? onTap;
 
   @override
   State<PhlioTextField> createState() => _PhlioTextFieldState();
@@ -67,11 +71,14 @@ class _PhlioTextFieldState extends State<PhlioTextField> {
         onChanged: widget.onChanged,
         autofillHints: widget.autofillHints,
         enabled: widget.enabled,
+        readOnly: widget.readOnly,
+        onTap: widget.onTap,
         style: PhlioTypography.bodyLarge,
         cursorColor: PhlioColors.brandPurple,
         decoration: InputDecoration(
           hintText: widget.hintText,
-          hintStyle: PhlioTypography.bodyLarge.copyWith(color: PhlioColors.textMuted),
+          hintStyle:
+              PhlioTypography.bodyLarge.copyWith(color: PhlioColors.textMuted),
           filled: true,
           fillColor: PhlioColors.surfaceInput,
           prefixIcon: widget.prefixIcon != null
@@ -80,7 +87,9 @@ class _PhlioTextFieldState extends State<PhlioTextField> {
           suffixIcon: widget.obscureText
               ? IconButton(
                   icon: Icon(
-                    _obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    _obscured
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
                     size: 20,
                     color: PhlioColors.textMuted,
                   ),
@@ -101,13 +110,15 @@ class _PhlioTextFieldState extends State<PhlioTextField> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: PhlioRadii.lgRadius,
-            borderSide: const BorderSide(color: PhlioColors.brandPurple, width: 1.5),
+            borderSide:
+                const BorderSide(color: PhlioColors.brandPurple, width: 1.5),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: PhlioRadii.lgRadius,
             borderSide: const BorderSide(color: PhlioColors.danger),
           ),
-          errorStyle: PhlioTypography.caption.copyWith(color: PhlioColors.danger),
+          errorStyle:
+              PhlioTypography.caption.copyWith(color: PhlioColors.danger),
         ),
       ),
     );

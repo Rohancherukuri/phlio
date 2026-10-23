@@ -7,7 +7,8 @@ class CreatePostUseCase {
 
   final SocialRepository _repository;
 
-  Future<Result<PostEntity>> call({required String text, List<String> tags = const []}) {
-    return _repository.createPost(text: text, tags: tags);
+  Future<Result<PostEntity>> call(
+      {required String text, List<String> tags = const [], String? musicId}) {
+    return _repository.createPost(text: text, tags: tags, musicId: musicId);
   }
 }
