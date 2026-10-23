@@ -200,106 +200,163 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
           final width =
               mini ? (bounds.maxWidth - 24).clamp(0.0, 360.0) : bounds.maxWidth;
           final height = mini ? width * 9 / 16 + 96 : bounds.maxHeight;
-          final content = Material(
-            color: PhlioColors.surface,
-            borderRadius: BorderRadius.circular(mini ? 16 : 0),
-            clipBehavior: Clip.antiAlias,
-            elevation: 16,
-            child: SafeArea(
-              top: !mini,
-              bottom: !mini,
-              child: Column(
-                children: [
-                  if (!full)
-                    GestureDetector(
-                      onPanUpdate: mini
-                          ? (d) => setState(() => offset += d.delta)
-                          : null,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 16),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                c.video!.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
+          final content = full
+              ? Material(
+                  color: Colors.black,
+                  child: Stack(fit: StackFit.expand, children: [
+                    picture,
+                    const IgnorePointer(
+                        child: DecoratedBox(
+                            decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                          Colors.black54,
+                          Colors.transparent,
+                          Colors.black54
+                        ])))),
+                    SafeArea(
+                        child: Column(children: [
+                      Row(children: [
+                        button(Icons.keyboard_arrow_down, 'Minimize player',
+                            () => c.setMode(SocialPlayerMode.expanded)),
+                        const Spacer(),
+                        if (c.video!.localPath == null)
+                          button(
+                              Icons.share_outlined, 'Share video', shareVideo),
+                        button(Icons.settings_outlined, 'Playback settings',
+                            () => setState(() => settings = !settings)),
+                      ]),
+                      Expanded(
+                          child: Center(
+                              child: button(
+                                  ready && p!.value.isPlaying
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
+                                  'Play or pause',
+                                  c.toggle))),
+                      Row(children: [
+                        const SizedBox(width: 16),
+                        Text(
+                            '${time(p?.value.position ?? Duration.zero)} / ${time(p?.value.duration ?? Duration.zero)}'),
+                        const Spacer(),
+                        button(
+                            c.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                            'Mute or unmute',
+                            () => c.setVolume(c.volume == 0 ? 1 : 0)),
+                        button(Icons.fullscreen_exit, 'Exit fullscreen',
+                            () => c.setMode(SocialPlayerMode.expanded)),
+                      ]),
+                      if (ready)
+                        VideoProgressIndicator(p!, allowScrubbing: true),
+                    ])),
+                  ]))
+              : Material(
+                  color: PhlioColors.surface,
+                  borderRadius: BorderRadius.circular(mini ? 16 : 0),
+                  clipBehavior: Clip.antiAlias,
+                  elevation: 16,
+                  child: SafeArea(
+                    top: !mini,
+                    bottom: !mini,
+                    child: Column(
+                      children: [
+                        if (!full)
+                          GestureDetector(
+                            onPanUpdate: mini
+                                ? (d) => setState(() => offset += d.delta)
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 16),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      c.video!.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  if (!mini)
+                                    button(
+                                      Icons.keyboard_arrow_down,
+                                      'Minimize player',
+                                      () =>
+                                          c.setMode(SocialPlayerMode.floating),
+                                    ),
+                                  if (!mini)
+                                    button(
+                                        Icons.close, 'Close player', c.close),
+                                  if (mini)
+                                    const Padding(
+                                      padding: EdgeInsets.all(8),
+                                      child: Icon(Icons.drag_handle),
+                                    ),
+                                ],
                               ),
                             ),
-                            if (!mini)
-                              button(
-                                Icons.keyboard_arrow_down,
-                                'Minimize player',
-                                () => c.setMode(SocialPlayerMode.floating),
-                              ),
-                            if (!mini)
-                              button(Icons.close, 'Close player', c.close),
-                            if (mini)
-                              const Padding(
-                                padding: EdgeInsets.all(8),
-                                child: Icon(Icons.drag_handle),
-                              ),
-                          ],
+                          ),
+                        Expanded(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              GestureDetector(
+                                  onLongPress: shareVideo, child: picture),
+                              if (ready && p!.value.isBuffering)
+                                const Center(
+                                    child: CircularProgressIndicator()),
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        GestureDetector(
-                            onLongPress: shareVideo, child: picture),
-                        if (ready && p!.value.isBuffering)
-                          const Center(child: CircularProgressIndicator()),
+                        if (!mini && ready)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              children: [
+                                VideoProgressIndicator(
+                                  p!,
+                                  allowScrubbing: true,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  colors: const VideoProgressColors(
+                                    playedColor: PhlioColors.brandPurple,
+                                  ),
+                                ),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(time(p.value.position)),
+                                    Text(time(p.value.duration)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        controls,
+                        if (!mini && !full && c.video!.creator.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '@${c.video!.creator}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                CreatorFollowButton(creator: c.video!.creator),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                  if (!mini && ready)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        children: [
-                          VideoProgressIndicator(
-                            p!,
-                            allowScrubbing: true,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            colors: const VideoProgressColors(
-                              playedColor: PhlioColors.brandPurple,
-                            ),
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(time(p.value.position)),
-                              Text(time(p.value.duration)),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  controls,
-                  if (!mini && !full && c.video!.creator.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '@${c.video!.creator}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          CreatorFollowButton(creator: c.video!.creator),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
+                );
           if (!mini) {
             final watch = !full &&
                 c.video!.platform == 'social' &&
@@ -326,6 +383,11 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
             return Stack(children: [
               Positioned.fill(
                   child: AbsorbPointer(absorbing: locked, child: body)),
+              if (!full && c.video!.platform == 'stream')
+                Positioned(left: 16, right: 16, bottom: 16,
+                  child: SafeArea(top: false, child: Material(color: PhlioColors.background,
+                    borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(12),
+                      child: EngagementRow(path: 'stream/${c.video!.contentId ?? c.video!.id}', compact: true))))),
               if (settings)
                 Positioned.fill(
                     child: VideoSettingsPanel(

@@ -17,7 +17,8 @@ import '../../design_system/typography.dart';
 import '../platform/phlio_platform.dart';
 
 class PlatformTraySheet extends ConsumerWidget {
-  const PlatformTraySheet({super.key});
+  const PlatformTraySheet({super.key, this.onSelected});
+  final ValueChanged<PhlioPlatform>? onSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -26,7 +27,10 @@ class PlatformTraySheet extends ConsumerWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, PhlioSpacing.lg,
+          PhlioSpacing.lg,
+          PhlioSpacing.md,
+          PhlioSpacing.lg,
+          PhlioSpacing.lg,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -35,8 +39,6 @@ class PlatformTraySheet extends ConsumerWidget {
             Row(
               children: [
                 Text('Phlio platforms', style: PhlioTypography.headline),
-                const Spacer(),
-                Text('People. Places. Possibilities.', style: PhlioTypography.caption),
               ],
             ),
             const SizedBox(height: PhlioSpacing.lg),
@@ -52,6 +54,7 @@ class PlatformTraySheet extends ConsumerWidget {
                   _PlatformTile(
                     platform: platform,
                     isCurrent: platform == currentPlatform,
+                    onSelected: onSelected,
                   ),
               ],
             ),
@@ -63,7 +66,9 @@ class PlatformTraySheet extends ConsumerWidget {
 }
 
 class _PlatformTile extends ConsumerWidget {
-  const _PlatformTile({required this.platform, required this.isCurrent});
+  const _PlatformTile(
+      {required this.platform, required this.isCurrent, this.onSelected});
+  final ValueChanged<PhlioPlatform>? onSelected;
 
   final PhlioPlatform platform;
   final bool isCurrent;
@@ -73,6 +78,10 @@ class _PlatformTile extends ConsumerWidget {
     return InkWell(
       borderRadius: PhlioRadii.lgRadius,
       onTap: () {
+        if (onSelected != null) {
+          onSelected!(platform);
+          return;
+        }
         ref.read(currentPlatformProvider.notifier).state = platform;
         Navigator.of(context).pop();
         // The Home tab is the platform's front door — land there.
@@ -116,7 +125,8 @@ class _PlatformTile extends ConsumerWidget {
                   right: -2,
                   bottom: -2,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(
                       color: PhlioColors.surfaceElevated,
                       borderRadius: BorderRadius.circular(6),
@@ -134,7 +144,9 @@ class _PlatformTile extends ConsumerWidget {
           Text(
             platform.label,
             style: PhlioTypography.caption.copyWith(
-              color: isCurrent ? PhlioColors.textPrimary : PhlioColors.textSecondary,
+              color: isCurrent
+                  ? PhlioColors.textPrimary
+                  : PhlioColors.textSecondary,
               fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
             ),
           ),

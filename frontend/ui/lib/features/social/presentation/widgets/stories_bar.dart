@@ -1,3 +1,4 @@
+import '../../../../shared/content/moment_viewer.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Stories for the Social home, following the reference app's behavior:
 //
@@ -20,6 +21,16 @@ import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
+import '../../../profile/presentation/controllers/avatar_controller.dart';
+
+String storyDisplayName(WidgetRef ref, String id) {
+  for (final video in ref.watch(socialVideoCatalogProvider).valueOrNull ??
+      <PlayableVideo>[]) {
+    if (video.creator == id && video.creatorName?.isNotEmpty == true)
+      return video.creatorName!;
+  }
+  return id;
+}
 
 /// Seeded "following" list for the stories surfaces — mirrors the creators
 /// in the Videos tab (`social_videos_view.dart`) so the surfaces feel like
@@ -71,10 +82,7 @@ class StoriesStrip extends ConsumerWidget {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                PhlioAvatar(
-                    name: currentUser?.fullName ?? 'You',
-                    imageUrl: currentUser?.avatarUrl,
-                    size: 56),
+                MeAvatar(name: currentUser?.fullName ?? 'You', size: 56),
                 Positioned(
                   right: -1,
                   bottom: -1,
@@ -94,7 +102,7 @@ class StoriesStrip extends ConsumerWidget {
           ),
           for (final user in kStoryUsers) ...[
             _StripItem(
-              label: user.name,
+              label: storyDisplayName(ref, user.name),
               onTap: () => _openCreator(context, user.name),
               child: _ringedAvatar(user,
                   size: 56, onTap: () => _openCreator(context, user.name)),
@@ -250,7 +258,9 @@ class MorphingStoriesHeader extends ConsumerStatefulWidget {
       required this.toolbar,
       required this.compactBelow,
       this.onExpand,
+      this.clipMode = false,
       super.key});
+  final bool clipMode;
   final double progress;
   final Widget toolbar;
   final bool compactBelow;
@@ -264,6 +274,108 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
   double _horizontalOffset = 0;
   @override
   Widget build(BuildContext context) {
+    if (widget.clipMode) {
+      final stories = ref.watch(sharedStoriesProvider).valueOrNull ?? [];
+      final authors = <String, Map>{};
+      for (final story in stories) {
+        final author = story['author'] as Map;
+        authors[author['id'] as String] = author;
+      }
+      final people = authors.values.toList();
+      final p = widget.progress.clamp(0.0, 1.0);
+      Widget avatar(int index, double size) {
+        if (index >= people.length)
+          return Semantics(
+              label: 'No moment',
+              child: Container(
+                  key: ValueKey('empty-moment-$index'),
+                  width: size,
+                  height: size,
+                  decoration: const BoxDecoration(
+                      color: Color(0xff44464B), shape: BoxShape.circle)));
+        final author = people[index];
+        return GestureDetector(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) =>
+                    MomentViewer(authorId: author['id'] as String))),
+            child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border:
+                        Border.all(color: PhlioColors.brandPurple, width: 2)),
+                child: ContentAuthorAvatar(
+                    author: author['id'] as String,
+                    name: author['display_name'] as String,
+                    imageUrl: author['avatar_url'] as String?,
+                    size: size - 8)));
+      }
+
+      return LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final toolbarHeight = 56.0 +
+            (MediaQuery.textScalerOf(context).scale(16) - 22).clamp(0, 60);
+        final count = people.length < 4 ? 4 : people.length;
+        return SizedBox(
+            height: toolbarHeight + 104 * (1 - p),
+            child: GestureDetector(
+              onHorizontalDragUpdate: p < .1
+                  ? (event) => setState(() => _horizontalOffset =
+                      (_horizontalOffset - event.delta.dx).clamp(
+                          0.0,
+                          (count * 80.0 + 32 - width)
+                              .clamp(0.0, double.infinity)))
+                  : null,
+              child: ClipRect(
+                  child: Stack(children: [
+                Positioned(
+                    left: 0,
+                    right: 62 * p,
+                    top: 104 * (1 - p),
+                    height: toolbarHeight,
+                    child: DecoratedBox(
+                        decoration: BoxDecoration(
+                            borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(18 * (1 - p))),
+                            border: Border(
+                                top: BorderSide(
+                                    color: PhlioColors.borderSubtle))),
+                        child: widget.toolbar)),
+                for (var index = count - 1; index >= 0; index--)
+                  if (index < 4 || p < .95)
+                    Positioned(
+                        key: ValueKey('moment-position-$index'),
+                        left: (16 + index * 80 - _horizontalOffset) * (1 - p) +
+                            (width - 62 + index * 11) * p,
+                        top: 8 * (1 - p) + (toolbarHeight - 24) / 2 * p,
+                        child: Opacity(
+                          opacity: index < 4 ? 1 : 1 - p,
+                          child: SizedBox(
+                              width: 56 - 32 * p,
+                              child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    avatar(index, 56 - 32 * p),
+                                    if (index < people.length && p < .95)
+                                      Opacity(
+                                          opacity: (1 - p * 3).clamp(0.0, 1.0),
+                                          child: Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 6),
+                                              child: Text(
+                                                  people[index]['display_name']
+                                                      as String,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                      fontSize: 11)))),
+                                  ])),
+                        )),
+              ])),
+            ));
+      });
+    }
     final currentUser = ref.watch(authControllerProvider).valueOrNull;
     final kStoryUsers = ref.watch(storyUsersProvider);
     final p = widget.progress.clamp(0.0, 1.0);
@@ -335,7 +447,7 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
     final left = start + (target - start) * p;
     final top = 12 + (compactTop - 12) * p;
     final user = index == 0 ? null : kStoryUsers[index - 1];
-    final name = user?.name ?? 'Your story';
+    final name = user == null ? ownName : storyDisplayName(ref, user.name);
     return Positioned(
         key: ValueKey('social-story-position-$index'),
         left: left,
@@ -366,8 +478,7 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                                       child: Stack(
                                           clipBehavior: Clip.none,
                                           children: [
-                                            PhlioAvatar(
-                                                name: ownName, size: size),
+                                            MeAvatar(name: ownName, size: size),
                                             Positioned(
                                                 right: -1,
                                                 bottom: -1,
@@ -388,7 +499,7 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                                   : _ringedAvatar(user!,
                                       size: size,
                                       onTap: () =>
-                                          _openCreator(context, name))),
+                                          _openCreator(context, user.name))),
                           if (labels > 0)
                             Opacity(
                                 opacity: labels,

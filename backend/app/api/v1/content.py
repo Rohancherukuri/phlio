@@ -1,3 +1,4 @@
+from app.api.v1.snap_audience import SnapAudience, validate_audience, can_view
 """Cross-platform engagement, discovery and permission-checked sharing."""
 
 import uuid
@@ -146,6 +147,13 @@ async def engagement(platform: str, ref: str, user=Depends(get_current_user), c=
             if signal["actor"]:
                 actors[signal["actor"]["id"]] = signal["actor"]
     people = list(actors.values())
+    # Keep the viewer's visible like in the three-avatar preview, even when
+    # many other people liked first. Privacy filtering above still applies.
+    people.sort(key=lambda person: person['id'] != user.id)
+    followers = {edge['in'].removeprefix('user:') for edge in
+                 await c.graph.store.rows('follows', {'out': 'user:' + user.id})}
+    follower_people = [person for person in people if person['id'] == user.id or person['id'] in followers]
+
     metrics = {}
     for verb, label in [("saved", "bookmarks"), ("shared", "shares"), ("viewed", "views"), ("reposted", "reposts")]:
         metric_key = f"engagement:{await c.graph.store.revision()}:{obj['id']}:{verb}"
@@ -155,10 +163,28 @@ async def engagement(platform: str, ref: str, user=Depends(get_current_user), c=
             await c.cache.put(metric_key, rows)
         metrics[label + "_count"] = sum([bool(await c.graph.signal(user.id, row)) for row in rows])
         metrics[verb + "_by_me"] = any(row["in"] == "user:" + user.id for row in rows)
+    # Every share counts (not just one per person), like other social apps.
+    share_events = await c.graph.store.rows("share_event", {"object_id": obj["id"]})
+    metrics["shares_count"] = max(metrics["shares_count"], len(share_events))
+    # Comment count for the engagement bar — mirrors the visibility rules of
+    # GET /social/content/{ref}/comments (blocked authors are hidden).
+    comment_key = f"comments:{await c.graph.store.revision()}:{obj['id']}"
+    comment_rows = await c.cache.get(comment_key)
+    if comment_rows is None:
+        comment_rows = await c.graph.store.rows("content_comment", {"object_id": obj["id"]})
+        await c.cache.put(comment_key, comment_rows)
+    authors = [row["author_id"] for row in comment_rows]
+    if obj["object_type"] == "social.post":
+        legacy, _ = await c.social_service.get_comments(ref, cursor=None, limit=100)
+        removed = {row["comment_id"] for row in await c.graph.store.rows("comment_tombstone", {"object_id": obj["id"]})}
+        authors += [comment.author_id for comment in legacy if comment.id not in removed]
+    metrics["comments_count"] = sum([not await c.graph.blocked(user.id, author) for author in authors])
     return dict(
         **metrics,
         count=count,
         avatars=people[:3],
+        follower_avatars=follower_people[:3],
+        follower_like_count=sum(person["id"] != user.id for person in follower_people),
         people=people,
         more_count=max(0, count - min(3, len(people))),
         liked_by_me=mine,
@@ -179,12 +205,14 @@ async def like(platform: str, ref: str, user=Depends(get_current_user), c=Depend
 
 
 @router.put("/content/{platform}/{ref}/actions/{verb}")
-async def interact(platform: str, ref: str, verb: Literal["saved", "reposted", "viewed"],
+async def interact(platform: str, ref: str, verb: Literal["saved", "reposted", "viewed", "shared"],
                    user=Depends(get_current_user), c=Depends(get_container)):
     obj = await resolve(c, user.id, platform, ref)
     aid = key("activity", user.id, obj["id"], verb)
     existing = await c.graph.store.get(aid)
-    if existing and verb != "viewed":
+    if verb == "shared":
+        await record_share(c, user.id, obj["id"])
+    if existing and verb not in {"viewed", "shared"}:
         await c.graph.store.delete(aid)
     elif not existing:
         await c.graph.action(user.id, obj["id"], verb)
@@ -214,6 +242,9 @@ async def destinations(user=Depends(get_current_user), c=Depends(get_container))
         for p in await c.identity_repository.search_users("", 100)
         if p.id != user.id and not await c.graph.blocked(user.id, p.id)
     ]
+    connections = await c.graph.connections(user.id)
+    people = list({p['id']: p for p in [*people, *connections['followers'],
+        *connections['following']]}.values())
     rooms = [dict(id=r.id, name=r.name) for r in await c.rooms_repository.list_member_rooms(user.id)]
     groups = [
         dict(id=g["id"], name=g["name"])
@@ -281,7 +312,13 @@ async def share(
             dict(group_id=target, author=user.id, text=text, object_id=obj["id"], created_at=now()),
         )
     await c.graph.action(user.id, obj["id"], "shared")
+    await record_share(c, user.id, obj["id"])
     return dict(destination=body.destination, target=target, shared=True)
+
+
+async def record_share(c, user_id, object_id):
+    await c.graph.store.put("share_event:" + uuid.uuid4().hex,
+                            dict(object_id=object_id, user_id=user_id, created_at=now()))
 
 
 class GroupMessageIn(BaseModel):
@@ -291,6 +328,31 @@ class GroupMessageIn(BaseModel):
 @router.get("/messaging/groups")
 async def groups(user=Depends(get_current_user), c=Depends(get_container)):
     return [g for g in await c.graph.store.rows("graph_group") if user.id in g["members"]]
+
+
+class CreateGroupIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    members: list[str] = Field(min_length=2, max_length=20)
+
+
+@router.post("/messaging/groups", status_code=201)
+async def create_group(body: CreateGroupIn, user=Depends(get_current_user), c=Depends(get_container)):
+    if not body.name.strip():
+        raise HTTPException(422, "Enter a group name.")
+    members = {user.id}
+    for member in body.members:
+        members.add((await c.graph.user(member)).id)
+    if len(members) < 3:
+        raise HTTPException(422, "Choose at least two other people.")
+    for a in members:
+        for b in members:
+            if a != b and await c.graph.blocked(a, b):
+                raise HTTPException(403, "These members cannot share a group.")
+    await c.cache.rate_limit(user.id, "create_group", 20)
+    gid = "graph_group:" + uuid.uuid4().hex
+    await c.graph.store.put(gid, dict(name=body.name.strip(), owner=user.id,
+        members=sorted(members), created_at=now()))
+    return dict(id=gid, name=body.name.strip())
 
 
 @router.get("/messaging/groups/{gid}/messages")
@@ -368,23 +430,27 @@ async def mutuals(target: str, user=Depends(get_current_user), c=Depends(get_con
     return dict(
         count=len(people),
         avatars=people[:3],
+        follower_avatars=follower_people[:3],
+        follower_like_count=sum(person["id"] != user.id for person in follower_people),
         people=people,
         followed_by=dict(count=len(familiar), avatars=familiar[:3], people=familiar),
     )
 
 
 @router.post("/content/{platform}/{ref}/story", status_code=201)
-async def share_story(platform: str, ref: str, user=Depends(get_current_user), c=Depends(get_container)):
+async def share_story(platform: str, ref: str, user=Depends(get_current_user), c=Depends(get_container), body: SnapAudience | None = None):
     import datetime as dt
 
     obj = await resolve(c, user.id, platform, ref)
     if obj["audience"] != "public" or (platform == "pay" and obj["object_type"] != "pay.merchant"):
         raise HTTPException(403, "Only public content can be added to a story.")
+    policy = await validate_audience(c, user.id, body) if body else {}
     await c.cache.rate_limit(user.id, "share_story", 20)
     return await c.graph.store.put(
         "shared_story:" + uuid.uuid4().hex,
         dict(
             author=user.id,
+            **policy,
             object_id=obj["id"],
             created_at=now(),
             expires_at=(dt.datetime.now(dt.UTC) + dt.timedelta(hours=24)).isoformat(),
@@ -408,7 +474,7 @@ async def shared_stories(user=Depends(get_current_user), c=Depends(get_container
         expiry = dt.datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00"))
         if (
             expiry <= dt.datetime.now(dt.UTC)
-            or row["author"] not in visible
+            or (not await can_view(c, user.id, row) if "audience" in row else row["author"] not in visible)
             or await c.graph.blocked(user.id, row["author"])
         ):
             continue
@@ -424,6 +490,13 @@ async def shared_stories(user=Depends(get_current_user), c=Depends(get_container
                 expires_at=row["expires_at"],
             )
         )
+    from app.api.v1.social import memories
+    for memory in await memories(user, c):
+        if memory.get('kind') in {'moment', 'experience'}:
+            expiry = dt.datetime.fromisoformat(memory['created_at']) + dt.timedelta(hours=24)
+            if expiry > dt.datetime.now(dt.UTC):
+                items.append(dict(id=memory['id'], author=memory['author'], expires_at=expiry.isoformat(),
+                    content=dict(title=memory['caption'], image_url=memory['image_url'], kind=memory['kind'])))
     return items
 
 

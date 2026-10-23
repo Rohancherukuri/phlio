@@ -1,3 +1,4 @@
+import '../../../../shared/giphy/giphy_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../../design_system/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,7 +102,9 @@ class CreatorChat extends StatelessWidget {
                                         children: [
                                           for (final item
                                               in message['attachments'] as List)
-                                            if (FoxyPack.resolve(
+                                            if ((item['value'] as String).startsWith('giphy:'))
+                                              SizedBox(width: 90, height: 90, child: GiphyReferenceView(reference: item['value'] as String))
+                                            else if (FoxyPack.resolve(
                                                   item['value'] as String,
                                                 ) !=
                                                 null)

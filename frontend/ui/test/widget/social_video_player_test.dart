@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:phlio/shared/content/social_comments_sheet.dart';
 import 'package:phlio/core/di/service_locator.dart';
 import 'package:phlio/core/network/api_client.dart';
@@ -61,6 +62,24 @@ MockPlayer player() {
 }
 
 void main() {
+  testWidgets('Fullscreen requests landscape and every exit restores portrait', (tester) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async { calls.add(call); return null; });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    final controller = VideoPlaybackController();
+    for (final destination in [SocialPlayerMode.expanded, SocialPlayerMode.floating, SocialPlayerMode.hidden]) {
+      controller.setMode(SocialPlayerMode.fullscreen);
+      await tester.pump();
+      expect(calls.where((c) => c.method == 'SystemChrome.setPreferredOrientations').last.arguments,
+        ['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
+      controller.setMode(destination);
+      await tester.pump();
+      expect(calls.where((c) => c.method == 'SystemChrome.setPreferredOrientations').last.arguments,
+        ['DeviceOrientation.portraitUp']);
+    }
+    controller.dispose();
+  });
+
   setUpAll(() => registerFallbackValue(Duration.zero));
   test('Quality switching keeps position and preferences', () async {
     final created = <PlayableVideo>[];

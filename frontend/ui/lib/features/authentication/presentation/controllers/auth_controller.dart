@@ -29,6 +29,7 @@ final authControllerProvider =
     AsyncNotifierProvider<AuthController, UserEntity?>(AuthController.new);
 
 class AuthController extends AsyncNotifier<UserEntity?> {
+  void activateAccount(UserEntity user) => state = AsyncData(user);
   late final LoginUseCase _loginUseCase;
   late final RegisterUseCase _registerUseCase;
   late final GetCurrentUserUseCase _getCurrentUserUseCase;

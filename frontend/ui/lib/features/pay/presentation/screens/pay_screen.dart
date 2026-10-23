@@ -1,3 +1,4 @@
+import 'package:phlio/shared/widgets/notifications_button.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Phlio Pay — the Pay platform's home, formatted after the reference
 // payments apps (PhonePe-style) in Phlio's design language:
@@ -44,6 +45,7 @@ class PayScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          const PhlioNotificationsButton(),
           IconButton(
               tooltip: 'Discover merchants',
               icon: const Icon(Icons.storefront_outlined),

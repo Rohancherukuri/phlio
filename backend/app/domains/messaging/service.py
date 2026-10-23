@@ -23,6 +23,7 @@ class MessagingService:
             "recipient TEXT, text TEXT, attachments TEXT, created_at TEXT)"
         )
         self.db.execute("CREATE INDEX IF NOT EXISTS dm_participants ON messages(sender, recipient)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS inbox_preferences (owner TEXT, peer TEXT, folder TEXT, read_at TEXT, PRIMARY KEY(owner, peer))")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, owner TEXT, peer TEXT, "
             "path TEXT, name TEXT, mime TEXT)"
@@ -45,6 +46,21 @@ class MessagingService:
         )
         self.db.commit()
         self.calls: dict[str, dict] = {}
+
+    def inbox_state(self, owner: str, peer: str) -> dict:
+        row = self.db.execute('SELECT folder, read_at FROM inbox_preferences WHERE owner=? AND peer=?', (owner, peer)).fetchone()
+        return dict(row) if row else dict(folder=None, read_at='')
+
+    def update_inbox(self, owner: str, peer: str, folder=None, read=False):
+        state = self.inbox_state(owner, peer)
+        self.db.execute('INSERT OR REPLACE INTO inbox_preferences VALUES (?,?,?,?)',
+            (owner, peer, folder or state['folder'], dt.datetime.now(dt.UTC).isoformat() if read else state['read_at']))
+        self.db.commit()
+
+    def inbox_counts(self, owner: str, peer: str, read_at: str):
+        unread = self.db.execute('SELECT COUNT(*) FROM messages WHERE sender=? AND recipient=? AND created_at>?', (peer, owner, read_at or '')).fetchone()[0]
+        replied = self.db.execute('SELECT 1 FROM messages WHERE sender=? AND recipient=? LIMIT 1',(owner,peer)).fetchone() is not None
+        return unread, replied
 
     def public_history(self, creator: str):
         rows = self.db.execute(

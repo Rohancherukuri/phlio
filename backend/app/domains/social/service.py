@@ -49,6 +49,18 @@ class SocialService:
     async def get_feed(self, *, cursor: str | None, limit: int) -> tuple[list[Post], str | None]:
         return await self._repository.list_feed(cursor=cursor, limit=limit)
 
+    async def feed_metadata(self, posts, viewer):
+        """Batch privacy checks and likes for one page; never reuse across viewers."""
+        from app.domains.graph.service import key
+        if self.graph:
+            authors = {p.author_id for p in posts}
+            blocks = await self.graph.store.get_many(list({k for author in authors for k in (key('block', viewer, author), key('block', author, viewer))}))
+            blocked_ids = {row['id'] for row in blocks}
+            objects = {row['id']: row for row in await self.graph.store.get_many([key('phlio_object', 'social', p.id) for p in posts])}
+            posts = [p for p in posts if key('block', viewer, p.author_id) not in blocked_ids and key('block', p.author_id, viewer) not in blocked_ids and objects.get(key('phlio_object', 'social', p.id), {}).get('state', 'active') == 'active']
+        liked = await self._repository.liked_post_ids([p.id for p in posts], viewer)
+        return posts, liked
+
     async def get_profile_posts(
         self, author_id: str, *, cursor: str | None, limit: int
     ) -> tuple[list[Post], str | None]:

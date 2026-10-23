@@ -79,3 +79,37 @@ async def test_call_requires_acceptance_and_participant_identity(client, auth_he
     assert (await client.post(path, headers=auth_headers)).status_code == 200
     await client.post(f'/api/v1/messaging/calls/{rid}/actions/end', headers=auth_headers)
     assert (await client.post(path, headers=viewer)).status_code == 409
+
+async def test_space_audio_grants_and_schedule(client,auth_headers,rtc):
+    response=await client.post('/api/v1/realtime/live',headers=auth_headers,json={'title':'Music chat','audio_only':True,'topics':['Music']})
+    assert response.status_code==201,response.text
+    claims=jwt.decode(response.json()['token'],'s'*32,algorithms=['HS256'])
+    assert claims['video']['canPublishSources']==['microphone']
+    import datetime as dt
+    created=await client.post('/api/v1/realtime/spaces/scheduled',headers=auth_headers,json={'title':'Tomorrow','topics':['Music'],'starts_at':(dt.datetime.now(dt.UTC)+dt.timedelta(days=1)).isoformat()})
+    assert created.status_code==201,created.text
+    sid=created.json()['id']
+    other=await other_headers(client)
+    assert (await client.post('/api/v1/realtime/spaces/scheduled/'+sid+'/start',headers=other)).status_code==404
+    response=await client.post('/api/v1/realtime/spaces/scheduled/'+sid+'/start',headers=auth_headers)
+    assert response.status_code==200,response.text
+    claims=jwt.decode(response.json()['token'],'s'*32,algorithms=['HS256'])
+    assert claims['video']['canPublishSources']==['microphone']
+    assert (await client.post('/api/v1/realtime/spaces/scheduled/'+sid+'/start',headers=auth_headers)).status_code==409
+
+
+async def test_ended_session_history_is_persistent_and_idempotent(client,auth_headers,rtc):
+    created=await client.post('/api/v1/realtime/live',headers=auth_headers,json={'title':'Remember this session'})
+    assert created.status_code==201
+    room=created.json()['room']
+    assert (await client.get('/api/v1/realtime/history',headers=auth_headers)).json()['items']==[]
+    path='/api/v1/realtime/live/'+room
+    for _ in range(2): assert (await client.delete(path,headers=auth_headers)).status_code==204
+    history=await client.get('/api/v1/realtime/history',headers=auth_headers)
+    assert len(history.json()['items'])==1
+    saved=history.json()['items'][0]
+    assert saved['title']=='Remember this session'
+    assert saved['ended_at'] is not None
+    assert saved['recording_url'] is None
+    assert (await client.get('/api/v1/realtime/history',headers=auth_headers)).json()==history.json()
+    assert (await client.get('/api/v1/realtime/history')).status_code==401

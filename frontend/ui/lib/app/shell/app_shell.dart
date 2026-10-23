@@ -1,4 +1,8 @@
+import '../../features/profile/presentation/widgets/memories_screen.dart';
+import '../../shared/content/stream_screen.dart';
+import '../../shared/music/song_picker.dart';
 import '../../shared/realtime/realtime_screen.dart';
+import '../../shared/content/playlists_screen.dart';
 import '../../features/shop/presentation/screens/cart_sheet.dart';
 import '../../features/shop/presentation/controllers/cart_controller.dart';
 import '../../features/social/presentation/widgets/video_publish_sheet.dart';
@@ -29,6 +33,8 @@ import 'platform_home_screen.dart' show switchPlatform;
 import 'platform_tray_sheet.dart';
 import '../../features/social/presentation/controllers/video_playback_controller.dart';
 
+final _trayPlatformSelectedProvider = StateProvider<bool>((ref) => false);
+
 class AppShell extends ConsumerWidget {
   const AppShell({required this.navigationShell, super.key});
 
@@ -39,6 +45,8 @@ class AppShell extends ConsumerWidget {
     final platform = ref.watch(currentPlatformProvider);
     final onPay = platform == PhlioPlatform.pay;
     final onShop = platform == PhlioPlatform.shop;
+    final onPlaylist =
+        platform == PhlioPlatform.news || platform == PhlioPlatform.stream;
     final user = ref.watch(authControllerProvider).valueOrNull;
 
     final mode = ref.watch(videoPlaybackProvider.select((value) => value.mode));
@@ -61,7 +69,7 @@ class AppShell extends ConsumerWidget {
           // Phlio Pay: the center button becomes Scan & Pay, like the
           // reference payments apps. Everywhere else: the create sheet.
           createIcon: onShop
-              ? Icons.shopping_cart_outlined
+              ? Icons.shopping_bag_outlined
               : onPay
                   ? Icons.qr_code_scanner_rounded
                   : Icons.add_rounded,
@@ -69,31 +77,96 @@ class AppShell extends ConsumerWidget {
               ? 'Cart'
               : onPay
                   ? 'Scan and pay'
-                  : 'Create',
+                  : onPlaylist
+                      ? 'Create playlist'
+                      : 'Create',
           createCount: onShop
               ? (ref.watch(cartProvider).valueOrNull?['count'] as int? ?? 0)
               : 0,
           profileAvatar:
-              user == null ? null : MeAvatar(name: user.fullName, size: 26),
+              user == null ? null : MeAvatar(name: user.fullName, size: 22),
           onCreateTap: onShop
               ? () => showShopCart(context)
               : onPay
                   ? () => context.push('/qr-scanner')
                   : platform == PhlioPlatform.rooms
                       ? () => showCreateRoomSheet(context)
-                      : () => _showCreateSheet(context, ref),
-          onTrayTap: () => _showPlatformTray(context),
+                      : onPlaylist
+                          ? () => showPlaylists(
+                              context,
+                              platform == PhlioPlatform.news
+                                  ? 'news'
+                                  : 'stream',
+                              mediaMode: platform == PhlioPlatform.stream
+                                  ? (ref.read(streamAudioModeProvider)
+                                      ? 'audio'
+                                      : 'video')
+                                  : null)
+                          : () => _showCreateSheet(context, ref),
+          trayIcon: ref.watch(_trayPlatformSelectedProvider)
+              ? platform.activeIcon
+              : Icons.apps_rounded,
+          trayLabel: ref.watch(_trayPlatformSelectedProvider)
+              ? platform.label.replaceFirst('Phlio ', '')
+              : 'Tray',
+          trayColor: ref.watch(_trayPlatformSelectedProvider)
+              ? platform.color
+              : PhlioColors.textMuted,
+          onTrayTap: () => _showPlatformTray(context, ref),
         ),
       ),
     );
   }
 
-  void _showPlatformTray(BuildContext context) {
-    showModalBottomSheet<void>(
+  Future<void> _showPlatformTray(BuildContext context, WidgetRef ref) async {
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    final selected = await showGeneralDialog<PhlioPlatform>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => const PlatformTraySheet(),
+      barrierDismissible: true,
+      barrierLabel: 'Close platform tray',
+      barrierColor: Colors.black38,
+      transitionDuration:
+          reduced ? Duration.zero : const Duration(milliseconds: 280),
+      pageBuilder: (popupContext, animation, secondaryAnimation) => SafeArea(
+        child: Align(
+          alignment: Alignment.bottomRight,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 72),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Material(
+                color: PhlioColors.surface,
+                elevation: 12,
+                borderRadius: BorderRadius.circular(24),
+                clipBehavior: Clip.antiAlias,
+                child: SingleChildScrollView(
+                  child: PlatformTraySheet(
+                    onSelected: (platform) =>
+                        Navigator.of(popupContext).pop(platform),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final motion = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic);
+        return FadeTransition(
+            opacity: motion,
+            child: ScaleTransition(
+                alignment: Alignment.bottomRight,
+                scale: Tween<double>(begin: .65, end: 1).animate(motion),
+                child: child));
+      },
     );
+    if (selected == null || !context.mounted) return;
+    ref.read(_trayPlatformSelectedProvider.notifier).state = true;
+    ref.read(currentPlatformProvider.notifier).state = selected;
+    context.go('/home');
   }
 
   void _showCreateSheet(BuildContext context, WidgetRef ref) {
@@ -169,7 +242,7 @@ class AppShell extends ConsumerWidget {
       case PhlioPlatform.social:
         return [
           _CreateOption(
-            icon: Icons.edit_outlined,
+            icon: Icons.edit_rounded,
             color: PhlioColors.domainSocial,
             title: 'New post',
             subtitle: 'Share a moment with your people',
@@ -179,7 +252,7 @@ class AppShell extends ConsumerWidget {
             },
           ),
           _CreateOption(
-            icon: Icons.videocam_outlined,
+            icon: Icons.videocam_rounded,
             color: PhlioColors.domainStream,
             title: 'New video',
             subtitle: '1–5 minutes',
@@ -199,7 +272,7 @@ class AppShell extends ConsumerWidget {
             },
           ),
           _CreateOption(
-              icon: Icons.live_tv,
+              icon: Icons.sensors_rounded,
               color: PhlioColors.brandPurple,
               title: 'Go live',
               subtitle: 'Broadcast to your Social audience',
@@ -211,31 +284,42 @@ class AppShell extends ConsumerWidget {
                         'Live with ${ref.read(authControllerProvider).valueOrNull?.fullName ?? 'me'}');
               }),
           _CreateOption(
-            icon: Icons.collections_outlined,
+            icon: Icons.photo_library_rounded,
             color: PhlioColors.domainNews,
             title: 'New moment',
             subtitle: 'Save a memory to your timeline',
-            onTap: comingSoon('Moments'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MemoriesScreen(kind: 'moment', openCamera: true)));
+            },
           ),
           _CreateOption(
-            icon: Icons.auto_stories_outlined,
+            icon: Icons.auto_stories_rounded,
             color: PhlioColors.domainArt,
             title: 'New experience',
             subtitle: 'Start a collaborative story',
-            onTap: comingSoon('Experiences'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MemoriesScreen(kind: 'experience', openCamera: true)));
+            },
           ),
           _CreateOption(
-            icon: Icons.camera_alt_outlined,
+            icon: Icons.photo_camera_rounded,
             color: PhlioColors.domainPay,
             title: 'New snap',
             subtitle: 'Capture and share instantly',
-            onTap: comingSoon('Snaps'),
+            onTap: () {
+              final navigator = Navigator.of(context, rootNavigator: true);
+              Navigator.of(context).pop();
+              navigator.push(
+                  MaterialPageRoute(builder: (_) => const MemoriesScreen()));
+            },
           ),
         ];
       case PhlioPlatform.rooms:
         return [
           _CreateOption(
-            icon: Icons.forum_outlined,
+            icon: Icons.forum_rounded,
             color: PhlioColors.domainRooms,
             title: 'New room',
             subtitle: 'Start a community conversation',
@@ -245,7 +329,7 @@ class AppShell extends ConsumerWidget {
       case PhlioPlatform.book:
         return [
           _CreateOption(
-            icon: Icons.confirmation_number_outlined,
+            icon: Icons.local_activity_rounded,
             color: PhlioColors.domainBook,
             title: 'Plan something',
             subtitle: 'Book an experience with friends',
@@ -255,7 +339,7 @@ class AppShell extends ConsumerWidget {
       case PhlioPlatform.agent:
         return [
           _CreateOption(
-            icon: Icons.auto_awesome_outlined,
+            icon: Icons.auto_awesome_rounded,
             color: PhlioColors.brandOrange,
             title: 'Ask Foxy',
             subtitle: 'Let the Agent plan it for you',

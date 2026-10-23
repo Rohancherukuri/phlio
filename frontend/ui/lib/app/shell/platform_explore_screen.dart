@@ -1,3 +1,4 @@
+import '../../shared/content/stream_screen.dart';
 import 'package:phlio/shared/content/news_screen.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // The Explore tab, per platform. Each platform gets its own discovery
@@ -59,7 +60,7 @@ class _PlatformExploreScreenState extends ConsumerState<PlatformExploreScreen> {
           RoomsExploreScreen(),
           BookDiscoveryScreen(explore: true),
           _ShopExplore(),
-          PlatformCatalogScreen(platform: 'stream'),
+          StreamScreen(explore: true),
           NewsScreen(explore: true),
           _AgentExplore(),
         ].indexed)

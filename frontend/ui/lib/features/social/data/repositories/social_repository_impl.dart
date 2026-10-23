@@ -32,9 +32,12 @@ class SocialRepositoryImpl implements SocialRepository {
 
   @override
   Future<Result<PostEntity>> createPost(
-      {required String text, required List<String> tags}) async {
+      {required String text,
+      required List<String> tags,
+      String? musicId}) async {
     try {
-      final post = await _remoteDataSource.createPost(text: text, tags: tags);
+      final post = await _remoteDataSource.createPost(
+          text: text, tags: tags, musicId: musicId);
       return Result.success(post.toEntity());
     } on DioException catch (e) {
       return Result.failure(mapDioErrorToFailure(e));

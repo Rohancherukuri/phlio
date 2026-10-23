@@ -1,3 +1,7 @@
+import '../../features/profile/presentation/widgets/memories_screen.dart';
+import '../../features/profile/presentation/widgets/invite_friends.dart';
+import '../../shared/music/song_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 // Profile — the user's own page, an Instagram/Discord hybrid in Phlio's
 // language:
 //
@@ -5,8 +9,7 @@
 //   interest tags · posts/followers/following · profile song (1-minute
 //   ambient loop, play/pause) · dashboard button · Edit/Share actions ·
 //   Moments (highlights) row · content tabs:
-//   Posts (Articles/Videos/Pics) · Replies · Reposts · Schedule · Chat ·
-//   Clips
+//   Posts (Articles/Videos/Pics) · Reposts · Schedule · Clips
 //
 // Posts load by author and filter text articles, pictures, and uploaded videos.
 // Logout lives in the dashboard overflow for this stage.
@@ -26,8 +29,8 @@ import '../../../design_system/spacing.dart';
 import '../../../design_system/typography.dart';
 import '../../../design_system/widgets/phlio_card.dart';
 import '../../../design_system/widgets/phlio_fox.dart';
-import '../../features/social/presentation/widgets/creator_chat.dart';
-import '../../features/rooms/presentation/widgets/direct_messages_panel.dart';
+import 'account_switcher.dart';
+import '../../features/profile/presentation/widgets/profile_connections.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 
@@ -45,10 +48,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   static const _tabs = [
     'Posts',
-    'Replies',
     'Reposts',
     'Schedule',
-    'Chat',
     'Clips'
   ];
 
@@ -58,7 +59,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   bool _songPlaying = false;
 
   // Posts sub-tab (X-style dropdown): Articles / Videos / Pics.
-  ProfilePostType _postsSubTab = ProfilePostType.articles;
+  ProfilePostType _postsSubTab = ProfilePostType.all;
 
   @override
   void dispose() {
@@ -69,6 +70,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Future<void> _toggleSong() async {
+    final spotify = ref.read(selectedSongProvider('profile')).valueOrNull;
+    if (spotify != null) {
+      await launchUrl(Uri.parse(spotify['url'] as String),
+          mode: LaunchMode.externalApplication);
+      return;
+    }
     if (_songPlaying) {
       await _songPlayer.stop();
       if (mounted) setState(() => _songPlaying = false);
@@ -246,12 +253,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   String get _songTitle {
+    final spotify = ref.watch(selectedSongProvider('profile')).valueOrNull;
+    if (spotify != null) return spotify['title'] as String;
     final custom = ref.read(avatarProvider).songPath;
     if (custom == null) return 'Ambient Sketch — Phlio Original';
     return custom.split('/').last;
   }
 
   String get _songSubtitle {
+    final spotify = ref.watch(selectedSongProvider('profile')).valueOrNull;
+    if (spotify != null) return '${spotify['artist']} · Open in Spotify';
     final song = ref.read(avatarProvider);
     if (song.songPath == null) return 'My song · 0:16 · loops';
     final length = song.songEnd > song.songStart
@@ -289,13 +300,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     if (source == null || !mounted) return;
 
     if (source == 'spotify') {
-      _comingSoon(context, 'Spotify (licensed partner API)');
+      final selected = await showSongPicker(context);
+      if (selected != null && mounted) {
+        try {
+          await ref.read(musicApiProvider).put('/music/selection',
+              data: {'id': selected['id'], 'context': 'profile'});
+          ref.invalidate(selectedSongProvider('profile'));
+          await _songPlayer.stop();
+          if (mounted) setState(() => _songPlaying = false);
+        } catch (e) {
+          if (mounted)
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(musicError(e))));
+        }
+      }
       return;
     }
 
     try {
       final path = await ref.read(avatarProvider.notifier).pickSong();
       if (path == null || !mounted) return;
+      await ref
+          .read(musicApiProvider)
+          .delete('/music/selection', queryParameters: {'context': 'profile'});
+      ref.invalidate(selectedSongProvider('profile'));
       // If the previous song is playing, switch playback off for the trim.
       if (_songPlaying) {
         await _songPlayer.stop();
@@ -351,19 +379,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     final myPosts =
         ref.watch(profilePostsProvider(user.username)).valueOrNull ?? [];
+    final profile = ref.watch(publicProfileProvider(user.username));
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('@${user.username}', style: PhlioTypography.title),
+        centerTitle: true,
+        leading: Row(children: [
+          IconButton(
+              tooltip: 'Invite friends',
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              onPressed: () => Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute(
+                      builder: (_) => const InviteFriendsScreen()))),
+          const MemoryCameraButton(),
+        ]),
+        leadingWidth: 96,
+        titleSpacing: 0,
+        title: Semantics(
+            button: true,
+            label: 'Switch Phlio account',
+            child: InkWell(
+                onTap: () => showAccountSwitcher(context),
+                borderRadius: BorderRadius.circular(12),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Flexible(
+                      child: Text(user.username,
+                          style: PhlioTypography.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.keyboard_arrow_down, size: 20),
+                ]))),
         actions: [
           IconButton(
               tooltip: 'Messages',
               icon: const Icon(Icons.chat_bubble_outline),
-              onPressed: () => showDirectMessagesPanel(context)),
+              onPressed: () => context.push('/chats')),
           IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Log out',
-            onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+            icon: const Icon(Icons.menu),
+            tooltip: 'Settings and activity',
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
@@ -405,9 +459,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _stat('${myPosts.length}', 'posts'),
-                    _stat('252', 'followers'),
-                    _stat('280', 'following'),
+                    // Articles, pics, videos and clips all count.
+                    _stat('${profileContentCount(ref, user.username)}', 'posts'),
+                    InkWell(
+                        onTap: () =>
+                            showProfileConnections(context, 'followers'),
+                        child: _stat(
+                            profile.valueOrNull?['followers']?.toString() ??
+                                '—',
+                            'followers')),
+                    InkWell(
+                        onTap: () =>
+                            showProfileConnections(context, 'following'),
+                        child: _stat(
+                            profile.valueOrNull?['following']?.toString() ??
+                                '—',
+                            'following')),
                   ],
                 ),
               ),
@@ -625,11 +692,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               children: [
                 ProfilePosts(author: user.username, type: _postsSubTab),
                 _emptyContent(
-                  icon: Icons.reply_outlined,
-                  message: 'No replies yet',
-                  hint: 'Replies you post in feeds will appear here.',
-                ),
-                _emptyContent(
                   icon: Icons.repeat_rounded,
                   message: 'No reposts yet',
                   hint: 'Repost something you love and it lands here.',
@@ -639,12 +701,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   message: 'Nothing scheduled',
                   hint: 'Scheduling arrives with Phlio Stream.',
                 ),
-                CreatorChat(username: user.username),
-                _emptyContent(
-                  icon: Icons.content_cut_rounded,
-                  message: 'No clips yet',
-                  hint: 'Clips you upload arrive with Phlio Stream.',
-                ),
+                ProfileClips(author: user.username),
               ],
             ),
           ),

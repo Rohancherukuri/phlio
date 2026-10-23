@@ -21,6 +21,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../design_system/widgets/phlio_card.dart';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 
 /// Filter presets offered after cropping. Matrices are standard color
 /// adjustments; index 0 = original.
@@ -119,7 +120,8 @@ class AvatarState {
 
   bool get hasAvatar => filePath != null;
   bool get hasSong => songPath != null;
-  AvatarFilter get filter => kAvatarFilters[filterIndex.clamp(0, kAvatarFilters.length - 1)];
+  AvatarFilter get filter =>
+      kAvatarFilters[filterIndex.clamp(0, kAvatarFilters.length - 1)];
 
   AvatarState copyWith({
     String? filePath,
@@ -140,30 +142,51 @@ class AvatarState {
 
 class AvatarController extends Notifier<AvatarState> {
   File? _prefsFile;
+  String? _owner;
+  int _generation = 0;
 
   @override
   AvatarState build() {
-    _load();
+    _owner = ref
+        .watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+    _prefsFile = null;
+    final generation = ++_generation;
+    if (_owner != null) _load(generation);
     return const AvatarState();
   }
 
   Future<File> _prefs() async {
     if (_prefsFile != null) return _prefsFile!;
     final dir = await getApplicationDocumentsDirectory();
-    return _prefsFile = File('${dir.path}/profile_prefs.json');
+    final owner = _owner;
+    final file = File(
+        '${dir.path}/profile_prefs_${Uri.encodeComponent(owner ?? 'signed_out')}.json');
+    // Migrate the existing installation's preferences once, to its active user.
+    final legacy = File('${dir.path}/profile_prefs.json');
+    if (owner != null && !await file.exists() && await legacy.exists()) {
+      await legacy.rename(file.path);
+    }
+    if (owner == _owner) _prefsFile = file;
+    return file;
   }
 
-  Future<void> _load() async {
+  Future<void> _load(int generation) async {
     try {
       final file = await _prefs();
       if (!await file.exists()) return;
-      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final path = json['avatar_path'] as String?;
       final song = json['song_path'] as String?;
+      final avatarPath =
+          (path != null && await File(path).exists()) ? path : null;
+      final songPath =
+          (song != null && await File(song).exists()) ? song : null;
+      if (generation != _generation) return;
       state = AvatarState(
-        filePath: (path != null && await File(path).exists()) ? path : null,
+        filePath: avatarPath,
         filterIndex: (json['filter_index'] as int?) ?? 0,
-        songPath: (song != null && await File(song).exists()) ? song : null,
+        songPath: songPath,
         songStart: (json['song_start'] as num?)?.toDouble() ?? 0,
         songEnd: (json['song_end'] as num?)?.toDouble() ?? 0,
       );
@@ -221,8 +244,8 @@ class AvatarController extends Notifier<AvatarState> {
     // Copy out of the cache dir so the file outlives the picker's temp
     // storage.
     final dir = await getApplicationDocumentsDirectory();
-    final saved = File(
-        '${dir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
+    final saved =
+        File('${dir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
     await File(cropped.path).copy(saved.path);
     return saved;
   }
@@ -248,7 +271,15 @@ class AvatarController extends Notifier<AvatarState> {
       result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: const [
-          'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma', 'aiff',
+          'mp3',
+          'wav',
+          'ogg',
+          'm4a',
+          'flac',
+          'aac',
+          'opus',
+          'wma',
+          'aiff',
         ],
         withData: false,
       );
@@ -260,8 +291,8 @@ class AvatarController extends Notifier<AvatarState> {
     if (file == null) return null;
 
     final dir = await getApplicationDocumentsDirectory();
-    final saved =
-        File('${dir.path}/song_${DateTime.now().millisecondsSinceEpoch}_${file.name}');
+    final saved = File(
+        '${dir.path}/song_${DateTime.now().millisecondsSinceEpoch}_${file.name}');
     await File(file.path!).copy(saved.path);
     state = state.copyWith(songPath: saved.path);
     await _persist();
@@ -316,6 +347,34 @@ class MeAvatar extends ConsumerWidget {
         ),
       );
     }
-    return PhlioAvatar(name: name, size: size);
+    return PhlioAvatar(
+        name: name,
+        size: size,
+        imageUrl: ref.watch(authControllerProvider).valueOrNull?.avatarUrl);
+  }
+}
+
+/// Keeps own-content avatars synchronized with the current profile photo.
+class ContentAuthorAvatar extends ConsumerWidget {
+  const ContentAuthorAvatar(
+      {super.key,
+      required this.author,
+      required this.name,
+      this.imageUrl,
+      this.size = 40});
+  final String author, name;
+  final String? imageUrl;
+  final double size;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final me = ref.watch(authControllerProvider).valueOrNull;
+    if (me != null &&
+        (author == me.id ||
+            author == me.username ||
+            author == '@${me.username}')) {
+      return MeAvatar(name: me.fullName, size: size);
+    }
+    return PhlioAvatar(
+        name: name, imageUrl: imageUrl, size: size, profileId: author);
   }
 }

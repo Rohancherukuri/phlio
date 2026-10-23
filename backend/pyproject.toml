@@ -19,6 +19,8 @@ dependencies = [
     "surrealdb==2.0.0",
     "redis>=5,<9",
     "livekit-api>=1.2.1",
+    "cryptography>=50.0.2",
+    "phonenumbers>=9.0.41",
 ]
 
 [project.optional-dependencies]

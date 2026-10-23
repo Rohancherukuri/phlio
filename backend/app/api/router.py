@@ -53,3 +53,7 @@ api_router.include_router(social_comments.router)
 
 from app.api.v1 import realtime
 api_router.include_router(realtime.router)
+from app.api.v1 import playlists
+api_router.include_router(playlists.router)
+from app.api.v1 import music
+api_router.include_router(music.router)

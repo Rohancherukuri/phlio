@@ -48,6 +48,9 @@ import '../shell/platform_explore_screen.dart';
 import '../shell/platform_home_screen.dart';
 import '../shell/profile_dashboard_screen.dart';
 import '../shell/profile_screen.dart';
+import '../shell/settings_screen.dart';
+import '../shell/account_switcher.dart';
+import '../../features/rooms/presentation/screens/chats_inbox_screen.dart';
 
 /// Bridges Riverpod state changes to `GoRouter`'s `Listenable`-based
 /// `refreshListenable` API, so a login/logout immediately re-runs
@@ -90,7 +93,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final authState = ref.read(authControllerProvider);
       final location = state.matchedLocation;
-      if (state.uri.path.startsWith('/shared/'))
+      if (state.uri.path.startsWith('/shared/') ||
+          state.uri.path.startsWith('/creator/'))
         pendingSharedContent = state.uri.path;
       const authRoutes = ['/login', '/signup'];
 
@@ -111,6 +115,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+          path: '/chats',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const ChatsInboxScreen())),
+      GoRoute(
+          path: '/settings',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const SettingsScreen())),
+      GoRoute(
+          path: '/add-account',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const AddAccountScreen())),
       GoRoute(
           path: '/shared/:platform/:ref',
           builder: (context, state) => ContentDetailScreen(
@@ -185,17 +201,32 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(
                 path: '/home',
-                builder: (context, state) => const PlatformHomeScreen()),
+                builder: (context, state) => Consumer(
+                    builder: (context, ref, _) => PlatformHomeScreen(
+                        key: ValueKey(ref
+                            .watch(authControllerProvider)
+                            .valueOrNull
+                            ?.id)))),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
                 path: '/explore',
-                builder: (context, state) => const PlatformExploreScreen()),
+                builder: (context, state) => Consumer(
+                    builder: (context, ref, _) => PlatformExploreScreen(
+                        key: ValueKey(ref
+                            .watch(authControllerProvider)
+                            .valueOrNull
+                            ?.id)))),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
                 path: '/profile',
-                builder: (context, state) => const ProfileScreen()),
+                builder: (context, state) => Consumer(
+                    builder: (context, ref, _) => ProfileScreen(
+                        key: ValueKey(ref
+                            .watch(authControllerProvider)
+                            .valueOrNull
+                            ?.id)))),
           ]),
         ],
       ),

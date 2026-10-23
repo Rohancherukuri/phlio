@@ -1,3 +1,5 @@
+import 'dart:async';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Activity feed state (Riverpod).
 //
 // Two plain providers: the feed itself and a "mark all read" action that
@@ -21,6 +23,9 @@ final activityFeedProvider =
 class ActivityFeedController extends AsyncNotifier<List<ActivityItemEntity>> {
   @override
   Future<List<ActivityItemEntity>> build() async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+    final timer = Timer(const Duration(seconds: 30), ref.invalidateSelf);
+    ref.onDispose(timer.cancel);
     final repository = ref.read(activityRepositoryProvider);
     final result = await repository.feed();
     return result.when(success: (items) => items, failure: (failure) => throw failure);

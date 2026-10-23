@@ -85,10 +85,55 @@ async def conversations(user: User = Depends(get_current_user), c: Container = D
     result = []
     for peer_id in c.messaging_service.peers(user.id):
         peer = await c.identity_repository.get_by_id(peer_id)
-        if peer:
+        if peer and not await c.graph.blocked(user.id, peer.id):
             messages = c.messaging_service.history(user.id, peer.id)
-            result.append(dict(peer=profile(peer), last_message=messages[-1] if messages else None))
-    return result
+            state = c.messaging_service.inbox_state(user.id, peer.id)
+            unread, replied = c.messaging_service.inbox_counts(user.id, peer.id, state['read_at'])
+            folder = state['folder'] or ('primary' if replied or await c.graph.friends(user.id,peer.id) else 'requests')
+            result.append(dict(peer=profile(peer), last_message=messages[-1] if messages else None,folder=folder,unread_count=unread))
+    return sorted(result,key=lambda row:(row['last_message'] or {}).get('created_at',''),reverse=True)
+
+
+class GiphySelection(BaseModel):
+    giphy_id: str = Field(pattern=r'^[A-Za-z0-9]{1,80}$')
+    kind: Literal['gif', 'sticker']
+
+
+@router.get('/giphy/config')
+async def giphy_config(user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    from fastapi.responses import JSONResponse
+    # This is a client API credential: searches and media loads go directly to GIPHY.
+    return JSONResponse({'api_key': c.settings.giphy_api_key}, headers={'Cache-Control': 'no-store'})
+
+
+@router.post('/giphy/recents')
+async def save_giphy(body: GiphySelection, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    from app.domains.graph.service import key
+    from app.domains.graph.store import now
+    # Store references only. GIPHY media and URLs remain on GIPHY.
+    await c.graph.store.put(key('giphy_selection', user.id, body.kind, body.giphy_id),
+        dict(owner=user.id, giphy_id=body.giphy_id, kind=body.kind, selected_at=now()))
+    return {'saved': True}
+
+
+@router.get('/giphy/recents')
+async def recent_giphy(kind: Literal['gif', 'sticker'], user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    rows = await c.graph.store.rows('giphy_selection', {'owner': user.id, 'kind': kind})
+    return sorted(rows, key=lambda r: r['selected_at'], reverse=True)[:24]
+
+
+class InboxUpdate(BaseModel):
+    folder: Literal['primary','general','requests'] | None = None
+    read: bool = False
+
+
+@router.patch('/peers/{peer}/inbox')
+async def update_inbox(peer: str, body: InboxUpdate, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    target = await resolve_peer(peer,c)
+    if target.id not in c.messaging_service.peers(user.id) or await c.graph.blocked(user.id,target.id):
+        raise HTTPException(404,'Conversation unavailable.')
+    c.messaging_service.update_inbox(user.id,target.id,body.folder,body.read)
+    return {'ok':True}
 
 
 @router.get("/peers/{peer}")

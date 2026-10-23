@@ -1,21 +1,33 @@
+import '../../../../shared/music/song_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 
-final graphActivityProvider = FutureProvider.autoDispose<List<dynamic>>(
-    (ref) async => ((await getIt<ApiClient>().dio.get('/activity/friends')).data
-        as Map)['items'] as List);
-final graphNotesProvider = FutureProvider.autoDispose<List<dynamic>>(
-    (ref) async => ((await getIt<ApiClient>().dio.get('/notes')).data
-        as Map)['items'] as List);
-final graphPoliciesProvider = FutureProvider.autoDispose<List<dynamic>>(
-    (ref) async =>
-        (await getIt<ApiClient>().dio.get('/privacy/activity')).data as List);
+final graphActivityProvider =
+    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+  return ((await getIt<ApiClient>().dio.get('/activity/friends')).data
+      as Map)['items'] as List;
+});
+final graphNotesProvider =
+    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+  return ((await getIt<ApiClient>().dio.get('/notes')).data as Map)['items']
+      as List;
+});
+final graphPoliciesProvider =
+    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+  return (await getIt<ApiClient>().dio.get('/privacy/activity')).data as List;
+});
 
 class SocialGraphScreen extends ConsumerStatefulWidget {
-  const SocialGraphScreen({super.key});
+  const SocialGraphScreen({super.key, this.initialTab = 0});
+  final int initialTab;
   @override
   ConsumerState<SocialGraphScreen> createState() => _SocialGraphScreenState();
 }
@@ -36,6 +48,7 @@ class _SocialGraphScreenState extends ConsumerState<SocialGraphScreen> {
                     decoration:
                         const InputDecoration(labelText: 'Recipient username')),
                 const SizedBox(height: 12),
+                const SongSelectionField(contextName: 'note'),
                 TextField(
                     controller: message,
                     maxLines: 4,
@@ -62,6 +75,7 @@ class _SocialGraphScreenState extends ConsumerState<SocialGraphScreen> {
     if (result == null || result.peer.isEmpty || result.text.isEmpty) return;
     try {
       await getIt<ApiClient>().dio.post('/notes', data: {
+        'music_id': ref.read(selectedSongProvider('note')).valueOrNull?['id'],
         'recipients': [result.peer],
         'text': result.text
       });
@@ -100,6 +114,7 @@ class _SocialGraphScreenState extends ConsumerState<SocialGraphScreen> {
   @override
   Widget build(BuildContext context) => DefaultTabController(
       length: 3,
+      initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(
             actions: [
@@ -163,7 +178,18 @@ class _SocialGraphScreenState extends ConsumerState<SocialGraphScreen> {
                           for (final note in items)
                             Card(
                                 child: ListTile(
-                                    title: Text(note['text'] as String))),
+                                    title: Text(note['text'] as String),
+                                    subtitle: note['music'] == null
+                                        ? null
+                                        : Text(
+                                            '${note['music']['title']} · ${note['music']['artist']} · Spotify'),
+                                    onTap: note['music'] == null
+                                        ? null
+                                        : () => launchUrl(
+                                            Uri.parse(
+                                                note['music']['url'] as String),
+                                            mode: LaunchMode
+                                                .externalApplication))),
                         ]))),
           ]),
           ref.watch(graphPoliciesProvider).when(

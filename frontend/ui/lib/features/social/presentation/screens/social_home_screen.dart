@@ -1,3 +1,4 @@
+import 'package:phlio/shared/widgets/notifications_button.dart';
 import '../../../../shared/realtime/realtime_screen.dart';
 import 'package:flutter/material.dart';
 import 'social_graph_screen.dart';
@@ -29,9 +30,10 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
       vsync: this,
       animationDuration: const Duration(milliseconds: 260));
   AnimationController get _fold => _foldInst ??= AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 280));
-  final _foldTargets = [0.0, 0.0, 0.0];
-  bool _collapsed = false;
+      vsync: this, value: 1, duration: const Duration(milliseconds: 280));
+  final _offsets = [0.0, 0.0, 0.0];
+  final _foldTargets = [1.0, 1.0, 1.0];
+  bool _collapsed = true;
   bool _reduceMotion = false;
   int _selected = 0;
 
@@ -68,18 +70,31 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
 
   bool _scroll(int tab, ScrollNotification event) {
     if (event.metrics.axis != Axis.vertical) return false;
-    if (event is ScrollUpdateNotification) {
+    if (event.depth != 0) return false;
+    _offsets[tab] = event.metrics.pixels;
+    if (tab != _tabs.index) return false;
+    // Only a deliberate drag beyond the leading edge reveals moments.
+    // Returning to offset zero, or ballistic bounce-back, must not reveal them.
+    double? target;
+    if (event is OverscrollNotification &&
+        event.dragDetails != null &&
+        event.overscroll < 0 &&
+        event.metrics.pixels <= event.metrics.minScrollExtent) {
+      target = (_foldTargets[tab] + event.overscroll / 110).clamp(0.0, 1.0);
+    } else if (event is ScrollUpdateNotification && event.dragDetails != null) {
       final delta = event.scrollDelta ?? 0;
-      if (tab == _tabs.index && delta != 0) {
-        _fold.stop();
-        final target = event.metrics.pixels <= 0
-            ? 0.0
-            : (_foldTargets[tab] + delta / 110).clamp(0.0, 1.0);
-        _foldTargets[tab] = target;
-        _collapsed = target >= .5;
-        _fold.value = _reduceMotion ? (_collapsed ? 1 : 0) : target;
+      if (event.metrics.pixels < event.metrics.minScrollExtent && delta < 0) {
+        target = (_foldTargets[tab] + delta / 110).clamp(0.0, 1.0);
+      } else if (delta > 0) {
+        target = (_foldTargets[tab] + delta / 110).clamp(0.0, 1.0);
       }
-    } else if (event is ScrollEndNotification && tab == _tabs.index) {
+    }
+    if (target != null) {
+      _fold.stop();
+      _foldTargets[tab] = target;
+      _collapsed = target >= .5;
+      _fold.value = _reduceMotion ? (_collapsed ? 1 : 0) : target;
+    } else if (event is ScrollEndNotification) {
       _settle(_foldTargets[tab] >= .5 ? 1 : 0);
     }
     return false;
@@ -140,9 +155,10 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
                       offset: const Offset(0, 4))
                 ]),
             child: MorphingStoriesHeader(
+              clipMode: true,
               progress: progress,
               compactBelow: stackOnOwnLine,
-              onExpand: () => _settle(0),
+              onExpand: _offsets[_selected] <= 0 ? () => _settle(0) : null,
               toolbar: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
                   child: Row(children: [
@@ -154,7 +170,7 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
                             tabAlignment: TabAlignment.start,
                             dividerHeight: 0,
                             labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 8),
+                                const EdgeInsets.symmetric(horizontal: 6),
                             labelColor: PhlioColors.textPrimary,
                             unselectedLabelColor: PhlioColors.textMuted,
                             labelStyle: const TextStyle(
@@ -184,17 +200,14 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
                         ])),
                     IconButton(
                         tooltip: 'Live now',
+                        constraints: const BoxConstraints.tightFor(
+                            width: 36, height: 48),
+                        padding: EdgeInsets.zero,
                         icon: const Icon(Icons.live_tv, size: 22),
                         onPressed: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const SocialLiveScreen()))),
-                    IconButton(
-                        tooltip: 'Activity',
-                        onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const SocialGraphScreen())),
-                        icon:
-                            const Icon(Icons.notifications_outlined, size: 22)),
+                    const SizedBox(width: 36, child: PhlioNotificationsButton()),
                   ])),
             ));
       });

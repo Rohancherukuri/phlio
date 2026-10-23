@@ -1,3 +1,7 @@
+import 'post_composer.dart';
+import '../../../../shared/realtime/spaces.dart';
+import '../../../../core/result/result.dart';
+
 import '../../../../shared/content/social_comments_sheet.dart';
 // The Posts tab body: a compose prompt up top, then an infinite-scrolling
 // list of post cards. Extracted from the old `SocialFeedScreen` so it can
@@ -7,11 +11,8 @@ import '../../../../shared/content/social_comments_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/result/result.dart';
 import '../../../../design_system/spacing.dart';
-import '../../../../design_system/typography.dart';
-import '../../../../design_system/widgets/phlio_button.dart';
-import '../../../../shared/widgets/error_snackbar.dart';
+
 import '../../../../shared/widgets/error_view.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../controllers/feed_controller.dart';
@@ -19,56 +20,9 @@ import '../widgets/post_card.dart';
 
 /// Opens the "New post" composer sheet and submits the result to the feed.
 /// Public so the Social home header's + button can open it too.
-Future<void> showPostComposer(BuildContext context, WidgetRef ref) async {
-  final controller = TextEditingController();
-  final text = await showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        left: PhlioSpacing.xl,
-        right: PhlioSpacing.xl,
-        top: PhlioSpacing.xl,
-        bottom: MediaQuery.of(context).viewInsets.bottom + PhlioSpacing.xl,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('New post', style: PhlioTypography.headline),
-          const SizedBox(height: PhlioSpacing.lg),
-          TextField(
-            controller: controller,
-            autofocus: true,
-            maxLines: 5,
-            style: PhlioTypography.bodyLarge,
-            decoration: const InputDecoration(
-              hintText: "What's on your mind?",
-              border: InputBorder.none,
-            ),
-          ),
-          const SizedBox(height: PhlioSpacing.lg),
-          PhlioPrimaryButton(
-            label: 'Post',
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  if (text == null || text.isEmpty) return;
-  final result =
-      await ref.read(feedControllerProvider.notifier).createPost(text);
-  if (result.isFailure && context.mounted) {
-    showErrorSnackBar(
-        context,
-        result.when(
-          success: (_) => const Failure.unknown(),
-          failure: (failure) => failure,
-        ));
-  }
-}
+Future<void> showPostComposer(BuildContext context, WidgetRef ref) =>
+    Navigator.of(context, rootNavigator: true).push<void>(MaterialPageRoute(
+        builder: (_) => const PostComposer(), fullscreenDialog: true));
 
 class SocialFeedView extends ConsumerStatefulWidget {
   const SocialFeedView({super.key});
@@ -125,6 +79,8 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
             PhlioSpacing.lg,
           ),
           children: [
+            // Live Spaces float above the feed (X-style pill).
+            const SpacesBar(),
             for (final post in state.posts) ...[
               PostCard(
                 post: post,

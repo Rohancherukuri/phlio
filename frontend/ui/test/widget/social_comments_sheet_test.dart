@@ -8,6 +8,55 @@ import 'package:phlio/shared/content/social_comments_sheet.dart';
 import 'content_surface_test.dart' show FakeApi;
 
 void main() {
+  testWidgets('Threads expand and long hold highlights a comment with actions', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(ProviderScope(overrides: [socialCommentsProvider.overrideWith((ref, id) async => [
+      {'id': 'root', 'author': {'id': 'friend', 'username': 'friend', 'display_name': 'Friend'}, 'text': 'Parent comment', 'created_at': '2026-10-22'},
+      {'id': 'reply', 'parent_id': 'root', 'author': {'id': 'other', 'username': 'other', 'display_name': 'Other'}, 'text': 'Nested reply', 'created_at': '2026-10-22'},
+    ])], child: const MaterialApp(home: Scaffold(body: SocialCommentsSheet(contentId: 'shop/product')))));
+    await tester.pumpAndSettle();
+    expect(find.text('Nested reply'), findsNothing);
+    expect(find.text('See translation'), findsOneWidget);
+    await tester.tap(find.text('View 1 replies'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nested reply'), findsOneWidget);
+    await tester.longPress(find.text('Parent comment'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+    expect(find.text('Report'), findsOneWidget);
+    expect(find.text('Block'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Reply keeps the parent and platform when sending', (tester) async {
+    final api = FakeApi();
+    RequestOptions? posted;
+    api.dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) {
+      posted = o;
+      h.resolve(Response(requestOptions: o, data: {}, statusCode: 201));
+    }));
+    getIt.registerSingleton<ApiClient>(api);
+    addTearDown(() => getIt.reset());
+    await tester.pumpWidget(ProviderScope(overrides: [
+      socialCommentsProvider.overrideWith((ref, id) async => [
+        {'id': 'parent', 'author': {'id': 'friend', 'display_name': 'Friend', 'username': 'friend'}, 'text': 'A review', 'created_at': '2026-10-22'}
+      ])
+    ], child: const MaterialApp(home: Scaffold(body: SocialCommentsSheet(contentId: 'shop/product')))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reply'));
+    await tester.pump();
+    expect(find.text('Replying to Friend'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Thanks');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Post comment'));
+    await tester.pumpAndSettle();
+    expect(posted!.queryParameters['platform'], 'shop');
+    expect(Map.fromEntries((posted!.data as FormData).fields)['parent_id'], 'parent');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Composer stays at screen bottom above nested navigation',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -32,8 +81,7 @@ void main() {
     expect(composer.bottom, closeTo(844, 1));
     expect(tester.getRect(find.byTooltip('Attach image')).bottom,
         greaterThan(800));
-    expect(find.byTooltip('Attach GIF'), findsOneWidget);
-    expect(find.byTooltip('Stickers'), findsOneWidget);
+    expect(find.byTooltip('GIFs and stickers'), findsOneWidget);
     await tester.tap(find.byTooltip('Insert ❤️'));
     await tester.pump();
     expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '❤️');

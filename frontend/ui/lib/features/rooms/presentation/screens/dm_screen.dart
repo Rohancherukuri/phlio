@@ -65,13 +65,22 @@ class _DmScreenState extends ConsumerState<DmScreen> {
           // Peer profile from the header avatar/name.
           onTap: () => context.push('/creator/${widget.username}'),
           child: Row(children: [
-            PhlioAvatar(name: name, size: 32),
+            PhlioAvatar(
+                name: name, imageUrl: peer?['avatar_url'] as String?, size: 36),
             const SizedBox(width: 10),
             Expanded(
-                child: Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PhlioTypography.title)),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PhlioTypography.title),
+                  Text(peer?['username'] as String? ?? widget.username,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PhlioTypography.caption),
+                ])),
           ]),
         ),
         actions: [

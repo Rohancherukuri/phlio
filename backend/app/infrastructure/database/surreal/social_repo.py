@@ -95,6 +95,10 @@ class SurrealSocialRepository:
         )
         return _row_to_post(row[0] if isinstance(row, list) else row)
 
+    async def update_text(self, post_id: str, text: str):
+        await self._db.query('UPDATE $id SET text = $text', {'id': record('post:' + post_id), 'text': text})
+        return await self.get_post(post_id)
+
     async def get_post(self, post_id: str) -> Post | None:
         row = await self._db.select(f"{_POSTS}:{post_id}")
         if not row:
@@ -131,6 +135,11 @@ class SurrealSocialRepository:
                 json.dumps([page[-1]["created_at"].isoformat(), page[-1]["id"]]).encode()
             ).decode()
         return [_row_to_post(r) for r in page], next_cursor
+
+    async def liked_post_ids(self, post_ids, user_id):
+        if not post_ids: return set()
+        rows = await self._db.rows('SELECT out FROM liked WHERE in = $user AND out IN $posts', {'user': record('user:' + user_id), 'posts': [record('post:' + pid) for pid in post_ids]})
+        return {str(row['out']).removeprefix('post:') for row in rows}
 
     async def is_liked_by(self, post_id: str, user_id: str) -> bool:
         result = await self._db.query(

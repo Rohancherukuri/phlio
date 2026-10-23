@@ -9,6 +9,9 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
+from app.domains.graph.store import now
+from app.api.v1.content import resolve
 
 from app.api.deps import get_container, get_current_user
 from app.core.container import Container, media_root_path
@@ -57,6 +60,8 @@ async def video_response(row, c, creator=None, details=None):
             thumbnail = thumbnail.split('?')[0] + f'?v={path.stat().st_mtime_ns}'
     return dict(
         sources=details.get("sources", []),
+        song_title=details.get("song_title"),
+        song_artist=details.get("song_artist"),
         attribution=details.get("attribution"),
         id=row["id"],
         title=row["title"],
@@ -77,7 +82,7 @@ async def videos(
 ):
     before = before.strip() or None if before is not None else None
     revision = await c.graph.store.revision()
-    cache_key = f"videos:v3:{revision}:{user.id}:{before}"
+    cache_key = f"videos:v4:{revision}:{user.id}:{before}"
     cached = await c.cache.get(cache_key)
     if cached is not None:
         return cached
@@ -140,9 +145,12 @@ async def upload_video(
     title: str = Form(..., min_length=1, max_length=160),
     file: UploadFile = File(...),
     kind: Literal["video", "clip"] = Form("video"),
+    music_id: str | None = Form(None, pattern=r"^[A-Za-z0-9]{22}$"),
     user: User = Depends(get_current_user),
     c: Container = Depends(get_container),
 ):
+    from app.api.v1.music import prepare_selection, attach_selection
+    music = await prepare_selection(c,user.id,kind,music_id)
     title = title.strip()
     suffix = Path(file.filename or "").suffix.lower()
     if not title or suffix not in {".mp4", ".mov", ".m4v", ".webm"}:
@@ -179,6 +187,7 @@ async def upload_video(
         c.social_video_service.db.commit()
         obj = await c.graph.register_object(user.id, "social." + kind, video_id, title)
         await c.graph.action(user.id, obj["id"], "created", trusted=True)
+        attach_selection(c,user.id,kind,video_id,music)
     except BaseException:
         target.unlink(missing_ok=True)
         cover.unlink(missing_ok=True)
@@ -194,3 +203,46 @@ async def upload_video(
         duration_seconds=round(duration),
         thumbnail_url=thumbnail_url,
     )
+
+
+class ClipFeedback(BaseModel):
+    preference: Literal["interested", "not_interested"]
+
+
+@router.get("/clips/preferences")
+async def clip_preferences(user=Depends(get_current_user), c=Depends(get_container)):
+    return await c.graph.store.rows("clip_feedback", {"user_id": user.id})
+
+
+@router.put("/clips/{clip_id}/preference", status_code=204)
+async def clip_preference(clip_id: str, body: ClipFeedback,
+                          user=Depends(get_current_user), c=Depends(get_container)):
+    obj = await resolve(c, user.id, "social", clip_id)
+    # Videos share the same "Not interested" feedback as clips.
+    if obj["object_type"] not in {"social.clip", "social.video"}:
+        raise HTTPException(422, "Choose a clip or video.")
+    await c.graph.store.put(key("clip_feedback", user.id, clip_id), dict(
+        user_id=user.id, clip_id=clip_id, preference=body.preference,
+        title=obj["title"], creator=(await c.identity_repository.get_by_id(obj["owner"])).username, updated_at=now()))
+
+
+@router.put("/creators/{creator}/preference", status_code=204)
+async def creator_preference(creator: str, user=Depends(get_current_user), c=Depends(get_container)):
+    """"Don't recommend creator": hides the creator's clips and videos from
+    this viewer's recommendations. Stored alongside clip feedback so
+    GET /clips/preferences returns it to the client ranker."""
+    person = await c.identity_repository.get_by_username(creator.lstrip("@").lower())
+    if not person:
+        raise HTTPException(404, "Creator unavailable.")
+    if person.id == user.id:
+        raise HTTPException(422, "You can't hide yourself.")
+    await c.graph.store.put(key("clip_feedback", user.id, "creator:" + person.username), dict(
+        user_id=user.id, clip_id="creator:" + person.username, preference="hide_creator",
+        title="", creator=person.username, updated_at=now()))
+
+
+@router.post("/clips/{clip_id}/report", status_code=204)
+async def report_clip(clip_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    obj = await resolve(c, user.id, "social", clip_id)
+    await c.graph.store.put(key("content_report", user.id, obj["id"]), dict(
+        user_id=user.id, object_id=obj["id"], status="pending", created_at=now()))

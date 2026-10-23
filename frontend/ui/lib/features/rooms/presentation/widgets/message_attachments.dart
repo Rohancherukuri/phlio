@@ -1,3 +1,4 @@
+import '../../../../shared/giphy/giphy_picker.dart';
 // Document preview cards + the reaction overlay for room messages.
 //
 // A message's attachments render as preview cards inside the thread:
@@ -85,6 +86,11 @@ class MessageAttachmentView extends StatelessWidget {
 
   Widget _buildCard(
       BuildContext context, MessageAttachmentEntity attachment, double maxW) {
+    if (attachment.value.startsWith('giphy:'))
+      return SizedBox(
+          width: 160,
+          height: 160,
+          child: GiphyReferenceView(reference: attachment.value));
     if (attachment.isSticker) {
       final item = FoxyPack.resolve(attachment.value);
       return ClipRRect(

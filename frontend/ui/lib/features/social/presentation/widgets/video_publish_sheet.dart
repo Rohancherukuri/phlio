@@ -1,3 +1,4 @@
+import '../../../../shared/music/song_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -53,7 +54,10 @@ class _VideoPublisherState extends ConsumerState<_VideoPublisher> {
     });
     try {
       await ref.read(socialVideoApiProvider).upload(path!, title.text.trim(),
-          kind: widget.kind, onProgress: (sent, total) {
+          kind: widget.kind,
+          musicId: ref
+              .read(selectedSongProvider(widget.kind))
+              .valueOrNull?['id'] as String?, onProgress: (sent, total) {
         if (mounted) setState(() => progress = total > 0 ? sent / total : 0);
       });
       ref.invalidate(socialVideoCatalogProvider);
@@ -104,6 +108,7 @@ class _VideoPublisherState extends ConsumerState<_VideoPublisher> {
                     label: Text(fileName ?? 'Choose a video',
                         maxLines: 2, overflow: TextOverflow.ellipsis)),
                 const SizedBox(height: 12),
+                SongSelectionField(contextName: widget.kind),
                 TextField(
                     controller: title,
                     enabled: !busy,

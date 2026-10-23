@@ -1,4 +1,7 @@
+import '../../../../shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../../design_system/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../app/config/app_config.dart';
@@ -16,40 +19,79 @@ Future<void> showShopCart(BuildContext context) => showModalBottomSheet<void>(
         const FractionallySizedBox(heightFactor: .85, child: CartSheet()));
 
 class AddToCartButton extends ConsumerStatefulWidget {
-  const AddToCartButton({required this.product, super.key});
+  const AddToCartButton(
+      {required this.product, this.compact = false, super.key});
   final ProductEntity product;
+
+  /// A 34px circular icon button for product grid tiles; the full labelled
+  /// button is used on the product sheet.
+  final bool compact;
   @override
   ConsumerState<AddToCartButton> createState() => _AddToCartButtonState();
 }
 
 class _AddToCartButtonState extends ConsumerState<AddToCartButton> {
   bool busy = false;
+
+  Future<void> _add() async {
+    HapticFeedback.selectionClick();
+    setState(() => busy = true);
+    try {
+      await ref.read(cartProvider.notifier).add(widget.product.id);
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${widget.product.title} added to cart'),
+            action: SnackBarAction(
+                label: 'View cart', onPressed: () => showShopCart(context))));
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not add to cart. Please try again.')));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Widget get _spinner => const SizedBox(
+      width: 16,
+      height: 16,
+      child: CircularProgressIndicator(
+          strokeWidth: 2, color: PhlioColors.brandViolet));
+
   @override
-  Widget build(BuildContext context) => TextButton.icon(
-      icon: Icon(busy ? Icons.hourglass_empty : Icons.add_shopping_cart,
-          size: 18),
-      label: const Text('Add to cart'),
-      onPressed: busy
-          ? null
-          : () async {
-              setState(() => busy = true);
-              try {
-                await ref.read(cartProvider.notifier).add(widget.product.id);
-                if (context.mounted)
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('${widget.product.title} added to cart'),
-                      action: SnackBarAction(
-                          label: 'View cart',
-                          onPressed: () => showShopCart(context))));
-              } catch (_) {
-                if (context.mounted)
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content:
-                          Text('Could not add to cart. Please try again.')));
-              } finally {
-                if (mounted) setState(() => busy = false);
-              }
-            });
+  Widget build(BuildContext context) {
+    if (widget.compact) {
+      return Tooltip(
+          message: 'Add to cart',
+          child: Semantics(
+              button: true,
+              label: 'Add ${widget.product.title} to cart',
+              child: Material(
+                  color: PhlioColors.brandViolet.withValues(alpha: 0.16),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: busy ? null : _add,
+                      child: SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: Center(
+                              child: busy
+                                  ? _spinner
+                                  : const Icon(Icons.add_shopping_cart_rounded,
+                                      size: 18,
+                                      color: PhlioColors.brandViolet)))))));
+    }
+    return FilledButton.tonalIcon(
+        style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            shape: const StadiumBorder()),
+        icon: busy
+            ? _spinner
+            : const Icon(Icons.add_shopping_cart_rounded, size: 20),
+        label: const Text('Add to cart'),
+        onPressed: busy ? null : _add);
+  }
 }
 
 class CartSheet extends ConsumerStatefulWidget {
@@ -178,42 +220,55 @@ class _CartSheetState extends ConsumerState<CartSheet> {
   }
 }
 
-Future<void> showShopProduct(BuildContext context, ProductEntity product) =>
-    showModalBottomSheet<void>(
-        context: context,
-        useRootNavigator: true,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (_) => FractionallySizedBox(
-            heightFactor: .8,
-            child: SafeArea(
-                top: false,
-                child: ListView(padding: const EdgeInsets.all(20), children: [
-                  if (product.imageUrls.isNotEmpty)
-                    Image.network(AppConfig.mediaUrl(product.imageUrls.first),
-                        height: 240,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const SizedBox(
-                            height: 100,
-                            child: Icon(Icons.image_not_supported_outlined))),
-                  const SizedBox(height: 16),
-                  Text(product.title,
-                      style: const TextStyle(
-                          fontSize: 22, fontWeight: FontWeight.bold)),
-                  Text(product.category.label),
-                  Text(product.displayPrice,
-                      style: const TextStyle(fontSize: 20)),
-                  const SizedBox(height: 12),
-                  Text(product.description),
-                  AddToCartButton(product: product),
-                  if (RegExp(r'https://[^\s]+').hasMatch(product.description))
-                    TextButton.icon(
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('View original product'),
-                        onPressed: () => launchUrl(
-                            Uri.parse(RegExp(r'https://[^\s]+')
-                                .firstMatch(product.description)!
-                                .group(0)!),
-                            mode: LaunchMode.externalApplication)),
-                ]))));
+Future<void> showShopProduct(
+    BuildContext context, ProductEntity product) async {
+  trackContentView(context, 'shop/${product.id}');
+  await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => FractionallySizedBox(
+          heightFactor: .8,
+          child: SafeArea(
+              top: false,
+              child: ListView(padding: const EdgeInsets.all(20), children: [
+                if (product.imageUrls.isNotEmpty)
+                  Image.network(AppConfig.mediaUrl(product.imageUrls.first),
+                      height: 240,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox(
+                          height: 100,
+                          child: Icon(Icons.image_not_supported_outlined))),
+                const SizedBox(height: 16),
+                Text(product.title,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(product.category.label),
+                Text(product.displayPrice,
+                    style: const TextStyle(fontSize: 20)),
+                const SizedBox(height: 12),
+                Text(product.description),
+                const SizedBox(height: 12),
+                const Text('Product specifications',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Category: ${product.category.label}'),
+                Text('Condition: ${product.condition.name}'),
+                const Text('Stock: check with seller'),
+                const Text('Variations: not provided by seller'),
+                const SizedBox(height: 16),
+                AddToCartButton(product: product),
+                if (RegExp(r'https://[^\s]+').hasMatch(product.description))
+                  TextButton.icon(
+                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                      label: const Text('View original product'),
+                      onPressed: () => launchUrl(
+                          Uri.parse(RegExp(r'https://[^\s]+')
+                              .firstMatch(product.description)!
+                              .group(0)!),
+                          mode: LaunchMode.externalApplication)),
+                const SizedBox(height: 16),
+                EngagementRow(path: 'shop/${product.id}'),
+              ]))));
+}

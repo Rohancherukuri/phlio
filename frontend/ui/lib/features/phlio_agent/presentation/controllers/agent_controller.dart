@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Phlio Agent chat state management (Riverpod).
 //
 // Unlike the feed/rooms controllers, this one starts empty (no history to
@@ -20,12 +21,14 @@ final agentControllerProvider = AsyncNotifierProvider<AgentController, List<Agen
 );
 
 class AgentController extends AsyncNotifier<List<AgentMessageEntity>> {
-  late final SendAgentMessageUseCase _sendMessageUseCase;
+  late SendAgentMessageUseCase _sendMessageUseCase;
   String? _conversationId;
 
   @override
   Future<List<AgentMessageEntity>> build() async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
     _sendMessageUseCase = SendAgentMessageUseCase(ref.read(agentRepositoryProvider));
+    _conversationId = null;
     return [];
   }
 

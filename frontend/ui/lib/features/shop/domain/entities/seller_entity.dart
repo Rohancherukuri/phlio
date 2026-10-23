@@ -4,6 +4,7 @@ class SellerEntity extends Equatable {
   const SellerEntity({
     required this.id,
     this.userId,
+    this.avatarUrl,
     required this.displayName,
     required this.handle,
     required this.specialty,
@@ -13,6 +14,7 @@ class SellerEntity extends Equatable {
 
   final String id;
   final String? userId;
+  final String? avatarUrl;
   final String displayName;
   final String handle;
   final String specialty;

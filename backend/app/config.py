@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     debug: bool = True
     app_name: str = "Phlio API"
     api_v1_prefix: str = "/api/v1"
+    giphy_api_key: str = Field(default="", repr=False)
+    # Spotify OAuth configuration. Keep credentials out of Settings repr/logs.
+    # A client ID alone does not enable account linking or music playback.
+    spotify_client_id: str = Field(default="", repr=False)
+    music_database: str = 'data/music.sqlite3'
+    spotify_callback_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPOTIFY_CALLBACK_URL", "SPOTIFY_REDIRECT_URI"),
+    )
 
     # --- Persistence -------------------------------------------------------
     # "memory": zero-setup, seeded in-process repositories (default; used in

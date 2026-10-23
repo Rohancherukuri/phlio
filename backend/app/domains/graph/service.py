@@ -174,7 +174,12 @@ class GraphService:
             other = relation["out"].removeprefix("user:")
             if not await self.blocked(actor, other):
                 following.append(self.profile(await self.user(other)))
-        return dict(friends=result, following=following)
+        followers = []
+        for relation in await self.store.rows('follows', {'out': 'user:' + actor}):
+            other = relation['in'].removeprefix('user:')
+            if not await self.blocked(actor, other):
+                followers.append(self.profile(await self.user(other)))
+        return dict(friends=result, following=following, followers=followers)
 
     async def register_object(
         self, owner, object_type, domain_ref, title, audience="public", room_id=None, parent_id=None

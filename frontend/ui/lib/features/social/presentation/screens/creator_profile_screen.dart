@@ -7,20 +7,17 @@ import '../../../../design_system/colors.dart';
 import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_fox.dart';
-import '../widgets/creator_chat.dart';
 import '../../../profile/presentation/widgets/profile_posts.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../controllers/video_library.dart';
-import '../controllers/video_playback_controller.dart';
-import '../../../../app/config/app_config.dart';
 import '../widgets/social_videos_view.dart';
 
 /// Creator profile screen — opened by tapping any creator's avatar (video
 /// cards, live rail, stories strip). A replica of the own-profile layout:
 /// @handle header, avatar + stats, display name with verified badge, bio,
 /// hashtag chips, pinned song, Follow/Message actions, Moments circles and
-/// the same six content tabs (Posts / Replies / Reposts / Schedule / Chat /
-/// Clips). Chat is public; the Message action opens a separate private DM.
+/// the same content tabs (Posts / Reposts / Schedule / Clips). The Message
+/// action opens a private DM.
 ///
 /// Account identity and posts come from the API. Bundled demo creators retain
 /// their sample moments and profile details when no account is available.
@@ -82,13 +79,11 @@ class CreatorProfileScreen extends StatefulWidget {
 class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   static const _tabs = [
     'Posts',
-    'Replies',
     'Reposts',
     'Schedule',
-    'Chat',
     'Clips'
   ];
-  ProfilePostType _postType = ProfilePostType.articles;
+  ProfilePostType _postType = ProfilePostType.all;
   int _tab = 0; // Land on Posts, like the own-profile page.
 
   @override
@@ -412,35 +407,23 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           child: ProfilePosts(
                               author: profile.handle, type: _postType)))
                 else if (_tab == 1)
-                  profile.replies.isNotEmpty
-                      ? SliverToBoxAdapter(child: _replies(profile.replies))
-                      : _foxyEmpty(
-                          'No replies yet',
-                          'Replies to other posts will show up here.',
-                          PhlioFoxPose.explorer)
-                else if (_tab == 2)
                   profile.reposts.isNotEmpty
                       ? SliverToBoxAdapter(child: _reposts(profile.reposts))
                       : _foxyEmpty(
                           'Nothing reposted yet',
                           'Videos they share will appear here.',
                           PhlioFoxPose.explorer)
-                else if (_tab == 3)
+                else if (_tab == 2)
                   _foxyEmpty(
                       'Nothing scheduled',
                       'Streams and events arrive with the Events domain.',
                       PhlioFoxPose.happy)
-                else if (_tab == 4)
-                  // Public creator chat never reads private DM history.
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: MediaQuery.sizeOf(context).height * 0.62,
-                      child: CreatorChat(username: profile.handle),
-                    ),
-                  )
                 else
                   clips.isNotEmpty
-                      ? SliverToBoxAdapter(child: _videosGrid(clips, ref))
+                      ? SliverToBoxAdapter(
+                          child: SizedBox(
+                              height: MediaQuery.sizeOf(context).height * 0.65,
+                              child: ProfileClips(author: profile.handle)))
                       : _foxyEmpty(
                           'No clips yet',
                           'Their best moments will be clipped here.',
@@ -473,37 +456,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _replies(List<({String to, String text})> replies) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
-      child: Column(
-        children: [
-          for (final reply in replies)
-            Container(
-              margin: const EdgeInsets.only(bottom: PhlioSpacing.md),
-              padding: const EdgeInsets.all(PhlioSpacing.md),
-              decoration: BoxDecoration(
-                color: PhlioColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: PhlioColors.borderSubtle),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(reply.text, style: PhlioTypography.body),
-                  const SizedBox(height: PhlioSpacing.xs),
-                  Text('Replying to @${reply.to}',
-                      style: PhlioTypography.caption
-                          .copyWith(color: PhlioColors.textMuted)),
-                ],
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -691,70 +643,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   .copyWith(color: PhlioColors.textSecondary)),
         ],
       ),
-    );
-  }
-
-  Widget _videosGrid(List<SocialVideo> videos, WidgetRef ref) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
-          PhlioSpacing.lg, PhlioSpacing.md, PhlioSpacing.lg, 0),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-      ),
-      itemCount: videos.length,
-      itemBuilder: (context, index) {
-        final video = videos[index];
-        return GestureDetector(
-          onLongPress: video.playable == null
-              ? null
-              : () => showContentShare(context, 'social/${video.playable!.id}'),
-          onTap: video.playable == null
-              ? null
-              : () => ref.read(videoPlaybackProvider).open(video.playable!),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.network(
-                AppConfig.mediaUrl(video.thumbAsset),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: PhlioColors.surfaceElevated),
-              ),
-              if (video.kind == SocialVideoKind.live)
-                Positioned(
-                  top: 6,
-                  left: 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: PhlioColors.danger,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text('LIVE',
-                        style: PhlioTypography.label.copyWith(
-                            fontSize: 9,
-                            letterSpacing: 0.6,
-                            color: Colors.white)),
-                  ),
-                ),
-              Positioned(
-                bottom: 6,
-                left: 6,
-                child: Text(
-                  video.metric,
-                  style: PhlioTypography.caption
-                      .copyWith(fontSize: 10, color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

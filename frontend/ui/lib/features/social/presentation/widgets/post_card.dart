@@ -1,3 +1,7 @@
+import 'post_poll.dart';
+import 'content_owner_menu.dart';
+import '../../../../shared/music/song_picker.dart';
+import '../../../profile/presentation/controllers/avatar_controller.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // A single post in the feed — mirrors the reference Social screen's post
 // cards: avatar + author row, text, an optional image, and a like/comment/
@@ -46,12 +50,14 @@ class PostCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ContentSongBadge(kind: 'post', target: post.id),
           Row(
             children: [
               GestureDetector(
                 // Author profile from the post's avatar/name.
                 onTap: () => context.push('/creator/${post.authorId}'),
-                child: PhlioAvatar(
+                child: ContentAuthorAvatar(
+                    author: post.authorId,
                     name: displayName,
                     imageUrl: profile?['avatar_url'] as String?,
                     size: 40),
@@ -71,12 +77,13 @@ class PostCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.more_horiz_rounded,
-                  color: PhlioColors.textMuted),
+              ContentOwnerMenu(
+                  id: post.id, owner: post.authorId, text: post.text),
             ],
           ),
           const SizedBox(height: PhlioSpacing.md),
           Text(post.text, style: PhlioTypography.bodyLarge),
+          PostPoll(id: post.id),
           for (final media in post.media)
             Padding(
               padding: const EdgeInsets.only(top: 12),

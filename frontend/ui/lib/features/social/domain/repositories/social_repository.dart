@@ -9,7 +9,7 @@ abstract interface class SocialRepository {
   Future<Result<PaginatedResponse<PostEntity>>> getFeed({String? cursor});
 
   Future<Result<PostEntity>> createPost(
-      {required String text, required List<String> tags});
+      {required String text, required List<String> tags, String? musicId});
 
   Future<Result<PostEntity>> toggleLike(String postId);
 

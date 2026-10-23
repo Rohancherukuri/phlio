@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 // Talks to `/api/v1/social/*`.
 
 import '../../../../core/network/api_client.dart';
@@ -12,15 +13,21 @@ class SocialRemoteDataSource {
   Future<Map<String, dynamic>> getFeed({String? cursor}) async {
     final response = await _apiClient.dio.get(
       '/social/feed',
+      options: Options(receiveTimeout: const Duration(seconds: 45)),
       queryParameters: {if (cursor != null) 'cursor': cursor},
     );
     return response.data as Map<String, dynamic>;
   }
 
   Future<PostModel> createPost(
-      {required String text, required List<String> tags}) async {
-    final response = await _apiClient.dio
-        .post('/social/posts', data: {'text': text, 'tags': tags});
+      {required String text,
+      required List<String> tags,
+      String? musicId}) async {
+    final response = await _apiClient.dio.post('/social/posts', data: {
+      'text': text,
+      'tags': tags,
+      if (musicId != null) 'music_id': musicId
+    });
     return PostModel.fromJson(response.data as Map<String, dynamic>);
   }
 

@@ -85,6 +85,8 @@ void main() {
 
   testWidgets('Signup requires private details and sends normalized values',
       (tester) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale('en', 'IN');
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
     final auth = _Auth();
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -107,10 +109,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump();
     expect(find.text('Choose your date of birth'), findsOneWidget);
-    expect(find.textContaining('Include your country code'), findsOneWidget);
-    await tester.ensureVisible(field('Phone number with country code'));
-    await tester.enterText(
-        field('Phone number with country code'), '+91 (98765) 43210');
+    expect(find.textContaining('Enter a valid phone number'), findsOneWidget);
+    await tester.ensureVisible(field('Phone number'));
+    await tester.enterText(field('Phone number'), '(98765) 43210');
     await tester.ensureVisible(field('Date of birth'));
     await tester.tap(field('Date of birth'));
     await tester.pump(const Duration(milliseconds: 500));

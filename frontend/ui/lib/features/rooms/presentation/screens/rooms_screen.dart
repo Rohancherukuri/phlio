@@ -1,3 +1,4 @@
+import 'package:phlio/shared/widgets/notifications_button.dart';
 import '../../../../shared/realtime/realtime_screen.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Rooms Home hosts friends and search; conversations use the responsive room drawer.
@@ -54,6 +55,7 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
               )));
     }
     return Scaffold(
+        appBar: AppBar(title: const Text('Phlio Rooms'), actions: const [PhlioNotificationsButton()]),
         body: RoomsHome(
             onSelectRoom: (room) => setState(() => _activeRoomId = room.id)));
   }

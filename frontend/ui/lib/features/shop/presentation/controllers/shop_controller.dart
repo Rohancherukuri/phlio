@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Shop marketplace state management (Riverpod).
 //
 // `ProductsController` is an `AsyncNotifier` (not a plain `FutureProvider`)
@@ -31,6 +32,7 @@ class ProductsController extends AsyncNotifier<List<ProductEntity>> {
 
   @override
   Future<List<ProductEntity>> build() async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
     final repository = ref.read(shopRepositoryProvider);
     _browseUseCase = BrowseProductsUseCase(repository);
     _toggleFavoriteUseCase = ToggleFavoriteUseCase(repository);

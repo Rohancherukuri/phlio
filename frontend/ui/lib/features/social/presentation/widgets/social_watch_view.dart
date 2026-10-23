@@ -1,3 +1,8 @@
+import 'package:timeago/timeago.dart' as timeago;
+import 'video_details_sheet.dart';
+import 'content_owner_menu.dart';
+import '../../../../shared/music/song_picker.dart';
+import '../../../profile/presentation/controllers/avatar_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/service_locator.dart';
@@ -28,7 +33,7 @@ class SocialWatchView extends ConsumerStatefulWidget {
 }
 
 class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
-  bool busy = false;
+  bool busy = false, choosingMedia = false;
   String get path => 'social/${widget.video.contentId ?? widget.video.id}';
   Future<void> action(String verb) async {
     if (busy) return;
@@ -52,8 +57,6 @@ class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
   Widget build(BuildContext context) {
     final c = ref.watch(videoPlaybackProvider);
     final data = ref.watch(engagementProvider(path)).valueOrNull;
-    final comments = ref.watch(
-        socialCommentsProvider(widget.video.contentId ?? widget.video.id));
     final p = c.player;
     final ready = p?.value.isInitialized == true;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
@@ -64,8 +67,8 @@ class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
     return Padding(
         padding: EdgeInsets.only(bottom: keyboard),
         child: LayoutBuilder(builder: (context, bounds) {
-          final pictureHeight =
-              (bounds.maxWidth * 9 / 16).clamp(0.0, bounds.maxHeight * .38);
+          final pictureHeight = (bounds.maxWidth * 9 / 16)
+              .clamp(0.0, bounds.maxHeight * (choosingMedia ? .22 : .38));
           return Column(children: [
             SizedBox(
                 height: pictureHeight,
@@ -161,7 +164,7 @@ class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
                               () => c.setMode(SocialPlayerMode.fullscreen)),
                         ])),
                 ])),
-            if (keyboard == 0)
+            if (keyboard == 0 && !choosingMedia)
               ConstrainedBox(
                   constraints:
                       BoxConstraints(maxHeight: bounds.maxHeight * .27),
@@ -171,68 +174,67 @@ class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
                           child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(widget.video.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700)),
+                                ContentSongBadge(kind: 'video', target: widget.video.id),
+                                // Tap the title for full details: stats,
+                                // likers, description, tags and links.
+                                InkWell(
+                                    onTap: () => showVideoDetails(
+                                        context, widget.video,
+                                        onProfile: widget.onProfile),
+                                    child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                              child: Text(widget.video.title,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                      fontSize: 17,
+                                                      fontWeight:
+                                                          FontWeight.w700))),
+                                          const Icon(
+                                              Icons.expand_more_rounded,
+                                              color: Color(0xFF858D9E)),
+                                        ])),
                                 Row(children: [
+                                  ContentAuthorAvatar(
+                                      author: widget.video.creator,
+                                      name: widget.video.creator,
+                                      imageUrl: widget.video.avatarUrl,
+                                      size: 32),
+                                  const SizedBox(width: 8),
                                   Expanded(
                                       child: InkWell(
                                           onTap: () => widget
                                               .onProfile(widget.video.creator),
                                           child: Text(
-                                              '@${widget.video.creator} · ${formatEngagementCount(data?['views_count'] as num? ?? 0)} views',
+                                              '@${widget.video.creator} · ${formatEngagementCount(data?['views_count'] as num? ?? 0)} views${widget.video.createdAt == null ? '' : ' · ${timeago.format(widget.video.createdAt!)}'}',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(
                                                   fontSize: 12,
                                                   color: Color(0xFF858D9E))))),
                                   CreatorFollowButton(
-                                      creator: widget.video.creator)
+                                      creator: widget.video.creator),
+                                  if (widget.video.platform == 'social' && widget.video.contentId == null) ContentOwnerMenu(id: widget.video.id, owner: widget.video.creator, text: widget.video.title, video: true),
                                 ]),
-                                Wrap(spacing: 4, children: [
-                                  TextButton.icon(
-                                      onPressed:
-                                          busy ? null : () => action('like'),
-                                      icon: Icon(
-                                          data?['liked_by_me'] == true
-                                              ? Icons.favorite
-                                              : Icons.favorite_border,
-                                          size: 20),
-                                      label: Text(
-                                          '${formatEngagementCount(data?['count'] as num? ?? 0)} likes')),
-                                  TextButton.icon(
-                                      onPressed: widget.onComments,
-                                      icon: const Icon(
-                                          Icons.chat_bubble_outline,
-                                          size: 20),
-                                      label: Text(
-                                          '${comments.valueOrNull?.length ?? 0} comments')),
-                                  TextButton.icon(
-                                      onPressed: widget.onShare,
-                                      icon:
-                                          const Icon(Icons.ios_share, size: 20),
-                                      label: const Text('Share')),
-                                  TextButton.icon(
-                                      onPressed:
-                                          busy ? null : () => action('saved'),
-                                      icon: Icon(
-                                          data?['saved_by_me'] == true
-                                              ? Icons.bookmark
-                                              : Icons.bookmark_border,
-                                          size: 20),
-                                      label: Text(data?['saved_by_me'] == true
-                                          ? 'Saved'
-                                          : 'Save')),
-                                ]),
+                                // Same engagement bar as every other
+                                // Phlio surface: liker stack + like,
+                                // comments, reposts, views, bookmarks and
+                                // shares, each with its count.
+                                Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: EngagementRow(path: path)),
                               ])))),
             Expanded(
                 child: SocialCommentsSheet(
                     key: ValueKey(widget.video.id),
                     contentId: widget.video.contentId ?? widget.video.id,
                     embedded: true,
+                    onPickerChanged: (value) =>
+                        setState(() => choosingMedia = value),
                     onProfileTap: widget.onProfile)),
           ]);
         }));

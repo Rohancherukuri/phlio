@@ -31,6 +31,7 @@ def settings(tmp_path) -> Settings:
         news_ingestion_enabled=False,
         messaging_database=":memory:",
         social_video_database=":memory:",
+        music_database=str(tmp_path / "music.sqlite3"),
         media_root=str(tmp_path / "media"),
         messaging_media_root=str(tmp_path / "dm_files"),
         jwt_secret="test-secret-at-least-32-bytes-long-for-hs256",

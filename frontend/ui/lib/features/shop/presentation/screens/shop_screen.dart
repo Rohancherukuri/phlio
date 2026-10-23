@@ -1,3 +1,4 @@
+import 'package:phlio/shared/widgets/notifications_button.dart';
 // Phlio Shop screen — the universal marketplace (Phlio_Final_Product_Blueprint.md
 // section 10). Visually mirrors the reference "4. ART" screen's layout
 // (banner, category chips, featured sellers, product grid) since Art &
@@ -30,7 +31,7 @@ class ShopScreen extends ConsumerWidget {
     final selectedCategory = ref.watch(selectedShopCategoryProvider);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(actions: const [PhlioNotificationsButton()],
           title: Text('Phlio Shop', style: PhlioTypography.displayMedium)),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -118,6 +119,7 @@ class ShopScreen extends ConsumerWidget {
                               profileId: seller.userId ??
                                   seller.handle.replaceFirst('@', ''),
                               name: seller.displayName,
+                              imageUrl: seller.avatarUrl,
                               size: 56),
                           const SizedBox(height: PhlioSpacing.xs),
                           Text(
@@ -157,7 +159,7 @@ class ShopScreen extends ConsumerWidget {
                                     3 * PhlioSpacing.lg) /
                                 2 +
                             MediaQuery.textScalerOf(context).scale(42) +
-                            158,
+                            72,
                       ),
                       itemBuilder: (context, index) {
                         final product = products[index];

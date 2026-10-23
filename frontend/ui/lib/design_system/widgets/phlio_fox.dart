@@ -1,3 +1,4 @@
+import '../../shared/giphy/giphy_picker.dart';
 // Phlio design system — Foxy, the product mascot.
 //
 // Foxy is a curious orange fox with pilot goggles and a knit scarf: the
@@ -196,6 +197,11 @@ class PhlioStickerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (stickerId.startsWith('giphy:'))
+      return SizedBox(
+          width: size,
+          height: size,
+          child: GiphyReferenceView(reference: stickerId));
     return SizedBox(
       width: size,
       height: size,
@@ -206,7 +212,8 @@ class PhlioStickerView extends StatelessWidget {
         errorBuilder: (_, __, ___) => Container(
           color: PhlioColors.surfaceElevated,
           alignment: Alignment.center,
-          child: const Icon(Icons.pets, size: 20, color: PhlioColors.brandOrange),
+          child:
+              const Icon(Icons.pets, size: 20, color: PhlioColors.brandOrange),
         ),
       ),
     );

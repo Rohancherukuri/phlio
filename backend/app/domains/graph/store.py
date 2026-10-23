@@ -5,8 +5,22 @@ import uuid
 from app.infrastructure.database.surreal.client import record
 
 TABLES = {
+    "memory_seen",
+    "memory_reaction",
+    "social_memory",
+    "clip_feedback",
+    "content_report",
+    "live_session",
+    "live_recording",
+    "scheduled_space",
+    "social_poll",
+    "social_poll_vote",
+    "giphy_selection",
+    "playlist",
+    "playlist_item",
     "shop_cart",
     "content_comment",
+    "comment_reaction",
     "shared_story",
     "platform_content",
     "graph_group",

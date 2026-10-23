@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Social feed state management (Riverpod).
 //
 // `FeedState` carries pagination info alongside the loaded posts so the
@@ -60,13 +61,14 @@ final commentsProvider = FutureProvider.autoDispose
 });
 
 class FeedController extends AsyncNotifier<FeedState> {
-  late final GetFeedUseCase _getFeedUseCase;
-  late final CreatePostUseCase _createPostUseCase;
-  late final ToggleLikeUseCase _toggleLikeUseCase;
-  late final AddCommentUseCase _addCommentUseCase;
+  late GetFeedUseCase _getFeedUseCase;
+  late CreatePostUseCase _createPostUseCase;
+  late ToggleLikeUseCase _toggleLikeUseCase;
+  late AddCommentUseCase _addCommentUseCase;
 
   @override
   Future<FeedState> build() async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
     final repository = ref.read(socialRepositoryProvider);
     _getFeedUseCase = GetFeedUseCase(repository);
     _createPostUseCase = CreatePostUseCase(repository);
@@ -114,8 +116,8 @@ class FeedController extends AsyncNotifier<FeedState> {
     );
   }
 
-  Future<Result<void>> createPost(String text) async {
-    final result = await _createPostUseCase(text: text);
+  Future<Result<void>> createPost(String text, {String? musicId}) async {
+    final result = await _createPostUseCase(text: text, musicId: musicId);
     return result.when(
       success: (post) {
         final current = state.valueOrNull;

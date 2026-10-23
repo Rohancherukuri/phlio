@@ -290,3 +290,55 @@ Live API checks verified all 40 product images, six category filters, login,
 and cart update/read/restore without modifying the user's cart.
 The Android build was installed and inspected on the connected phone: retailer
 photos render on Shop and the center cart action opens the authenticated cart.
+
+### Catalog engagement and bookmark playlists — 2026-10-13
+
+Shop and Book render the shared privacy-aware three-avatar liker stack and
+remaining count. `scripts.seed_catalog_engagement` adds idempotent fictional
+account interactions to imported catalog items and assigns photographic demo
+curators to featured seller catalogs. These photos represent test accounts,
+not verified retailer staff. The seller response includes the owner's avatar.
+
+News and Stream center-plus actions now open private playlist management.
+Collections and membership persist in SurrealDB; users can create, rename,
+delete, and add/remove same-platform bookmarks. Object access is checked on
+reads and writes. Deleted collections preserve bookmarks; unsaved or inaccessible
+content is omitted. Stream now exposes bookmark actions alongside engagement.
+The News heading uses the shared displayMedium typography and the platform
+tray no longer contains the People/Places/Possibilities tagline.
+
+Validation: 128 Flutter tests and 17 focused backend tests passed, including
+playlist ownership, same-platform validation, duplicate prevention, and Book
+layout at doubled text size. Analyzer reported no errors (existing lint output
+remains). Live API checks covered all 13 Shop categories, sourced Book listings,
+photo seller avatars, three-person liker stacks, and News/Stream playlist
+create/add/read/rename/delete. Debug APK built and installed on the connected
+Android phone; seller portraits, avatar stacks, and center-plus playlist
+navigation were inspected.
+
+### Profile inbox, account picker and settings — 2026-10-14
+
+The profile header centers the username/account dropdown and uses message and
+menu buttons. `/chats` opens the full-screen inbox: search, recent contact
+avatars, unread filtering, Primary/Requests/General folders, conversation
+previews, and group-chat access. Folder choices and read timestamps persist per
+owner/peer in SQLite; blocked users are omitted. Incoming conversations without
+a reply/friendship default to Requests. Long-press or conversation options move
+a chat between folders. Existing DM attachments/calls remain available.
+
+The account sheet offers Add Phlio account and saved-account switching. Tokens
+are stored in Flutter secure storage; no passwords are saved. A candidate
+session is verified before activation, and connection failures preserve the
+current session. Late 401 responses cannot invalidate a different active
+account. User-scoped controllers refresh on identity changes; local avatar and
+song preferences migrate once and then persist per account.
+
+Settings and activity includes searchable links to account details, saved
+content, activity/privacy, reposts, playlists, messages and notifications.
+Logout moves here and removes the active account from saved sessions.
+
+Validation: 135 Flutter tests passed, including account-switch success/failure,
+secure account storage, late-401 isolation, inbox search/folders at 1x/2x text,
+and settings search. 23 backend inbox/messaging/auth tests passed. The live
+inbox endpoint returned successfully; Android debug build and on-device profile
+header/account-sheet inspection completed.

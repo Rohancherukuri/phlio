@@ -1,3 +1,4 @@
+import '../../../../shared/content/content_surface.dart' show engagementProvider;
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/network/api_client.dart';
 import 'dart:async';
@@ -15,7 +16,14 @@ enum SocialPlayerMode { hidden, expanded, fullscreen, floating }
 final videoPlaybackProvider =
     ChangeNotifierProvider<VideoPlaybackController>((ref) {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
-  return VideoPlaybackController();
+  final controller = VideoPlaybackController();
+  // Refresh the view count wherever this video's engagement is shown.
+  controller.onViewed = (path) {
+    try {
+      ref.invalidate(engagementProvider(path));
+    } catch (_) {}
+  };
+  return controller;
 });
 
 class VideoPlaybackController extends ChangeNotifier {
@@ -31,6 +39,9 @@ class VideoPlaybackController extends ChangeNotifier {
             );
   PlayableVideo? video;
   VideoPlayerController? player;
+
+  /// Called with `platform/ref` once a view has been recorded.
+  void Function(String path)? onViewed;
   SocialPlayerMode mode = SocialPlayerMode.hidden;
   bool loading = false;
   bool fill = false;
@@ -43,6 +54,34 @@ class VideoPlaybackController extends ChangeNotifier {
   String? qualityUrl;
   int _generation = 0;
   bool _disposed = false;
+
+  /// Up-next queue ("Play next" / "Play last in queue"). When the current
+  /// video finishes (and isn't looping) the head of the queue starts.
+  final List<PlayableVideo> queue = [];
+  bool _advancing = false;
+
+  /// Queue [next] to play right after the current video, or start it now
+  /// when nothing is playing.
+  void playNext(PlayableVideo next) {
+    if (video == null) {
+      unawaited(open(next));
+      return;
+    }
+    queue.removeWhere((v) => v.id == next.id);
+    queue.insert(0, next);
+    _changed();
+  }
+
+  /// Add [next] to the end of the queue (or start it when idle).
+  void playLast(PlayableVideo next) {
+    if (video == null) {
+      unawaited(open(next));
+      return;
+    }
+    queue.removeWhere((v) => v.id == next.id);
+    queue.add(next);
+    _changed();
+  }
   void _changed() {
     if (!_disposed) notifyListeners();
   }
@@ -88,7 +127,10 @@ class VideoPlaybackController extends ChangeNotifier {
             .dio
             .put(
                 '/content/${source.platform}/${source.contentId ?? source.id}/actions/viewed')
-            .then<void>((_) {}, onError: (Object _) {}));
+            .then<void>(
+                (_) => onViewed?.call(
+                    '${source.platform}/${source.contentId ?? source.id}'),
+                onError: (Object _) {}));
       }
     } catch (_) {
       if (!_disposed && generation == _generation) {
@@ -110,8 +152,21 @@ class VideoPlaybackController extends ChangeNotifier {
   }
 
   void _tick() {
-    if (player?.value.hasError == true) {
+    final value = player?.value;
+    if (value?.hasError == true) {
       error = 'Playback interrupted. Retry to continue.';
+    }
+    if (value != null &&
+        value.isInitialized &&
+        !loop &&
+        !_advancing &&
+        queue.isNotEmpty &&
+        value.duration > Duration.zero &&
+        value.position >= value.duration &&
+        !value.isPlaying) {
+      _advancing = true;
+      final next = queue.removeAt(0);
+      unawaited(open(next).whenComplete(() => _advancing = false));
     }
     _changed();
   }
@@ -120,11 +175,16 @@ class VideoPlaybackController extends ChangeNotifier {
     final wasFullscreen = mode == SocialPlayerMode.fullscreen;
     mode = value;
     if (value == SocialPlayerMode.fullscreen) {
+      unawaited(SystemChrome.setPreferredOrientations(
+          [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]));
       unawaited(
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
       );
-    } else if (wasFullscreen)
+    } else if (wasFullscreen) {
+      unawaited(SystemChrome.setPreferredOrientations(
+          [DeviceOrientation.portraitUp]));
       unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    }
     _changed();
   }
 

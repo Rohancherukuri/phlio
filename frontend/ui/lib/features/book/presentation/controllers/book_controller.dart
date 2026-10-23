@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Book feature state management (Riverpod).
 //
 // `ListingsController` mirrors `ProductsController` in the shop feature:
@@ -24,6 +25,7 @@ final listingsControllerProvider =
 class ListingsController extends AsyncNotifier<List<BookListingEntity>> {
   @override
   Future<List<BookListingEntity>> build() async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
     final repository = ref.read(bookRepositoryProvider);
     final useCase = BrowseListingsUseCase(repository);
 
@@ -35,6 +37,7 @@ class ListingsController extends AsyncNotifier<List<BookListingEntity>> {
 }
 
 final myBookingsProvider = FutureProvider.autoDispose<List<BookingEntity>>((ref) async {
+  ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
   final repository = ref.watch(bookRepositoryProvider);
   final result = await repository.myBookings();
   return result.when(success: (page) => page.items, failure: (failure) => throw failure);

@@ -96,6 +96,7 @@ class SellerResponse(BaseModel):
     specialty: str
     bio: str
     followers_count: int
+    avatar_url: str | None = None
 
     @classmethod
     def from_entity(cls, seller: Seller) -> SellerResponse:
@@ -171,9 +172,16 @@ async def toggle_favorite(
 async def featured_sellers(
     limit: int = Query(default=6, ge=1, le=20),
     shop_service: ShopService = Depends(get_shop_service),
+    c: Container = Depends(get_container),
 ) -> list[SellerResponse]:
     sellers = await shop_service.featured_sellers(limit)
-    return [SellerResponse.from_entity(s) for s in sellers]
+    result = []
+    for seller in sellers:
+        response = SellerResponse.from_entity(seller)
+        owner = await c.identity_repository.get_by_id(seller.user_id)
+        response.avatar_url = owner.avatar_url if owner else None
+        result.append(response)
+    return result
 
 
 @router.get("/sellers/{seller_id}", response_model=SellerResponse)

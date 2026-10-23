@@ -1,5 +1,6 @@
 """Social message media policy; Rooms deliberately uses its own policy."""
 
+import re
 import json
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ PACK = json.loads((Path(__file__).parents[1] / "stickers" / "chat_pack.json").re
 
 
 def validate_pack(kind: str, value: str):
+    if kind in ("gif", "sticker") and re.fullmatch(r"giphy:" + kind + r":[A-Za-z0-9]{1,80}", value):
+        return
     expected = "gif" if kind == "gif" else "sticker"
     actual = PACK.get(value)
     if actual == "emoji":

@@ -68,8 +68,9 @@ class ProductCard extends StatelessWidget {
                             width: double.infinity,
                             height: double.infinity,
                             fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) =>
-                                const Center(child: Icon(Icons.image_not_supported_outlined)))
+                            errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.image_not_supported_outlined,
+                                    color: PhlioColors.textMuted)))
                         : Image.asset(
                             _image,
                             width: double.infinity,
@@ -115,17 +116,21 @@ class ProductCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
+            // Price and the cart action share one baseline-aligned row; the
+            // cart button's right edge lines up with the image above it.
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(product.displayPrice,
-                    style: PhlioTypography.label
-                        .copyWith(color: PhlioColors.brandOrange)),
-                const Icon(Icons.shopping_bag_outlined,
-                    size: 16, color: PhlioColors.textMuted),
+                Expanded(
+                  child: Text(product.displayPrice,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PhlioTypography.label.copyWith(
+                          color: PhlioColors.brandOrange,
+                          fontWeight: FontWeight.w700)),
+                ),
+                AddToCartButton(product: product, compact: true),
               ],
             ),
-            AddToCartButton(product: product),
           ],
         ),
       ),
@@ -145,12 +150,20 @@ class _AnimatedFavoriteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      toggled: isFavorited,
+      label: 'Favorite',
+      child: GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration:
-            const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.42),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12))),
         child: TweenAnimationBuilder<double>(
           key: ValueKey(isFavorited),
           tween: Tween(begin: 0.6, end: 1.0),
@@ -162,10 +175,11 @@ class _AnimatedFavoriteButton extends StatelessWidget {
             isFavorited
                 ? Icons.favorite_rounded
                 : Icons.favorite_border_rounded,
-            size: 16,
+            size: 17,
             color: isFavorited ? PhlioColors.danger : Colors.white,
           ),
         ),
+      ),
       ),
     );
   }

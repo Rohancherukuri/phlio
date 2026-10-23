@@ -39,6 +39,7 @@ class PolicyIn(BaseModel):
 
 
 class NoteIn(BaseModel):
+    music_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{22}$")
     object_id: str | None = None
     recipients: list[str] = Field(default_factory=list, max_length=50)
     room_id: str | None = None
@@ -159,7 +160,12 @@ async def activity_feed(
 
 @router.post("/notes", status_code=201)
 async def note(body: NoteIn, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
-    return await c.graph.create_note(user.id, **body.model_dump(mode="json"))
+    from app.api.v1.music import prepare_selection
+    music = await prepare_selection(c,user.id,'note',body.music_id)
+    note = await c.graph.create_note(user.id, **body.model_dump(mode="json",exclude={'music_id'}))
+    if music:
+        note = await c.graph.store.put(note['id'],dict(note,music=music))
+    return note
 
 
 @router.get("/notes")
@@ -238,3 +244,46 @@ async def children(
     object_id: str, user: User = Depends(get_current_user), c: Container = Depends(get_container)
 ):
     return {"items": await c.graph.related_objects(user.id, object_id)}
+
+
+class ContactMatchIn(BaseModel):
+    phones: list[str] = Field(max_length=300)
+    region: str = Field(default="IN", pattern=r"^[A-Z]{2}$")
+
+
+def contact_phone(value, region):
+    import phonenumbers
+    try:
+        number = phonenumbers.parse(value[:64], region)
+        if phonenumbers.is_possible_number(number):
+            return phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
+    except phonenumbers.NumberParseException:
+        pass
+    return None
+
+
+@router.post("/social/contacts/match")
+async def match_contacts(body: ContactMatchIn, user=Depends(get_current_user), c=Depends(get_container)):
+    await c.cache.rate_limit(user.id, "contact_match", 30)
+    matches = []
+    seen = set()
+    for raw in body.phones:
+        phone = contact_phone(raw, body.region)
+        if not phone or phone in seen:
+            continue
+        seen.add(phone)
+        peer = await c.identity_repository.get_by_phone(phone)
+        if peer and peer.id != user.id and not await c.graph.blocked(user.id, peer.id):
+            matches.append(dict(c.graph.profile(peer), matched_phone=raw))
+    return matches
+
+
+@router.get("/social/find-friends")
+async def find_friends(q: str = Query(default="", max_length=100),
+                       user=Depends(get_current_user), c=Depends(get_container)):
+    await c.cache.rate_limit(user.id, "friend_search", 60)
+    if len(q.strip()) < 2:
+        return []
+    peers = await c.identity_repository.search_users(q.strip().lstrip("@"), 30)
+    return [c.graph.profile(peer) for peer in peers
+            if peer.id != user.id and not await c.graph.blocked(user.id, peer.id)]

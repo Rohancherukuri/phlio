@@ -1,3 +1,4 @@
+import '../../../../shared/giphy/giphy_picker.dart';
 // Shared composer with audience-specific attachment menus and validation.
 // Public creator chat supports text and pack GIFs/stickers; private Messages
 // supports media and editing; Rooms retains documents and archives.
@@ -10,6 +11,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:record/record.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../app/platform/phlio_platform.dart';
+import '../../../../app/shell/platform_home_screen.dart' show switchPlatform;
+import 'draw_screen.dart';
 
 import '../../../../design_system/colors.dart';
 import '../../../../design_system/radii.dart';
@@ -425,27 +433,22 @@ class _ChatComposerState extends State<ChatComposer> {
     if (current >= 0) setState(() => _staged[current] = edited);
   }
 
-  Future<void> _pickAttachments() async {
-    final pickedType =
+  Future<void> _pickAttachments({String? type}) async {
+    final pickedType = type ??
         await showAttachmentTypeMenu(context, audience: widget.audience);
     if (pickedType == null) return; // sheet dismissed
 
     // Stickers and GIFs come from the bundled Foxy pack — no file system.
     if (pickedType == 'Sticker' || pickedType == 'GIF') {
-      final item = await showFoxyPicker(
-        context,
-        initialTab: pickedType == 'GIF'
-            ? FoxyReactionKind.gif
-            : FoxyReactionKind.sticker,
-        title: pickedType == 'GIF' ? 'Foxy GIFs' : 'Foxy stickers',
-      );
+      final item = await showGiphyPicker(context,
+          kind: pickedType == 'GIF' ? 'gif' : 'sticker');
       if (item == null || !mounted) return;
       setState(() {
         _staged.add(
           StagedAttachment(
-            kind: item.kind == FoxyReactionKind.gif ? 'gif' : 'sticker',
-            name: item.label,
-            packId: item.id,
+            kind: item.kind,
+            name: item.title,
+            packId: item.reference,
           ),
         );
       });
@@ -617,20 +620,36 @@ class _ChatComposerState extends State<ChatComposer> {
             widget.compact ? PhlioSpacing.sm : PhlioSpacing.lg,
           ),
           child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: PhlioSpacing.md,
-              vertical: widget.compact ? 4 : 6,
-            ),
-            decoration: BoxDecoration(
-              color: widget.surfaceColor,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: _isRecording
-                    ? PhlioColors.danger
-                    : PhlioColors.borderSubtle,
-              ),
-            ),
-            child: _isRecording ? _recordingRow() : _inputRow(),
+            padding: widget.audience == ChatAudience.directMessage &&
+                    !_isRecording
+                ? const EdgeInsets.fromLTRB(6, 6, 8, 6)
+                : EdgeInsets.symmetric(
+                    horizontal: PhlioSpacing.md,
+                    vertical: widget.compact ? 4 : 6,
+                  ),
+            decoration: widget.audience == ChatAudience.directMessage
+                ? BoxDecoration(
+                    // Messages: borderless pill, like the reference.
+                    color: const Color(0xFF26292F),
+                    borderRadius: BorderRadius.circular(32),
+                    border: _isRecording
+                        ? Border.all(color: PhlioColors.danger)
+                        : null,
+                  )
+                : BoxDecoration(
+                    color: widget.surfaceColor,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: _isRecording
+                          ? PhlioColors.danger
+                          : PhlioColors.borderSubtle,
+                    ),
+                  ),
+            child: _isRecording
+                ? _recordingRow()
+                : widget.audience == ChatAudience.directMessage
+                    ? _dmInputRow()
+                    : _inputRow(),
           ),
         ),
       ],
@@ -835,6 +854,242 @@ class _ChatComposerState extends State<ChatComposer> {
       ),
     );
   }
+
+  Future<void> _camera() async {
+    try {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (photo == null || !mounted) return;
+      final size = await photo.length();
+      if (!mounted) return;
+      final error = dmMediaError(photo.name, size);
+      if (error != null) {
+        _mediaError(error);
+        return;
+      }
+      if (_staged.length >= 10) {
+        _mediaError('Attach up to ten items.');
+        return;
+      }
+      setState(() => _staged.add(StagedAttachment(
+          kind: 'image', name: photo.name, path: photo.path, size: size)));
+    } catch (_) {
+      if (mounted)
+        _mediaError(
+            'Could not open the camera. Check camera permission and try again.');
+    }
+  }
+
+  static const _iconDir = 'assets/images/chat_icons';
+  bool _moreOpen = false;
+
+  Widget _svg(String name, {double size = 26, Color color = Colors.white}) =>
+      SvgPicture.asset('$_iconDir/$name.svg',
+          width: size,
+          height: size,
+          colorFilter: ColorFilter.mode(color, BlendMode.srcIn));
+
+  /// Messages composer: [camera] Message…  mic · photo · sticker · (+)
+  /// While typing, the trailing icons give way to a Send button.
+  Widget _dmInputRow() {
+    Widget action(String label, String icon, VoidCallback tap) => IconButton(
+        tooltip: label,
+        onPressed: _isSending ? null : tap,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 42, height: 46),
+        icon: _svg(icon));
+    final typing = _canSend || _isSending;
+    return Row(children: [
+      Material(
+        color: const Color(0xFF3F5BF6),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _isSending ? null : _camera,
+          child: Tooltip(
+              message: 'Camera',
+              child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Center(child: _svg('camera', size: 24)))),
+        ),
+      ),
+      Expanded(
+          child: TextField(
+              controller: _textController,
+              focusNode: _focusNode,
+              minLines: 1,
+              maxLines: 4,
+              maxLength: 4000,
+              enabled: !_isSending,
+              textInputAction: TextInputAction.send,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _send(),
+              decoration: const InputDecoration(
+                  hintText: 'Message…',
+                  hintStyle: TextStyle(color: Color(0xFF9EA3AD), fontSize: 16),
+                  counterText: '',
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+              style: const TextStyle(fontSize: 16, color: Colors.white))),
+      if (typing)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Material(
+            color: const Color(0xFF3F5BF6),
+            shape: const StadiumBorder(),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: _isSending ? null : _send,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: _isSending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Send',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15)),
+              ),
+            ),
+          ),
+        )
+      else ...[
+        action('Voice message', 'mic', _startRecording),
+        action('Photos and videos', 'image',
+            () => _pickAttachments(type: 'Image')),
+        action('Stickers', 'sticker', () {
+          _focusNode.unfocus();
+          _pickAttachments(type: 'Sticker');
+        }),
+        Builder(
+            builder: (buttonContext) => action(
+                _moreOpen ? 'Close' : 'More',
+                _moreOpen ? 'close_circle' : 'plus_circle',
+                () => _openMoreMenu(buttonContext))),
+      ],
+    ]);
+  }
+
+  /// The "+" menu: Location · AI images · Draw · Foxy AI, floating just
+  /// above the composer's right edge.
+  Future<void> _openMoreMenu(BuildContext buttonContext) async {
+    _focusNode.unfocus();
+    final box = buttonContext.findRenderObject() as RenderBox;
+    final origin = box.localToGlobal(Offset.zero);
+    final screen = MediaQuery.sizeOf(context);
+    final bottom = screen.height - origin.dy + 14;
+    setState(() => _moreOpen = true);
+    final choice = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close menu',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 170),
+      pageBuilder: (dialogContext, _, __) => Stack(children: [
+        Positioned(
+          right: 16,
+          bottom: bottom,
+          child: _MoreMenu(
+              svg: _svg,
+              onSelected: (value) => Navigator.pop(dialogContext, value)),
+        ),
+      ]),
+      transitionBuilder: (_, animation, __, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          alignment: Alignment.bottomRight,
+          scale: Tween(begin: .9, end: 1.0).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _moreOpen = false);
+    switch (choice) {
+      case 'location':
+        await _shareLocation();
+      case 'ai_image':
+        _comingSoon('AI images',
+            'Describe an image and Foxy will create it for you, right here in the chat.');
+      case 'draw':
+        final path = await openDrawScreen(context);
+        if (path == null || !mounted) return;
+        final size = await File(path).length();
+        if (!mounted) return;
+        setState(() => _staged.add(StagedAttachment(
+            kind: 'image', name: 'Drawing.png', path: path, size: size)));
+      case 'foxy':
+        switchPlatform(context, PhlioPlatform.agent);
+        context.go('/home');
+    }
+  }
+
+  Future<void> _shareLocation() async {
+    final place = TextEditingController();
+    final value = await showDialog<String>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+              title: const Text('Share a location'),
+              content: TextField(
+                  controller: place,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (v) => Navigator.pop(dialog, v.trim()),
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                      hintText: 'Place, address or landmark')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialog),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(dialog, place.text.trim()),
+                    child: const Text('Share')),
+              ],
+            ));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    place.dispose();
+    if (value == null || value.isEmpty || !mounted) return;
+    try {
+      await widget.onSendText(
+          '📍 $value\nhttps://maps.google.com/?q=${Uri.encodeComponent(value)}');
+    } catch (error) {
+      _showSendError(error);
+    }
+  }
+
+  void _comingSoon(String title, String body) => showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      useRootNavigator: true,
+      builder: (sheet) => SafeArea(
+              child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _svg('ai_image', size: 40, color: PhlioColors.brandViolet),
+              const SizedBox(height: 12),
+              Text('$title are coming soon', style: PhlioTypography.title),
+              const SizedBox(height: 8),
+              Text(body,
+                  textAlign: TextAlign.center, style: PhlioTypography.body),
+              const SizedBox(height: 20),
+              SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                      onPressed: () => Navigator.pop(sheet),
+                      child: const Text('Got it'))),
+            ]),
+          )));
 
   Widget _inputRow() {
     return Row(
@@ -1068,4 +1323,50 @@ class _StagedChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MoreMenu extends StatelessWidget {
+  const _MoreMenu({required this.svg, required this.onSelected});
+  final Widget Function(String name, {double size, Color color}) svg;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFF2A2D33),
+        elevation: 12,
+        shadowColor: Colors.black54,
+        borderRadius: BorderRadius.circular(26),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: IntrinsicWidth(
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (value, icon, label) in const [
+                    ('location', 'location', 'Location'),
+                    ('ai_image', 'ai_image', 'AI images'),
+                    ('draw', 'draw', 'Draw'),
+                    ('foxy', 'foxy_ai', 'Foxy AI'),
+                  ])
+                    InkWell(
+                      onTap: () => onSelected(value),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 44, 16),
+                        child: Row(children: [
+                          svg(icon, size: 28),
+                          const SizedBox(width: 22),
+                          Text(label,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w500)),
+                        ]),
+                      ),
+                    ),
+                ]),
+          ),
+        ),
+      );
 }

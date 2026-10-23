@@ -1,3 +1,4 @@
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -41,6 +42,29 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _phoneController = TextEditingController();
   final _birthdayController = TextEditingController();
   DateTime? _birthday;
+  late Country _phoneCountry;
+
+  @override
+  void initState() {
+    super.initState();
+    final region =
+        WidgetsBinding.instance.platformDispatcher.locale.countryCode;
+    _phoneCountry = Country.tryParse(region ?? '') ?? Country.parse('IN');
+  }
+
+  String _phoneNumber(String value) {
+    final number = value.replaceAll(RegExp(r'[\s()\-]'), '');
+    if (number.startsWith('+')) return number;
+    if (number.isEmpty) return '';
+    return '+${_phoneCountry.phoneCode}$number';
+  }
+
+  void _pickPhoneCountry() {
+    showCountryPicker(
+        context: context,
+        showPhoneCode: true,
+        onSelect: (country) => setState(() => _phoneCountry = country));
+  }
 
   int _step = 0;
   final Set<String> _selectedInterests = {};
@@ -92,8 +116,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           username: _usernameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
-          phoneNumber:
-              _phoneController.text.replaceAll(RegExp(r'[\s()\-]'), ''),
+          phoneNumber: _phoneNumber(_phoneController.text),
           dateOfBirth: _birthday!.toIso8601String().split('T').first,
           interests: _selectedInterests.map((i) => i.toLowerCase()).toList(),
         );
@@ -226,19 +249,30 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
           ),
           const SizedBox(height: PhlioSpacing.md),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _pickPhoneCountry,
+              icon: Text(_phoneCountry.flagEmoji),
+              label: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                    '${_phoneCountry.countryCode} +${_phoneCountry.phoneCode}'),
+                const Icon(Icons.keyboard_arrow_down),
+              ]),
+            ),
+          ),
           PhlioTextField(
             controller: _phoneController,
-            hintText: 'Phone number with country code',
-            semanticLabel: 'Phone number with country code',
+            hintText: 'Phone number',
+            semanticLabel: 'Phone number',
             prefixIcon: Icons.phone_outlined,
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
-            autofillHints: const [AutofillHints.telephoneNumber],
-            validator: (v) => RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(
-              (v ?? '').replaceAll(RegExp(r'[\s()\-]'), ''),
-            )
-                ? null
-                : 'Include your country code, e.g. +919876543210',
+            autofillHints: const [AutofillHints.telephoneNumberNational],
+            validator: (v) =>
+                RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(_phoneNumber(v ?? ''))
+                    ? null
+                    : 'Enter a valid phone number',
           ),
           const SizedBox(height: PhlioSpacing.md),
           PhlioTextField(

@@ -1,3 +1,4 @@
+import '../../shared/content/stream_screen.dart';
 import 'package:phlio/shared/content/news_screen.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // The Home tab is platform-aware: whatever platform is selected in the
@@ -48,7 +49,7 @@ class _PlatformHomeScreenState extends ConsumerState<PlatformHomeScreen> {
           RoomsScreen(),
           BookDiscoveryScreen(),
           ShopScreen(),
-          PlatformCatalogScreen(platform: 'stream'),
+          StreamScreen(),
           NewsScreen(),
           AgentScreen(),
         ].indexed)

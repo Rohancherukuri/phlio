@@ -1,3 +1,4 @@
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Per-room chat state management (Riverpod).
 //
 // A `family` provider keyed by `roomId` — Riverpod creates and disposes a
@@ -22,13 +23,14 @@ final roomChatControllerProvider = AsyncNotifierProvider.family<
 
 class RoomChatController
     extends FamilyAsyncNotifier<List<RoomMessageEntity>, String> {
-  late final GetRoomMessagesUseCase _getMessagesUseCase;
-  late final SendRoomMessageUseCase _sendMessageUseCase;
-  late final UploadRoomFilesUseCase _uploadFilesUseCase;
-  late final ToggleMessageReactionUseCase _toggleReactionUseCase;
+  late GetRoomMessagesUseCase _getMessagesUseCase;
+  late SendRoomMessageUseCase _sendMessageUseCase;
+  late UploadRoomFilesUseCase _uploadFilesUseCase;
+  late ToggleMessageReactionUseCase _toggleReactionUseCase;
 
   @override
   Future<List<RoomMessageEntity>> build(String roomId) async {
+    ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
     final repository = ref.read(roomsRepositoryProvider);
     _getMessagesUseCase = GetRoomMessagesUseCase(repository);
     _sendMessageUseCase = SendRoomMessageUseCase(repository);

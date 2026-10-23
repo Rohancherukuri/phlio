@@ -56,14 +56,14 @@ async def main():
     count = 0
     categories = {}
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
-        for source in SOURCES:
+        for source_index, source in enumerate(SOURCES):
             code, brand, origin, category = source
             response = await http.get(origin+'/products.json?limit=50')
             response.raise_for_status()
             selected = [p for raw in response.json()['products'] if (p := normalize(source, raw))][:8]
             seller = 'import_'+code
             await c.graph.store.db.query('UPSERT $id CONTENT $data', {
-                'id': record('seller:'+seller), 'data': dict(user_id=record('user:demo_000'),
+                'id': record('seller:'+seller), 'data': dict(user_id=record(f'user:demo_{21+source_index:03}'),
                 display_name=brand+' catalog', handle=code, specialty=category,
                 bio='Imported public catalog. No seller partnership implied.', followers_count=0)})
             for item in selected:

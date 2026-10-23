@@ -4,8 +4,12 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../controllers/video_library.dart';
 
 class CreatorFollowButton extends ConsumerStatefulWidget {
-  const CreatorFollowButton({required this.creator, super.key});
+  const CreatorFollowButton(
+      {required this.creator, this.compact = false, super.key});
   final String creator;
+
+  /// A 32px pill for inline rows (e.g. a video card's likes line).
+  final bool compact;
   @override
   ConsumerState<CreatorFollowButton> createState() =>
       _CreatorFollowButtonState();
@@ -28,6 +32,15 @@ class _CreatorFollowButtonState extends ConsumerState<CreatorFollowButton> {
           mainAxisSize: MainAxisSize.min,
           children: [
             FilledButton.tonal(
+              style: widget.compact
+                  ? FilledButton.styleFrom(
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600))
+                  : null,
               onPressed: _busy || following.isLoading
                   ? null
                   : () async {

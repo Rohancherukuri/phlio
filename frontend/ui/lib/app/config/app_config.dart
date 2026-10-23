@@ -9,11 +9,9 @@
 abstract final class AppConfig {
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    // 10.0.2.2 is how the Android emulator reaches the host machine's
-    // localhost; iOS simulators and desktop can use localhost directly.
-    // Override with --dart-define for a physical device or real backend.
-    // switch to 'http://192.168.1.6:8000/api/v1' for actual Androi device
-    defaultValue: 'http://localhost:8000/api/v1',
+    // Physical Android development uses an explicit IPv4 USB tunnel:
+    // adb reverse tcp:8000 tcp:8000. Use a hosted URL for standalone builds.
+    defaultValue: 'http://127.0.0.1:8000/api/v1',
   );
 
   static const bool enableRequestLogging = bool.fromEnvironment(

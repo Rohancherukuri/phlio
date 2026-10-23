@@ -1,3 +1,4 @@
+import '../../../../shared/giphy/giphy_picker.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -89,10 +90,12 @@ class AttachmentPreview extends StatefulWidget {
   const AttachmentPreview(
       {required this.attachment,
       this.compact = false,
+      this.mediaOnly = false,
       this.loadPrivateFile,
       super.key});
   final MessageAttachmentEntity attachment;
   final bool compact;
+  final bool mediaOnly;
   final Future<String> Function()? loadPrivateFile;
   @override
   State<AttachmentPreview> createState() => _AttachmentPreviewState();
@@ -238,6 +241,8 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
       return _placeholder(Icons.broken_image_outlined, 'Preview unavailable');
     if (_loading)
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    if (a.value.startsWith('giphy:'))
+      return GiphyReferenceView(reference: a.value);
     if (a.isSticker) {
       final item = FoxyPack.resolve(a.value);
       return Image.asset(
@@ -282,7 +287,7 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
             icon: Icon(video.value.isPlaying
                 ? Icons.pause_rounded
                 : Icons.play_arrow_rounded)),
-        if (!widget.compact)
+        if (!widget.compact && !widget.mediaOnly)
           Positioned(
               bottom: 0,
               left: 0,
@@ -430,9 +435,9 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
                           ? 74
                           : widget.attachment.kind == 'audio'
                               ? 120
-                              : 190,
+                              : widget.mediaOnly ? 260 : 190,
                       child: _body())),
-              if (!widget.compact)
+              if (!widget.compact && !widget.mediaOnly)
                 Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(

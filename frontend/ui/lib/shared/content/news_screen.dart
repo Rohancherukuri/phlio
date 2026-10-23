@@ -1,6 +1,8 @@
+import 'package:phlio/shared/widgets/notifications_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../design_system/typography.dart';
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
@@ -44,11 +46,12 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                     .formatMediumDate(DateTime.now()),
                 style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
-            Text(widget.explore ? 'Discover' : 'Phlio News',
-                style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1)),
+            Row(children: [
+              Expanded(
+                  child: Text(widget.explore ? 'Discover' : 'Phlio News',
+                      style: PhlioTypography.displayMedium)),
+              const PhlioNotificationsButton()
+            ]),
             const SizedBox(height: 24),
             if (widget.explore) ...[
               TextField(
@@ -122,7 +125,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                           const SizedBox(height: 12),
                           if (headlines.isNotEmpty)
                             SizedBox(
-                                height: 170,
+                                height: 255,
                                 child: PageView(children: [
                                   for (final article in headlines)
                                     Card(
@@ -157,6 +160,10 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                                                                   fontWeight:
                                                                       FontWeight
                                                                           .w700))),
+                                                      EngagementRow(
+                                                          path:
+                                                              'news/${article['ref']}',
+                                                          compact: true),
                                                     ])))),
                                 ])),
                         ],

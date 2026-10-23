@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -174,8 +175,7 @@ class _DmThreadState extends ConsumerState<DmThread> {
 
   Widget _messageBody(Map<String, dynamic> message, bool mine) =>
       ConstrainedBox(
-        constraints:
-            const BoxConstraints(minHeight: 60, minWidth: double.infinity),
+        constraints: const BoxConstraints(minWidth: 40),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -269,12 +269,19 @@ class _DmThreadState extends ConsumerState<DmThread> {
                                   _showReactionBar(message, mine),
                               onDoubleTap: () => _react(id, '❤️'),
                               child: Container(
-                                padding: const EdgeInsets.all(12),
+                                padding:
+                                    (message['attachments'] as List).isEmpty
+                                        ? const EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 10)
+                                        : const EdgeInsets.all(3),
                                 decoration: BoxDecoration(
-                                  color: mine
-                                      ? PhlioColors.brandViolet
-                                          .withValues(alpha: .65)
-                                      : PhlioColors.surfaceElevated,
+                                  color: (message['attachments'] as List)
+                                          .isNotEmpty
+                                      ? Colors.transparent
+                                      : mine
+                                          ? PhlioColors.brandViolet
+                                              .withValues(alpha: .65)
+                                          : PhlioColors.surfaceElevated,
                                   borderRadius: BorderRadius.only(
                                     topLeft: const Radius.circular(20),
                                     topRight: const Radius.circular(20),
@@ -297,15 +304,28 @@ class _DmThreadState extends ConsumerState<DmThread> {
                             ),
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                timeago.format(
-                                  DateTime.parse(
-                                    message['created_at'] as String,
-                                  ),
-                                ),
-                                style: PhlioTypography.caption
-                                    .copyWith(fontSize: 10),
-                              ),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (!mine) ...[
+                                      PhlioAvatar(
+                                          name: name,
+                                          imageUrl:
+                                              peer?['avatar_url'] as String?,
+                                          profileId: widget.username,
+                                          size: 22),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Text(
+                                      timeago.format(
+                                        DateTime.parse(
+                                          message['created_at'] as String,
+                                        ),
+                                      ),
+                                      style: PhlioTypography.caption
+                                          .copyWith(fontSize: 10),
+                                    )
+                                  ]),
                             ),
                             if (reactions.isNotEmpty)
                               _ReactionChips(
@@ -325,6 +345,7 @@ class _DmThreadState extends ConsumerState<DmThread> {
         ChatComposer(
           audience: ChatAudience.directMessage,
           hint: 'Message @${widget.username}',
+          compact: true,
           surfaceColor: PhlioColors.roomsInput,
           onSendText: _send,
           onSendFiles: _files,
@@ -341,57 +362,32 @@ class _DmThreadState extends ConsumerState<DmThread> {
   }
 
   Widget _empty(String name) {
-    if (widget.compact) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const PhlioFox(size: 72, pose: PhlioFoxPose.happy),
-            const SizedBox(height: PhlioSpacing.sm),
-            Text('Say hi to $name', style: PhlioTypography.body),
-          ],
-        ),
-      );
-    }
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const SizedBox(height: 48),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: PhlioAvatar(profileId: widget.username, name: name, size: 96),
-        ),
-        const SizedBox(height: 24),
-        Text(name, style: PhlioTypography.displayMedium),
-        Text('@${widget.username}', style: PhlioTypography.bodyLarge),
-        const SizedBox(height: 16),
-        Text(
-          'This is the beginning of your conversation with $name.',
-          style: PhlioTypography.bodyLarge,
-        ),
-        const SizedBox(height: 48),
-        const Center(child: PhlioFox(size: 96, pose: PhlioFoxPose.happy)),
-        const SizedBox(height: 16),
-        Center(
-          child: FilledButton(
-            onPressed: () async {
-              try {
-                await _send('👋');
-              } catch (_) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Could not send your wave. Try again.'),
-                    ),
-                  );
-                }
-              }
-            },
-            child: Text('Wave to $name'),
-          ),
-        ),
-      ],
-    );
+    final peer = ref.watch(dmPeerProvider(widget.username)).valueOrNull;
+    return ListView(padding: const EdgeInsets.all(24), children: [
+      const SizedBox(height: 32),
+      Center(
+          child: PhlioAvatar(
+              profileId: widget.username,
+              name: name,
+              imageUrl: peer?['avatar_url'] as String?,
+              size: 112)),
+      const SizedBox(height: 18),
+      Text(name,
+          textAlign: TextAlign.center,
+          style: PhlioTypography.bodyStrong.copyWith(fontSize: 24)),
+      const SizedBox(height: 6),
+      Text(peer?['username'] as String? ?? widget.username,
+          textAlign: TextAlign.center, style: PhlioTypography.body),
+      const SizedBox(height: 14),
+      Center(
+          child: FilledButton.tonal(
+              onPressed: () => context
+                  .push('/creator/${Uri.encodeComponent(widget.username)}'),
+              child: const Text('View profile'))),
+      const SizedBox(height: 32),
+      const Text('Say hello with a message or sticker',
+          textAlign: TextAlign.center),
+    ]);
   }
 }
 
@@ -453,6 +449,7 @@ class _PrivateAttachment extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: AttachmentPreview(
+        mediaOnly: ['image', 'gif', 'sticker', 'video'].contains(data['kind']),
         attachment: MessageAttachmentEntity(
           id: data['id'] as String,
           kind: data['kind'] as String,

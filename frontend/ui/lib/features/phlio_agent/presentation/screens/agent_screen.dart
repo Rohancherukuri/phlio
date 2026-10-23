@@ -1,3 +1,4 @@
+import 'package:phlio/shared/widgets/notifications_button.dart';
 // Phlio Agent (Foxy) screen — mirrors the reference "4. PHLIO AGENT"
 // screen: Foxy's header with a BETA badge and tagline, a scrolling chat
 // transcript, and a message composer.
@@ -73,7 +74,7 @@ class _AgentScreenState extends ConsumerState<AgentScreen> {
     final messagesAsync = ref.watch(agentControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(actions: const [PhlioNotificationsButton()],
         title: Row(
           children: [
             const PhlioFox(size: 34, pose: PhlioFoxPose.hello, animate: false),

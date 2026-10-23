@@ -15,12 +15,12 @@ import '../../design_system/colors.dart';
 
 enum PhlioPlatform {
   pay('Pay', Icons.account_balance_wallet_outlined, Icons.account_balance_wallet_rounded),
-  social('Social', Icons.groups_outlined, Icons.groups_rounded),
+  social('Social', Icons.people_alt_outlined, Icons.people_alt_rounded),
   rooms('Rooms', Icons.forum_outlined, Icons.forum_rounded),
-  book('Book', Icons.confirmation_number_outlined, Icons.confirmation_number_rounded),
-  shop('Shop', Icons.storefront_outlined, Icons.storefront_rounded),
+  book('Book', Icons.local_activity_outlined, Icons.local_activity_rounded),
+  shop('Shop', Icons.shopping_bag_outlined, Icons.shopping_bag_rounded),
   stream('Stream', Icons.play_circle_outline_rounded, Icons.play_circle_rounded),
-  news('News', Icons.article_outlined, Icons.article_rounded),
+  news('News', Icons.newspaper_outlined, Icons.newspaper_rounded),
   agent('Agent', Icons.auto_awesome_outlined, Icons.auto_awesome_rounded);
 
   const PhlioPlatform(this.label, this.icon, this.activeIcon);

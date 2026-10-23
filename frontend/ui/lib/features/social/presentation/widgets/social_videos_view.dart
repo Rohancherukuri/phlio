@@ -1,8 +1,9 @@
+import 'video_options_menu.dart';
+import 'video_details_sheet.dart';
+import '../../../profile/presentation/controllers/avatar_controller.dart';
 import 'video_thumbnail.dart';
-import '../../../../shared/content/social_comments_sheet.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
-import '../../../../app/config/app_config.dart';
 import 'creator_follow_button.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -158,9 +159,12 @@ class SocialVideoCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Cards show a light summary (liker stack, likes, upload time); the
+    // full stats live in the player's Details sheet.
     return ContentSurface(
         platform: 'social',
         contentId: video.playable?.id ?? video.title,
+        showEngagement: false,
         child: _content(context, ref));
   }
 
@@ -191,16 +195,23 @@ class SocialVideoCard extends ConsumerWidget {
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                         color: Colors.white)))),
+                        // Options live inside the thumbnail, top-right.
+                        if (video.playable != null)
+                          Positioned(
+                              top: 8,
+                              right: 8,
+                              child: VideoOptionsButton(
+                                  video: video.playable!)),
                       ])))),
           const SizedBox(height: 12),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             GestureDetector(
                 onTap: () => context.push('/creator/${video.creator}'),
-                child: CircleAvatar(
-                    radius: 19,
-                    backgroundImage: video.avatarAsset.isEmpty
-                        ? null
-                        : NetworkImage(AppConfig.mediaUrl(video.avatarAsset)))),
+                child: ContentAuthorAvatar(
+                    author: video.creator,
+                    name: video.creator,
+                    imageUrl: video.avatarAsset,
+                    size: 38)),
             const SizedBox(width: 10),
             Expanded(
                 child: Column(
@@ -221,24 +232,22 @@ class SocialVideoCard extends ConsumerWidget {
                       child: Text('@${video.creator}',
                           style: const TextStyle(
                               fontSize: 12, color: Color(0xFF858D9E)))),
-                ])),
-            PopupMenuButton<String>(
-                tooltip: 'Video options',
-                onSelected: (value) {
-                  if (value == 'comments')
-                    showSocialComments(context, video.playable!.id);
-                  else
-                    showContentShare(context, 'social/${video.playable!.id}');
-                },
-                itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'comments', child: Text('Comments')),
-                      PopupMenuItem(value: 'share', child: Text('Share'))
+                  // Likers · likes · upload time, with Follow on the
+                  // same line.
+                  if (video.playable != null || showFollowPill)
+                    Row(children: [
+                      Expanded(
+                          child: video.playable == null
+                              ? const SizedBox.shrink()
+                              : VideoLikesLine(video: video.playable!)),
+                      if (showFollowPill) ...[
+                        const SizedBox(width: 8),
+                        CreatorFollowButton(
+                            creator: video.creator, compact: true),
+                      ],
                     ]),
+                ])),
           ]),
-          if (showFollowPill)
-            Align(
-                alignment: Alignment.centerRight,
-                child: CreatorFollowPill(creator: video.creator)),
           if (video.playable?.attribution != null)
             Padding(
                 padding: const EdgeInsets.only(top: 4),

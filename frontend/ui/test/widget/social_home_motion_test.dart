@@ -1,3 +1,4 @@
+import 'package:phlio/shared/content/content_surface.dart';
 import 'dart:io';
 import 'package:phlio/features/social/presentation/controllers/video_library.dart';
 import 'package:phlio/features/profile/presentation/widgets/profile_posts.dart';
@@ -57,12 +58,13 @@ Future<void> shot(WidgetTester tester, String name) async {
 }
 
 Future<void> app(WidgetTester tester, double width, double scale,
-    {bool reduced = false}) async {
+    {bool reduced = false, List stories = const []}) async {
   await tester.binding.setSurfaceSize(Size(width, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(ProviderScope(
       overrides: [
         authControllerProvider.overrideWith(_Auth.new),
+        sharedStoriesProvider.overrideWith((ref) async => stories),
         feedControllerProvider.overrideWith(_Feed.new),
         socialVideoCatalogProvider.overrideWith((ref) async => []),
         creatorFollowingProvider.overrideWith((ref) async => {}),
@@ -129,6 +131,9 @@ void main() {
         await app(tester, width, scale);
         final tabs = find.byKey(const ValueKey('social-tabs'));
         final left = tester.getTopLeft(tabs).dx;
+        expect(reveal(tester), 0);
+        await tester.drag(feedList(), const Offset(0, 180));
+        await tester.pumpAndSettle();
         expect(reveal(tester), 1);
         if (capture && width == 390 && scale == 1)
           await shot(tester, 'expanded');
@@ -148,7 +153,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Videos'));
         await tester.pumpAndSettle();
-        expect(reveal(tester), 1);
+        expect(reveal(tester), 0);
         expect(find.byType(SocialVideosView), findsOneWidget);
         expect(tester.takeException(), isNull);
         if (capture && width == 390 && scale == 1) await shot(tester, 'videos');
@@ -163,54 +168,102 @@ void main() {
         expect(scroll.position.pixels, greaterThan(48));
         scroll.position.jumpTo(0);
         await tester.pumpAndSettle();
-        expect(reveal(tester), 1);
+        expect(reveal(tester), 0);
         expect(tester.takeException(), isNull);
       });
     }
   }
-  testWidgets(
-      'The same avatar follows the finger and reverses without a cross-fade',
+  testWidgets('Only active moment authors populate the expanded row',
       (tester) async {
-    await app(tester, 390, 1);
-    final avatar = find.byKey(const ValueKey('social-story-avatar-1'));
-    final originalElement = tester.element(avatar);
-    final start = tester.getRect(avatar);
-    final gesture = await tester.startGesture(tester.getCenter(feedList()));
-    await gesture.moveBy(const Offset(0, -20));
-    await tester.pump();
-    await gesture.moveBy(const Offset(0, -35));
-    await tester.pump();
-    final middle = tester.getRect(avatar);
-    expect(middle.width, lessThan(start.width));
-    expect(middle.width, greaterThan(22));
-    expect(middle.left, greaterThan(start.left));
-    expect(tester.element(avatar), same(originalElement));
-    expect(find.byType(StoriesHeaderStack), findsNothing);
-    expect(find.byType(StoriesStrip), findsNothing);
-    if (capture) await shot(tester, 'morph-middle');
-    await gesture.moveBy(const Offset(0, 15));
-    await tester.pump();
-    final reverse = tester.getRect(avatar);
-    expect(reverse.width, greaterThan(middle.width));
-    expect(reverse.left, lessThan(middle.left));
-    await gesture.up();
+    await app(tester, 390, 1, stories: [
+      {
+        'author': {
+          'id': 'moment-author',
+          'display_name': 'Maya',
+          'avatar_url': null
+        }
+      },
+      {
+        'author': {
+          'id': 'moment-author',
+          'display_name': 'Maya',
+          'avatar_url': null
+        }
+      },
+    ]);
+    await tester.drag(feedList(), const Offset(0, 180));
     await tester.pumpAndSettle();
+    expect(find.text('Maya'), findsOneWidget);
+    expect(find.byKey(const ValueKey('empty-moment-0')), findsNothing);
+    expect(find.byKey(const ValueKey('empty-moment-1')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('Story rail scrolls and compact stack can reopen it',
+  testWidgets('No moments renders grey slots on all three tabs',
       (tester) async {
     await app(tester, 390, 1);
-    final avatar = find.byKey(const ValueKey('social-story-avatar-2'));
-    final start = tester.getTopLeft(avatar).dx;
-    await tester.drag(avatar, const Offset(-90, 0));
+    for (final tab in ['Posts', 'Videos', 'Clips']) {
+      await tester.ensureVisible(find.text(tab));
+      await tester.tap(find.text(tab));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('empty-moment-0')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+  });
+  testWidgets('Each tab reveals moments only on leading-edge overscroll',
+      (tester) async {
+    await app(tester, 390, 1);
+    for (var index = 0; index < 3; index++) {
+      await tester
+          .ensureVisible(find.text(['Posts', 'Videos', 'Clips'][index]));
+      await tester.tap(find.text(['Posts', 'Videos', 'Clips'][index]));
+      await tester.pumpAndSettle();
+      expect(reveal(tester), 0);
+      final listener = find
+          .descendant(
+            of: find.byKey(ValueKey('social-tab-$index')),
+            matching: find.byType(NotificationListener<ScrollNotification>),
+          )
+          .first;
+      final callback = tester
+          .widget<NotificationListener<ScrollNotification>>(listener)
+          .onNotification!;
+      final metrics = FixedScrollMetrics(
+          minScrollExtent: 0,
+          maxScrollExtent: 1200,
+          pixels: 0,
+          viewportDimension: 600,
+          axisDirection: AxisDirection.down,
+          devicePixelRatio: 1);
+      callback(OverscrollNotification(
+          metrics: metrics,
+          context: tester.element(listener),
+          overscroll: -90,
+          dragDetails: DragUpdateDetails(
+              globalPosition: Offset.zero, delta: const Offset(0, 90))));
+      callback(ScrollEndNotification(
+          metrics: metrics, context: tester.element(listener)));
+      await tester.pumpAndSettle();
+      expect(reveal(tester), 1);
+      callback(ScrollUpdateNotification(
+          metrics: metrics,
+          context: tester.element(listener),
+          scrollDelta: 120,
+          dragDetails: DragUpdateDetails(
+              globalPosition: Offset.zero, delta: const Offset(0, -120))));
+      callback(ScrollEndNotification(
+          metrics: metrics, context: tester.element(listener)));
+      await tester.pumpAndSettle();
+      expect(reveal(tester), 0);
+    }
+  });
+  testWidgets('Scrolling back within later content does not reveal moments',
+      (tester) async {
+    await app(tester, 390, 1);
+    await tester.drag(feedList(), const Offset(0, -600));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(avatar).dx, lessThan(start));
-    await tester.drag(feedList(), const Offset(0, -220));
+    await tester.drag(feedList(), const Offset(0, 100));
     await tester.pumpAndSettle();
     expect(reveal(tester), 0);
-    await tester.tap(find.bySemanticsLabel('Expand stories'));
-    await tester.pumpAndSettle();
-    expect(reveal(tester), 1);
     expect(tester.takeException(), isNull);
   });
   testWidgets('Reduced motion changes header immediately', (tester) async {

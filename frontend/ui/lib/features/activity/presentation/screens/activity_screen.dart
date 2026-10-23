@@ -1,3 +1,4 @@
+import '../../../profile/presentation/widgets/memories_screen.dart';
 // Activity — the cross-domain notification feed, opened from the home
 // screen's bell. Items arrive from Phlio Book/Pay/Social/Agent: bookings
 // confirmed, payments received, plan ideas. The feed defaults to the
@@ -65,13 +66,14 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final platform = ref.watch(currentPlatformProvider);
+    final snaps = ref.watch(memoriesProvider).valueOrNull?.where((m) => m['unread'] == true).length ?? 0;
     final feedAsync = ref.watch(activityFeedProvider);
     final hasUnread = feedAsync.valueOrNull?.any((item) => !item.isRead) ?? false;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Activity'),
+        title: const Text('Notifications'),
+        bottom: snaps == 0 ? null : PreferredSize(preferredSize: const Size.fromHeight(64), child: ListTile(leading: const Icon(Icons.photo_camera_outlined), title: Text('$snaps new memories'), subtitle: const Text('Friends shared new snaps'), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoriesScreen())))),
         actions: [
           if (hasUnread)
             TextButton(
@@ -91,9 +93,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         ),
         data: (items) {
           final kinds = items.map((i) => i.kind).toSet().toList();
-          final defaultKinds = ActivityScreen.kindsFor(platform);
+
           final effectiveFilter =
-              _filter ?? (defaultKinds.length == 1 ? defaultKinds.first : null);
+              _filter;
           final filtered = effectiveFilter == null
               ? items
               : items.where((item) => item.kind == effectiveFilter).toList();

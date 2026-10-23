@@ -103,6 +103,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    from app.api.v1.music import callback_router
+    app.include_router(callback_router)
 
     # Room uploads land in settings.media_root (streamed to disk by
     # MediaStorage) and are served back origin-relative under /media so
@@ -110,6 +112,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from fastapi.staticfiles import StaticFiles
 
     from app.core.container import media_root_path
+
+    @app.middleware("http")
+    async def cache_recorded_media(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith('/media/live_recordings/') and response.status_code in (200,206,304):
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
 
     app.mount("/media", StaticFiles(directory=media_root_path(settings)), name="media")
 

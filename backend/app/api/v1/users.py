@@ -51,12 +51,16 @@ async def get_public_profile(
     response.followers = len(await container.graph.store.rows("follows", {"out": "user:" + profile.id}))
     response.following = len(await container.graph.store.rows("follows", {"in": "user:" + profile.id}))
     posts, cursor = await container.social_repository.list_posts_by_author(profile.id, cursor=None, limit=100)
-    response.post_count = len(posts)
+    response.post_count = sum([await container.social_service.visible_to(p, profile.id) for p in posts])
     while cursor:
         posts, cursor = await container.social_repository.list_posts_by_author(
             profile.id, cursor=cursor, limit=100
         )
-        response.post_count += len(posts)
+        response.post_count += sum([await container.social_service.visible_to(p, profile.id) for p in posts])
+    # Uploaded videos and clips count as posts too.
+    response.post_count += container.social_video_service.db.execute(
+        "SELECT COUNT(*) FROM videos WHERE creator=?", (profile.id,)
+    ).fetchone()[0]
     return response
 
 
