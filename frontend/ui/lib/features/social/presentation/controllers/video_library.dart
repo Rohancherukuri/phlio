@@ -24,7 +24,13 @@ class PlayableVideo {
     this.thumbnailUrl,
     this.sources = const [],
     this.createdAt,
+    this.description = '',
+    this.location,
   });
+
+  /// Long-form description and place from the Add details page.
+  final String description;
+  final String? location;
 
   /// When the video was uploaded (null for local/legacy items).
   final DateTime? createdAt;
@@ -51,7 +57,9 @@ class PlayableVideo {
       attribution: attribution,
       thumbnailUrl: thumbnailUrl,
       sources: sources,
-      createdAt: createdAt);
+      createdAt: createdAt,
+      description: description,
+      location: location);
   final String? localPath, creatorName, avatarUrl, songTitle, songArtist;
   factory PlayableVideo.fromJson(Map json) => PlayableVideo(
         sources: (json['sources'] as List? ?? [])
@@ -71,6 +79,8 @@ class PlayableVideo {
         thumbnailUrl: json['thumbnail_url'] as String?,
         createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '')
             ?.toLocal(),
+        description: json['description'] as String? ?? '',
+        location: json['location'] as String?,
       );
 }
 
@@ -114,6 +124,7 @@ class SocialVideoApi {
     ProgressCallback? onProgress,
     String kind = 'video',
     String? musicId,
+    Map<String, dynamic> details = const {},
   }) async =>
       PlayableVideo.fromJson(
         (await dio.post(
@@ -123,6 +134,7 @@ class SocialVideoApi {
               'title': title,
               'kind': kind,
               if (musicId != null) 'music_id': musicId,
+              ...details,
               'file': await MultipartFile.fromFile(path)
             },
           ),

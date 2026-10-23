@@ -8,6 +8,10 @@ if (Test-Path -LiteralPath (Join-Path $backendRoot 'data/livekit/local.yaml')) {
     & (Join-Path $PSScriptRoot 'Start-Realtime.ps1')
 }
 New-Item -ItemType Directory -Force -Path 'data/surreal' | Out-Null
+if ((Test-Path -LiteralPath 'data/translation/madlad400/model.bin') -and -not (Get-NetTCPConnection -LocalPort 8010 -State Listen -ErrorAction SilentlyContinue)) {
+    Start-Process -FilePath (Get-Command uv).Source -ArgumentList @('run', 'python', '-m', 'scripts.translation_server') -WorkingDirectory $backendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $backendRoot 'data/translation-api.log') -RedirectStandardError (Join-Path $backendRoot 'data/translation-api-error.log')
+}
+
 if (-not (Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue)) {
     $surrealExe = (Get-Command surreal -ErrorAction Stop).Source
     $databasePath = (Join-Path $backendRoot 'data/surreal/graph.db').Replace('\', '/')

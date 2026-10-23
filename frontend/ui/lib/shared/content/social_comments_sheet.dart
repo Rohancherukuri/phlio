@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../giphy/giphy_picker.dart';
 import 'content_surface.dart' show engagementProvider;
 import 'dart:io';
@@ -95,6 +94,9 @@ class SocialCommentsSheet extends ConsumerStatefulWidget {
 }
 
 class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
+  final translations = <String, String>{};
+  final translating = <String>{};
+  final showTranslation = <String>{};
   final text = TextEditingController();
   final composerFocus = FocusNode();
   final expandedThreads = <String>{};
@@ -102,6 +104,12 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   Map? replying;
   bool sending = false;
   String? pickerKind;
+
+  /// Inline panel above the composer: 'photo' (gallery / camera / files) or
+  /// 'gift'. Inline instead of a separate sheet so the comment box behaves
+  /// the same everywhere — feeds, the video player overlay, clips, Shop,
+  /// Book, Stream and News.
+  String? attachPanel;
   List people = [];
   int mentionRequest = 0;
   void insertEmoji(String emoji) {
@@ -128,20 +136,34 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   }
 
   Future<void> translate(Map item) async {
-    final locale = Localizations.localeOf(context).languageCode;
+    final id = item['id'].toString();
+    if (translating.contains(id)) return;
+    if (translations.containsKey(id)) {
+      setState(() {
+        if (!showTranslation.remove(id)) showTranslation.add(id);
+      });
+      return;
+    }
+    setState(() {
+      translating.add(id);
+      error = null;
+    });
     try {
-      final opened = await launchUrl(
-          Uri.https('translate.google.com', '/', {
-            'sl': 'auto',
-            'tl': locale,
-            'text': item['text'] as String,
-            'op': 'translate'
-          }),
-          mode: LaunchMode.externalApplication);
-      if (!opened) throw StateError('Unavailable');
+      final result = await getIt<ApiClient>().dio.post(
+          '${commentUrl(widget.contentId)}/$id/translate',
+          queryParameters: commentQuery(widget.contentId),
+          options: Options(receiveTimeout: const Duration(seconds: 125)));
+      if (mounted)
+        setState(() {
+          translations[id] = (result.data as Map)['text'] as String;
+          showTranslation.add(id);
+        });
     } catch (_) {
       if (mounted)
-        setState(() => error = 'Could not open translation. Try again.');
+        setState(() =>
+            error = 'Translation unavailable right now. Please try again.');
+    } finally {
+      if (mounted) setState(() => translating.remove(id));
     }
   }
 
@@ -209,6 +231,19 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                           child: Text(item['text'] as String,
                               style:
                                   const TextStyle(fontSize: 14, height: 1.35))),
+                    if (showTranslation.contains(item['id'].toString()))
+                      Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('English translation',
+                                    style: TextStyle(
+                                        fontSize: 11, color: Colors.white54)),
+                                Text(translations[item['id'].toString()] ?? '',
+                                    style: const TextStyle(
+                                        fontSize: 14, height: 1.35))
+                              ])),
                     if (item['image_url'] != null)
                       Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -243,7 +278,13 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                   minimumSize: const Size(0, 32),
                                   foregroundColor: Colors.white60),
                               onPressed: () => translate(item),
-                              child: const Text('See translation')),
+                              child: Text(
+                                  translating.contains(item['id'].toString())
+                                      ? 'Translating...'
+                                      : showTranslation
+                                              .contains(item['id'].toString())
+                                          ? 'See original'
+                                          : 'See translation')),
                       ]),
                   ])),
               const SizedBox(width: 6),
@@ -327,8 +368,7 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                                           color: Colors
                                                               .redAccent)),
                                                   onTap: () => Navigator.pop(
-                                                      dialogContext,
-                                                      'delete')),
+                                                      dialogContext, 'delete')),
                                             ListTile(
                                                 leading: const Icon(
                                                     Icons.report_outlined,
@@ -430,7 +470,24 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                       onPressed: () => setState(() => replying = null),
                       icon: const Icon(Icons.close, size: 18))
                 ]),
-              if (pickerKind == null)
+              if (attachPanel == 'photo')
+                _AttachPanel(children: [
+                  _AttachOption(
+                      icon: Icons.photo_library_outlined,
+                      label: 'Gallery',
+                      onTap: () => pickPhotoFrom('gallery')),
+                  _AttachOption(
+                      icon: Icons.photo_camera_outlined,
+                      label: 'Camera',
+                      onTap: () => pickPhotoFrom('camera')),
+                  _AttachOption(
+                      icon: Icons.folder_open_outlined,
+                      label: 'Files',
+                      onTap: () => pickPhotoFrom('files')),
+                ], onClose: () => setState(() => attachPanel = null))
+              else if (attachPanel == 'gift')
+                _GiftPanel(onClose: () => setState(() => attachPanel = null))
+              else if (pickerKind == null)
                 SizedBox(
                     height: 56,
                     child: Row(children: [
@@ -488,8 +545,8 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                     hintStyle: TextStyle(
                                         color: Color(0xFF9AA1AE), fontSize: 15),
                                     filled: false,
-                                    contentPadding: EdgeInsets.fromLTRB(
-                                        16, 13, 4, 13),
+                                    contentPadding:
+                                        EdgeInsets.fromLTRB(16, 13, 4, 13),
                                     border: InputBorder.none,
                                     enabledBorder: InputBorder.none,
                                     focusedBorder: InputBorder.none)),
@@ -524,7 +581,11 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                 else
                   IconButton(
                       tooltip: 'Send a gift',
-                      onPressed: () => showCreatorGiftsPlaceholder(context),
+                      onPressed: () {
+                        FocusScope.of(context).unfocus();
+                        setState(() => attachPanel =
+                            attachPanel == 'gift' ? null : 'gift');
+                      },
                       icon: const Icon(Icons.card_giftcard_rounded,
                           size: 28, color: Color(0xFFF1F3F8))),
               ]),
@@ -563,34 +624,22 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
 
   Future<void> pickGiphy(String kind) async {
     FocusScope.of(context).unfocus();
-    setState(() => pickerKind = pickerKind == kind ? null : kind);
+    setState(() {
+      attachPanel = null;
+      pickerKind = pickerKind == kind ? null : kind;
+    });
     widget.onPickerChanged?.call(pickerKind != null);
   }
 
   /// Image button: choose from the photo gallery, take a photo, or pick a
   /// file from local storage.
-  Future<void> pickPhoto() async {
+  void pickPhoto() {
     FocusScope.of(context).unfocus();
-    final source = await showModalBottomSheet<String>(
-        context: context,
-        useRootNavigator: true,
-        showDragHandle: true,
-        builder: (sheet) => SafeArea(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              ListTile(
-                  leading: const Icon(Icons.photo_library_outlined),
-                  title: const Text('Photo gallery'),
-                  onTap: () => Navigator.pop(sheet, 'gallery')),
-              ListTile(
-                  leading: const Icon(Icons.photo_camera_outlined),
-                  title: const Text('Take a photo'),
-                  onTap: () => Navigator.pop(sheet, 'camera')),
-              ListTile(
-                  leading: const Icon(Icons.folder_open_outlined),
-                  title: const Text('Browse files'),
-                  onTap: () => Navigator.pop(sheet, 'files')),
-              const SizedBox(height: 8),
-            ])));
+    setState(() => attachPanel = attachPanel == 'photo' ? null : 'photo');
+  }
+
+  Future<void> pickPhotoFrom(String source) async {
+    setState(() => attachPanel = null);
     if (source == null || !mounted) return;
     if (source == 'files') return pick(false);
     try {
@@ -884,49 +933,100 @@ class _ComposerIcon extends StatelessWidget {
   }
 }
 
-/// Placeholder for creator gifts — shows what is coming, sends nothing yet.
-Future<void> showCreatorGiftsPlaceholder(BuildContext context) =>
-    showModalBottomSheet<void>(
-        context: context,
-        useRootNavigator: true,
-        showDragHandle: true,
-        builder: (sheet) => SafeArea(
-                child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.card_giftcard_rounded,
-                    size: 44, color: Color(0xFFFFB58F)),
-                const SizedBox(height: 12),
-                const Text('Gifts are coming soon',
-                    style:
-                        TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                const Text(
-                    'Soon you\'ll be able to cheer on creators by sending them gifts right from the comments.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFFC4C8D2), height: 1.4)),
-                const SizedBox(height: 20),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      for (final gift in const ['🌹', '☕', '🎉', '💎', '🚀'])
-                        Opacity(
-                            opacity: .55,
-                            child: Container(
-                                width: 52,
-                                height: 52,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                    color: const Color(0xFF202A3A),
-                                    borderRadius: BorderRadius.circular(16)),
-                                child: Text(gift,
-                                    style: const TextStyle(fontSize: 26)))),
-                    ]),
-                const SizedBox(height: 20),
-                SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                        onPressed: () => Navigator.pop(sheet),
-                        child: const Text('Got it'))),
-              ]),
-            )));
+/// Inline row of attach choices shown above the comment box.
+class _AttachPanel extends StatelessWidget {
+  const _AttachPanel({required this.children, required this.onClose});
+  final List<Widget> children;
+  final VoidCallback onClose;
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(8, 10, 4, 10),
+        decoration: BoxDecoration(
+            color: const Color(0xFF1B2330),
+            borderRadius: BorderRadius.circular(20)),
+        child: Row(children: [
+          ...children.map((c) => Expanded(child: c)),
+          IconButton(
+              tooltip: 'Close',
+              onPressed: onClose,
+              icon: const Icon(Icons.close_rounded, color: Color(0xFF9AA1AE))),
+        ]),
+      );
+}
+
+class _AttachOption extends StatelessWidget {
+  const _AttachOption(
+      {required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: const BoxDecoration(
+                  color: Color(0xFF26303F), shape: BoxShape.circle),
+              child: Icon(icon, color: const Color(0xFFF1F3F8), size: 24),
+            ),
+            const SizedBox(height: 6),
+            Text(label,
+                style:
+                    const TextStyle(fontSize: 12.5, color: Color(0xFFC4C8D2))),
+          ]),
+        ),
+      );
+}
+
+/// Creator gifts placeholder — inline, sends nothing yet.
+class _GiftPanel extends StatelessWidget {
+  const _GiftPanel({required this.onClose});
+  final VoidCallback onClose;
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 4, 14),
+        decoration: BoxDecoration(
+            color: const Color(0xFF1B2330),
+            borderRadius: BorderRadius.circular(20)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.card_giftcard_rounded,
+                color: Color(0xFFFFB58F), size: 22),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Gifts are coming soon',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+            IconButton(
+                tooltip: 'Close',
+                onPressed: onClose,
+                icon:
+                    const Icon(Icons.close_rounded, color: Color(0xFF9AA1AE))),
+          ]),
+          const Text(
+              "Soon you'll be able to cheer on creators with gifts right from the comments.",
+              style: TextStyle(color: Color(0xFFC4C8D2), height: 1.35)),
+          const SizedBox(height: 12),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            for (final gift in const ['🌹', '☕', '🎉', '💎', '🚀'])
+              Opacity(
+                  opacity: .55,
+                  child: Container(
+                      width: 46,
+                      height: 46,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                          color: const Color(0xFF26303F),
+                          borderRadius: BorderRadius.circular(14)),
+                      child: Text(gift, style: const TextStyle(fontSize: 22)))),
+          ]),
+        ]),
+      );
+}

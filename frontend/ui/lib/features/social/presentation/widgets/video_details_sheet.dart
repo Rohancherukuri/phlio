@@ -160,7 +160,8 @@ class _VideoDetails extends ConsumerWidget {
     num stat(String key) => data?[key] as num? ?? 0;
     final likes = stat('count').toInt();
     final tags = {
-      for (final m in RegExp(r'#([A-Za-z0-9_]+)').allMatches(video.title))
+      for (final m in RegExp(r'#([A-Za-z0-9_]+)')
+          .allMatches('${video.title} ${video.description}'))
         m[1]!.toLowerCase()
     };
     final duration = video.durationSeconds > 0
@@ -274,6 +275,11 @@ class _VideoDetails extends ConsumerWidget {
             icon: Icons.video_library_outlined,
             label: 'Type',
             value: video.kind == 'clip' ? 'Clip' : 'Video'),
+        if (video.location != null)
+          _InfoRow(
+              icon: Icons.location_on_outlined,
+              label: 'Location',
+              value: video.location!),
         if (video.songTitle != null)
           _InfoRow(
               icon: Icons.music_note_rounded,
@@ -285,7 +291,10 @@ class _VideoDetails extends ConsumerWidget {
         // Description
         Text('Description', style: PhlioTypography.title),
         const SizedBox(height: PhlioSpacing.sm),
-        LinkifiedText(video.title,
+        LinkifiedText(
+            video.description.trim().isEmpty
+                ? video.title
+                : '${video.title}\n\n${video.description.trim()}',
             style: PhlioTypography.bodyLarge,
             onMention: onProfile == null
                 ? null

@@ -126,3 +126,31 @@ async def report_comment(ref: str, comment_id: str, platform: str = 'social', us
     if not any(row['id'] == comment_id for row in visible['items']):
         raise HTTPException(404, 'Comment is no longer available.')
     await c.graph.store.put(key('content_report', user.id, comment_id), dict(reporter_id=user.id, comment_id=comment_id, platform=platform, ref=ref, status='pending', created_at=now()))
+
+@router.post('/content/{ref}/comments/{comment_id}/translate')
+async def translate_comment(ref: str, comment_id: str, platform: str = 'social', user=Depends(get_current_user), c=Depends(get_container)):
+    import hashlib
+    import httpx
+    # Re-check access before every cache read, including after deletion/blocking.
+    visible = await comments(ref, platform, user, c)
+    row = next((r for r in visible['items'] if r['id'] == comment_id), None)
+    if row is None: raise HTTPException(404, 'Comment is no longer available.')
+    text = (row.get('text') or '').strip()
+    if not text: raise HTTPException(422, 'This comment has no text to translate.')
+    await c.cache.rate_limit(user.id, 'comment_translate', 20)
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    cache_key = 'translation:madlad400-c32ad0cf:en:' + digest
+    cached = await c.cache.get(cache_key)
+    if cached is not None: return cached
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post('http://127.0.0.1:8010/translate', json={'text':text})
+        if response.status_code != 200:
+            raise HTTPException(503, 'Translation is temporarily busy. Try again shortly.')
+        result = response.json()
+        if not isinstance(result.get('text'), str) or not result['text'].strip():
+            raise HTTPException(503, 'Translation unavailable. Please retry.')
+    except httpx.HTTPError:
+        raise HTTPException(503, 'Translation service is starting or unavailable. Please retry.') from None
+    await c.cache.put(cache_key, result, ttl=86400)
+    return result

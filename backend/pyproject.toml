@@ -21,6 +21,9 @@ dependencies = [
     "livekit-api>=1.2.1",
     "cryptography>=50.0.2",
     "phonenumbers>=9.0.41",
+    "ctranslate2>=4.8.3",
+    "sentencepiece>=0.2.2",
+    "huggingface-hub>=2.3.0",
 ]
 
 [project.optional-dependencies]
