@@ -62,6 +62,13 @@ dependencies:
   camera: ^0.12.0+2
   # Two-tone line illustrations (Phlio Book categories).
   flutter_svg: ^2.0.17
+  # On-device video gallery for Social uploads (grid, albums, thumbnails).
+  photo_manager: ^3.5.0
+  # Disk + memory cache for avatars and thumbnails.
+  cached_network_image: ^3.4.1
+  # Foxy's state-machine animation (assets/rive/foxy.riv when present).
+  rive: ^0.13.20
+  razorpay_flutter: 1.4.7
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +79,8 @@ dev_dependencies:
   mocktail: ^1.0.4
 
 flutter:
+  shaders:
+    - assets/shaders/dm_album_sheen.frag
   uses-material-design: true
 
   # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker
@@ -89,9 +98,12 @@ flutter:
     - assets/images/chat_icons/
     - assets/agent/
     - assets/stickers/
+    - assets/stickers/moves/
     - assets/emoji/
     - assets/animations/
     - assets/audio/
+    - assets/rive/
+    - assets/foxy_puppet/
 
   # Bundled brand typography (assets/fonts/):
   #   Manrope   — the UI workhorse (body copy, labels, buttons)

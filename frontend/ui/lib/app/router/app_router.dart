@@ -89,7 +89,11 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     initialLocation: '/splash',
-    refreshListenable: refreshNotifier,
+    refreshListenable: Listenable.merge([
+      refreshNotifier,
+      SplashScreen.ready,
+      SignupScreen.holdForOnboarding,
+    ]),
     redirect: (context, state) {
       final authState = ref.read(authControllerProvider);
       final location = state.matchedLocation;
@@ -98,7 +102,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         pendingSharedContent = state.uri.path;
       const authRoutes = ['/login', '/signup'];
 
-      if (authState.isLoading) {
+      // Stay on the splash until the session check resolves and the
+      // logo's entrance has played.
+      if (authState.isLoading || !SplashScreen.ready.value) {
         return location == '/splash' ? null : '/splash';
       }
 
@@ -106,6 +112,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       final onAuthRoute = authRoutes.contains(location);
 
       if (!isSignedIn && !onAuthRoute) return '/login';
+      // A brand-new account finishes onboarding (photo, welcome) first.
+      if (isSignedIn &&
+          location == '/signup' &&
+          SignupScreen.holdForOnboarding.value) return null;
       if (isSignedIn && (onAuthRoute || location == '/splash')) {
         final next = pendingSharedContent;
         pendingSharedContent = null;

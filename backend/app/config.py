@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     debug: bool = True
     app_name: str = "Phlio API"
     api_v1_prefix: str = "/api/v1"
+    razorpay_key_id: str = Field(default='', repr=False)
+    razorpay_key_secret: str = Field(default='', repr=False)
+    pay_gateway_database: str = 'data/pay_gateway.sqlite3'
     giphy_api_key: str = Field(default="", repr=False)
     # Spotify OAuth configuration. Keep credentials out of Settings repr/logs.
     # A client ID alone does not enable account linking or music playback.

@@ -1,0 +1,4 @@
+date,description,amount,direction,method,account,reference
+2026-10-01,Coffee,120.50,debit,debit_card,Card 1234,DEMO001
+2026-10-02,Refund,250.00,credit,credit_card,Card 5678,DEMO002
+2026-10-03,Groceries,850.00,debit,upi,Bank 4321,DEMO003

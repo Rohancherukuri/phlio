@@ -1,14 +1,17 @@
+import 'video_seek_gesture.dart';
 import 'social_watch_view.dart';
 import 'video_settings_panel.dart';
 import '../../../../shared/content/social_comments_sheet.dart';
 import '../../../../app/router/app_router.dart';
 import '../../../../shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import '../../../../design_system/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../controllers/video_playback_controller.dart';
 import 'creator_follow_button.dart';
+import 'video_overlay_controls.dart';
 
 class SocialVideoPlayer extends ConsumerStatefulWidget {
   const SocialVideoPlayer({super.key});
@@ -59,7 +62,7 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
     final p = c.player;
     final ready = p?.value.isInitialized == true && c.error == null;
     Widget button(IconData icon, String label, VoidCallback action) =>
-        IconButton(tooltip: label, onPressed: action, icon: Icon(icon));
+        IconButton(tooltip: label, onPressed: action, icon: PhlioIcon(icon));
     Future<void> shareVideo() async {
       final source = c.video!;
       final navigatorContext =
@@ -95,7 +98,7 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
       }
     }
 
-    final picture = audioOnly
+    final rawPicture = audioOnly
         ? const ColoredBox(
             color: Colors.black,
             child: Center(child: Icon(Icons.headphones, size: 64)))
@@ -132,6 +135,12 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                         ),
             ),
           );
+    final picture = VideoSeekGesture(
+      key: ValueKey(c.video!.id),
+      enabled: ready && !mini && !locked && c.video!.platform == 'social',
+      onSeek: (delta) => c.seek((p?.value.position ?? Duration.zero) + delta),
+      child: rawPicture,
+    );
     final controls = Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -170,7 +179,7 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
             c.video!.platform == 'social')
           button(Icons.chat_bubble_outline, 'Comments', commentsVideo),
         if (!mini && c.video!.localPath == null)
-          button(Icons.ios_share, 'Share video', shareVideo),
+          button(PhlioIcons.send, 'Share video', shareVideo),
         if (!mini)
           button(
             Icons.settings,
@@ -203,55 +212,17 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
           final content = full
               ? Material(
                   color: Colors.black,
-                  child: Stack(fit: StackFit.expand, children: [
-                    picture,
-                    const IgnorePointer(
-                        child: DecoratedBox(
-                            decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                          Colors.black54,
-                          Colors.transparent,
-                          Colors.black54
-                        ])))),
-                    SafeArea(
-                        child: Column(children: [
-                      Row(children: [
-                        button(Icons.keyboard_arrow_down, 'Minimize player',
-                            () => c.setMode(SocialPlayerMode.expanded)),
-                        const Spacer(),
-                        if (c.video!.localPath == null)
-                          button(
-                              Icons.share_outlined, 'Share video', shareVideo),
-                        button(Icons.settings_outlined, 'Playback settings',
-                            () => setState(() => settings = !settings)),
-                      ]),
-                      Expanded(
-                          child: Center(
-                              child: button(
-                                  ready && p!.value.isPlaying
-                                      ? Icons.pause
-                                      : Icons.play_arrow,
-                                  'Play or pause',
-                                  c.toggle))),
-                      Row(children: [
-                        const SizedBox(width: 16),
-                        Text(
-                            '${time(p?.value.position ?? Duration.zero)} / ${time(p?.value.duration ?? Duration.zero)}'),
-                        const Spacer(),
-                        button(
-                            c.volume == 0 ? Icons.volume_off : Icons.volume_up,
-                            'Mute or unmute',
-                            () => c.setVolume(c.volume == 0 ? 1 : 0)),
-                        button(Icons.fullscreen_exit, 'Exit fullscreen',
-                            () => c.setMode(SocialPlayerMode.expanded)),
-                      ]),
-                      if (ready)
-                        VideoProgressIndicator(p!, allowScrubbing: true),
-                    ])),
-                  ]))
+                  child: SafeArea(
+                    child: VideoOverlayControls(
+                      controller: c,
+                      picture: picture,
+                      fullscreen: true,
+                      title: c.video!.title,
+                      live: c.video!.kind == 'live',
+                      onShare: c.video!.localPath == null ? shareVideo : null,
+                      onSettings: () => setState(() => settings = !settings),
+                    ),
+                  ))
               : Material(
                   color: PhlioColors.surface,
                   borderRadius: BorderRadius.circular(mini ? 16 : 0),

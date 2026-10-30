@@ -7,12 +7,14 @@ import '../../app/config/app_config.dart';
 // `Container` + `BoxDecoration` — is what keeps radius/border/padding
 // consistent across five different feature teams' screens.
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../colors.dart';
 import '../radii.dart';
 import '../spacing.dart';
 import '../typography.dart';
+import '../../shared/moments/moments.dart';
 
 class PhlioCard extends StatelessWidget {
   const PhlioCard({
@@ -65,7 +67,12 @@ class PhlioAvatar extends StatelessWidget {
     this.imageUrl,
     this.profileId,
     this.size = 40,
+    this.showMomentRing = true,
   });
+
+  /// Draw the moment rim light when this person has a live moment. Off for
+  /// avatars that are already inside a ring or inside the moment viewer.
+  final bool showMomentRing;
 
   final String name;
   final String? imageUrl;
@@ -88,8 +95,21 @@ class PhlioAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatar = _picture();
-    if (profileId == null || profileId!.isEmpty) return avatar;
-    return Semantics(
+    final hasProfile = profileId != null && profileId!.isNotEmpty;
+    final hasPicture = imageUrl != null && imageUrl!.isNotEmpty;
+    if (!hasProfile) {
+      if (!showMomentRing || !hasPicture || size < 24) return avatar;
+      // Only the photo is known (comments, lists, sheets): match by picture.
+      return MomentRingAvatar(
+        userId: '',
+        imageUrl: imageUrl,
+        size: size,
+        plain: avatar,
+        ringed: (inner) => PhlioAvatar(
+            name: name, imageUrl: imageUrl, size: inner, showMomentRing: false),
+      );
+    }
+    final plain = Semantics(
       button: true,
       label: 'View $name profile',
       child: InkWell(
@@ -99,19 +119,39 @@ class PhlioAvatar extends StatelessWidget {
         child: avatar,
       ),
     );
+    // Live moment → Phlio rim light (tap plays it, long-press opens the
+    // profile). Tiny avatars (liker stacks) stay plain.
+    if (!showMomentRing || size < 24) return plain;
+    return MomentRingAvatar(
+      userId: profileId!,
+      imageUrl: imageUrl,
+      size: size,
+      plain: plain,
+      ringed: (inner) => PhlioAvatar(
+          name: name, imageUrl: imageUrl, size: inner, showMomentRing: false),
+    );
   }
 
   Widget _picture() {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return ClipOval(
-        child: Image.network(
-          AppConfig.mediaUrl(imageUrl!),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _initialAvatar(),
-        ),
-      );
+      // Disk + memory cached, decoded at display size: avatar stacks and
+      // lists render instantly after the first load.
+      return Builder(builder: (context) {
+        final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
+        return ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: AppConfig.mediaUrl(imageUrl!),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            memCacheWidth: px,
+            memCacheHeight: px,
+            fadeInDuration: const Duration(milliseconds: 120),
+            placeholder: (_, __) => _initialAvatar(),
+            errorWidget: (_, __, ___) => _initialAvatar(),
+          ),
+        );
+      });
     }
     return _initialAvatar();
   }

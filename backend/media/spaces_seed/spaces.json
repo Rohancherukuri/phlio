@@ -1,0 +1,141 @@
+[
+ {
+  "key": "local-llms",
+  "title": "Running AI models on your own laptop — worth it yet?",
+  "topics": [
+   "Technology",
+   "AI",
+   "Just chatting"
+  ],
+  "record": true,
+  "cast": {
+   "H": [
+    "demo_007",
+    "am_michael"
+   ],
+   "A": [
+    "demo_024",
+    "af_heart"
+   ],
+   "B": [
+    "demo_031",
+    "bm_george"
+   ]
+  }
+ },
+ {
+  "key": "pricing-art",
+  "title": "How do you price handmade work without underselling yourself?",
+  "topics": [
+   "Art",
+   "Business"
+  ],
+  "record": false,
+  "cast": {
+   "H": [
+    "demo_004",
+    "af_bella"
+   ],
+   "A": [
+    "demo_038",
+    "bf_emma"
+   ],
+   "B": [
+    "demo_045",
+    "am_adam"
+   ]
+  }
+ },
+ {
+  "key": "monsoon-trips",
+  "title": "Monsoon road trips on a budget — routes, stays, mistakes",
+  "topics": [
+   "Travel",
+   "Just chatting"
+  ],
+  "record": true,
+  "cast": {
+   "H": [
+    "demo_012",
+    "af_nicole"
+   ],
+   "A": [
+    "demo_053",
+    "am_eric"
+   ],
+   "B": [
+    "demo_060",
+    "af_sarah"
+   ]
+  }
+ },
+ {
+  "key": "lofi-phone",
+  "title": "Making lo-fi beats with just a phone — show and tell",
+  "topics": [
+   "Music",
+   "Technology"
+  ],
+  "record": false,
+  "cast": {
+   "H": [
+    "demo_015",
+    "am_liam"
+   ],
+   "A": [
+    "demo_022",
+    "af_nova"
+   ],
+   "B": [
+    "demo_067",
+    "bm_lewis"
+   ]
+  }
+ },
+ {
+  "key": "indie-vfx",
+  "title": "Tears of Steel and indie VFX — what small teams can pull off",
+  "topics": [
+   "Movies",
+   "Art"
+  ],
+  "record": true,
+  "cast": {
+   "H": [
+    "demo_002",
+    "af_aoede"
+   ],
+   "A": [
+    "demo_079",
+    "am_fenrir"
+   ],
+   "B": [
+    "demo_084",
+    "bf_isabella"
+   ]
+  }
+ },
+ {
+  "key": "study-together",
+  "title": "Study together: deep work hour + routines that stick",
+  "topics": [
+   "Wellness",
+   "Just chatting"
+  ],
+  "record": false,
+  "cast": {
+   "H": [
+    "demo_009",
+    "bm_daniel"
+   ],
+   "A": [
+    "demo_046",
+    "af_kore"
+   ],
+   "B": [
+    "demo_026",
+    "af_jessica"
+   ]
+  }
+ }
+]

@@ -66,7 +66,7 @@ class MessageStickerCanvas extends StatelessWidget {
             onChanged?.call(copy);
           },
           onLongPress: () => onChanged?.call([...overlays]..removeAt(index)),
-          child: Image.asset(item.assetPath, fit: BoxFit.contain),
+          child: FoxyStickerView(id: item.id, size: size),
         ),
       ),
     );

@@ -1,3 +1,4 @@
+import 'pay_gateway_screen.dart';
 import 'package:phlio/shared/widgets/notifications_button.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Phlio Pay — the Pay platform's home, formatted after the reference
@@ -81,6 +82,14 @@ class PayScreen extends ConsumerWidget {
               PhlioSpacing.xxl,
             ),
             children: [
+              Card(child: ListTile(
+                leading: const Icon(Icons.account_balance_wallet_outlined),
+                title: const Text('UPI, cards & bank statements'),
+                subtitle: const Text('Sandbox checkout · Import statements'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PayGatewayScreen())),
+              )),
               // -- Promo banner -------------------------------------------------
               _PromoBanner(),
               const SizedBox(height: PhlioSpacing.xl),

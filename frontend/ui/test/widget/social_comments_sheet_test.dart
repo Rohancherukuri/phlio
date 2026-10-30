@@ -79,7 +79,7 @@ void main() {
     final composer =
         tester.getRect(find.byKey(const ValueKey('comment-composer')));
     expect(composer.bottom, closeTo(844, 1));
-    expect(tester.getRect(find.byTooltip('Attach image')).bottom,
+    expect(tester.getRect(find.byTooltip('Add a photo')).bottom,
         greaterThan(800));
     expect(find.byTooltip('GIFs and stickers'), findsOneWidget);
     await tester.tap(find.byTooltip('Insert ❤️'));
@@ -126,6 +126,8 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Hello @ne');
       await tester.pumpAndSettle();
       expect(find.text('@neha'), findsOneWidget);
+      await tester.ensureVisible(find.text('@neha'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('@neha'));
       await tester.pumpAndSettle();
       expect(find.text('Hello @neha '), findsOneWidget);

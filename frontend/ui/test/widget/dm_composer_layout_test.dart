@@ -21,16 +21,16 @@ void main() {
                     onSendFiles: (_, __) async {},
                     onSendVoice: (_, __) async {})))));
     expect(find.byTooltip('Camera'), findsOneWidget);
-    expect(find.byTooltip('Photos'), findsOneWidget);
+    expect(find.byTooltip('Photos and videos'), findsOneWidget);
     expect(find.byTooltip('Voice message'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'Hello');
     await tester.pump();
-    await tester.tap(find.byTooltip('Send message'));
+    await tester.tap(find.text('Send'));
     await tester.pumpAndSettle();
     expect(sent, 'Hello');
-    await tester.tap(find.byTooltip('GIFs and stickers'));
+    await tester.tap(find.byTooltip('Stickers'));
     await tester.pumpAndSettle();
-    expect(find.text('GIFs'), findsOneWidget);
+    expect(find.text('GIPHY'), findsOneWidget);
     expect(find.text('Stickers'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

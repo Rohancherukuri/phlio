@@ -1,4 +1,6 @@
 import '../../../../shared/content/moment_viewer.dart';
+import '../../../../shared/moments/moments.dart';
+import 'moment_composer.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Stories for the Social home, following the reference app's behavior:
 //
@@ -24,6 +26,12 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 
 String storyDisplayName(WidgetRef ref, String id) {
+  for (final group in ref.watch(momentFeedProvider).valueOrNull ?? const []) {
+    final author = group['author'] as Map;
+    if (author['username'] == id || author['id'] == id) {
+      return author['display_name'] as String? ?? id;
+    }
+  }
   for (final video in ref.watch(socialVideoCatalogProvider).valueOrNull ??
       <PlayableVideo>[]) {
     if (video.creator == id && video.creatorName?.isNotEmpty == true)
@@ -37,23 +45,67 @@ String storyDisplayName(WidgetRef ref, String id) {
 /// one social graph. Replaced by real follows once the social graph API
 /// lands.
 final storyUsersProvider =
-    Provider<List<({String name, String avatarAsset})>>((ref) {
-  final videos =
-      ref.watch(socialVideoCatalogProvider).valueOrNull ?? <PlayableVideo>[];
-  final following =
-      ref.watch(creatorFollowingProvider).valueOrNull ?? <String>{};
-  final seen = <String>{};
+    Provider.autoDispose<List<({String name, String avatarAsset})>>((ref) {
+  // People with live moments (story rail), excluding yourself.
+  final me = ref.watch(authControllerProvider).valueOrNull?.id;
+  final groups = ref.watch(momentFeedProvider).valueOrNull ?? const [];
   return [
-    for (final video in videos)
-      if (following.contains(video.creator) && seen.add(video.creator))
-        (name: video.creator, avatarAsset: video.avatarUrl ?? '')
+    for (final group in groups)
+      if ((group['author'] as Map)['id'] != me)
+        (
+          name: ((group['author'] as Map)['username'] ??
+                  (group['author'] as Map)['id'])
+              .toString(),
+          avatarAsset: (group['author'] as Map)['avatar_url'] as String? ?? ''
+        )
   ];
 });
 
-/// Creator circles open the creator's profile page; story playback itself
-/// stays a coming-soon until the Stories domain lands.
-void _openCreator(BuildContext context, String name) {
-  context.push('/creator/$name');
+/// Circles open that person's moments, then continue through the rail.
+void _openCreator(BuildContext context, WidgetRef ref, String name) {
+  final groups = ref.read(momentFeedProvider).valueOrNull ?? const [];
+  final start = groups.indexWhere((g) =>
+      (g['author'] as Map)['username'] == name ||
+      (g['author'] as Map)['id'] == name);
+  if (start < 0) {
+    openUserMoments(context, name);
+  } else {
+    openMomentGroups(context, groups, start: start);
+  }
+}
+
+/// Your own circle: tap plays your live moments (or starts a new one),
+/// the + badge always starts a new one.
+Widget _ownMoment(BuildContext context, WidgetRef ref, String name, double size) {
+  final me = ref.watch(authControllerProvider).valueOrNull;
+  final badge = (size * .38).clamp(16.0, 22.0);
+  return Stack(clipBehavior: Clip.none, children: [
+    MomentRingAvatar(
+      userId: me?.id ?? '',
+      size: size,
+      plain: GestureDetector(
+          onTap: () => openMomentComposer(context),
+          child: MeAvatar(name: name, size: size)),
+      ringed: (inner) => MeAvatar(name: name, size: inner),
+    ),
+    Positioned(
+      right: -1,
+      bottom: -1,
+      child: GestureDetector(
+        onTap: () => openMomentComposer(context),
+        child: Container(
+          width: badge,
+          height: badge,
+          decoration: BoxDecoration(
+              gradient: PhlioColors.sunsetGradient,
+              shape: BoxShape.circle,
+              border: Border.all(color: PhlioColors.background, width: 2)),
+          child: Icon(Icons.add_rounded,
+              size: badge * .66, color: PhlioColors.textOnBrand),
+        ),
+      ),
+    ),
+  ]);
 }
 
 /// The expanded, full-width strip shown while the feed is at the top:
@@ -76,36 +128,16 @@ class StoriesStrip extends ConsumerWidget {
             const EdgeInsets.fromLTRB(PhlioSpacing.lg, 12, PhlioSpacing.lg, 8),
         children: [
           _StripItem(
-            label: 'Stories',
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SharedStoriesScreen())),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                MeAvatar(name: currentUser?.fullName ?? 'You', size: 56),
-                Positioned(
-                  right: -1,
-                  bottom: -1,
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: const BoxDecoration(
-                      gradient: PhlioColors.sunsetGradient,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.add_rounded,
-                        size: 14, color: PhlioColors.textOnBrand),
-                  ),
-                ),
-              ],
-            ),
+            label: 'Your moment',
+            onTap: () {},
+            child: _ownMoment(context, ref, currentUser?.fullName ?? 'You', 56),
           ),
           for (final user in kStoryUsers) ...[
             _StripItem(
               label: storyDisplayName(ref, user.name),
-              onTap: () => _openCreator(context, user.name),
+              onTap: () => _openCreator(context, ref, user.name),
               child: _ringedAvatar(user,
-                  size: 56, onTap: () => _openCreator(context, user.name)),
+                  size: 56, onTap: () => _openCreator(context, ref, user.name)),
             ),
           ],
         ],
@@ -172,7 +204,8 @@ class StoriesHeaderStack extends ConsumerWidget {
             Positioned(
               left: i * avatarSize * 0.55,
               child: _StoryRing(
-                onTap: () => _openCreator(context, visible[i].name),
+                userId: visible[i].name,
+                onTap: () => _openCreator(context, ref, visible[i].name),
                 size: avatarSize,
                 child: ClipOval(
                   child: Image.network(
@@ -193,35 +226,31 @@ class StoriesHeaderStack extends ConsumerWidget {
   }
 }
 
-/// Sunset-gradient story ring around any child.
-class _StoryRing extends StatelessWidget {
+/// Phlio rim light around a story-rail avatar (bright when unseen).
+class _StoryRing extends ConsumerWidget {
   const _StoryRing(
-      {required this.child, required this.size, required this.onTap});
+      {required this.child,
+      required this.size,
+      required this.onTap,
+      this.userId});
 
   final Widget child;
   final double size;
   final VoidCallback onTap;
+  final String? userId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = userId == null
+        ? null
+        : ref.watch(momentRingsProvider).valueOrNull?[userId];
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        padding: const EdgeInsets.all(2),
-        decoration: const BoxDecoration(
-          gradient: PhlioColors.sunsetGradient,
-          shape: BoxShape.circle,
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(1.5),
-          decoration: const BoxDecoration(
-            color: PhlioColors.background,
-            shape: BoxShape.circle,
-          ),
-          child: child,
-        ),
+      child: RimLight(
+        size: size,
+        unseen: state == null || state['unseen'] == true,
+        fresh: state?['fresh'] == true,
+        child: child,
       ),
     );
   }
@@ -235,6 +264,7 @@ Widget _ringedAvatar(
   return _StoryRing(
     onTap: onTap,
     size: size,
+    userId: user.name,
     child: ClipOval(
       child: Image.network(
         AppConfig.mediaUrl(user.avatarAsset),
@@ -275,13 +305,8 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
   @override
   Widget build(BuildContext context) {
     if (widget.clipMode) {
-      final stories = ref.watch(sharedStoriesProvider).valueOrNull ?? [];
-      final authors = <String, Map>{};
-      for (final story in stories) {
-        final author = story['author'] as Map;
-        authors[author['id'] as String] = author;
-      }
-      final people = authors.values.toList();
+      final groups = ref.watch(momentFeedProvider).valueOrNull ?? const [];
+      final people = [for (final g in groups) g['author'] as Map];
       final p = widget.progress.clamp(0.0, 1.0);
       Widget avatar(int index, double size) {
         if (index >= people.length)
@@ -294,21 +319,17 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                   decoration: const BoxDecoration(
                       color: Color(0xff44464B), shape: BoxShape.circle)));
         final author = people[index];
+        final ring = RimLight(
+            size: size,
+            unseen: groups[index]['unseen'] == true,
+            child: PhlioAvatar(
+                name: author['display_name'] as String? ?? '',
+                imageUrl: author['avatar_url'] as String?,
+                showMomentRing: false,
+                size: size - 2 * RimLight.insetFor(size)));
         return GestureDetector(
-            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                builder: (_) =>
-                    MomentViewer(authorId: author['id'] as String))),
-            child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border:
-                        Border.all(color: PhlioColors.brandPurple, width: 2)),
-                child: ContentAuthorAvatar(
-                    author: author['id'] as String,
-                    name: author['display_name'] as String,
-                    imageUrl: author['avatar_url'] as String?,
-                    size: size - 8)));
+            onTap: () => openMomentGroups(context, groups, start: index),
+            child: ring);
       }
 
       return LayoutBuilder(builder: (context, constraints) {
@@ -473,33 +494,11 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                               width: size,
                               height: size,
                               child: index == 0
-                                  ? GestureDetector(
-                                      onTap: () => context.push('/profile'),
-                                      child: Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            MeAvatar(name: ownName, size: size),
-                                            Positioned(
-                                                right: -1,
-                                                bottom: -1,
-                                                child: Container(
-                                                    width: 22,
-                                                    height: 22,
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                            gradient: PhlioColors
-                                                                .sunsetGradient,
-                                                            shape: BoxShape
-                                                                .circle),
-                                                    child: const Icon(Icons.add,
-                                                        size: 14,
-                                                        color: PhlioColors
-                                                            .textOnBrand))),
-                                          ]))
+                                  ? _ownMoment(context, ref, ownName, size)
                                   : _ringedAvatar(user!,
                                       size: size,
                                       onTap: () =>
-                                          _openCreator(context, user.name))),
+                                          _openCreator(context, ref, user.name))),
                           if (labels > 0)
                             Opacity(
                                 opacity: labels,

@@ -3,6 +3,7 @@ import 'package:phlio/shared/content/content_surface.dart';
 // thread (e.g. "#general"): Discord-style full-width rows + a composer bar.
 
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -217,7 +218,7 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.send_rounded,
+                        : const PhlioSendIcon(
                             color: PhlioColors.brandPurple),
                     onPressed: _isSending ? null : _send,
                   ),

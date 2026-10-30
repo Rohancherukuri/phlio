@@ -49,6 +49,10 @@
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array><string>audio</string></array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Phlio saves your moments to your photo library when you tap Save.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Phlio uses your photo library so you can upload videos to Social.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Use your camera for video calls and photos.</string>
 	<key>NSMicrophoneUsageDescription</key>

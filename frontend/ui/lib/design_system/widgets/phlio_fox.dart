@@ -1,4 +1,4 @@
-import '../../shared/giphy/giphy_picker.dart';
+import 'foxy_stickers.dart';
 // Phlio design system — Foxy, the product mascot.
 //
 // Foxy is a curious orange fox with pilot goggles and a knit scarf: the
@@ -188,34 +188,23 @@ abstract final class PhlioStickers {
   static String assetFor(String id) => '$basePath$id.png';
 }
 
-/// A Foxy chat sticker sized for message bubbles.
+/// A Foxy chat sticker sized for message bubbles. Accepts every sticker id
+/// the app knows (animated `foxy:` stickers, the Foxy pack, the original
+/// set and GIPHY references) — see [FoxyStickerView].
 class PhlioStickerView extends StatelessWidget {
-  const PhlioStickerView({super.key, required this.stickerId, this.size = 64});
+  const PhlioStickerView(
+      {super.key,
+      required this.stickerId,
+      this.size = 64,
+      this.interactive = true});
 
   final String stickerId;
   final double size;
 
+  /// Animated stickers hop when tapped.
+  final bool interactive;
+
   @override
-  Widget build(BuildContext context) {
-    if (stickerId.startsWith('giphy:'))
-      return SizedBox(
-          width: size,
-          height: size,
-          child: GiphyReferenceView(reference: stickerId));
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Image.asset(
-        PhlioStickers.assetFor(stickerId),
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        errorBuilder: (_, __, ___) => Container(
-          color: PhlioColors.surfaceElevated,
-          alignment: Alignment.center,
-          child:
-              const Icon(Icons.pets, size: 20, color: PhlioColors.brandOrange),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      FoxyStickerView(id: stickerId, size: size, interactive: interactive);
 }

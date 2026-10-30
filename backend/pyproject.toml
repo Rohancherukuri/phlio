@@ -19,8 +19,17 @@ dependencies = [
     "surrealdb==2.0.0",
     "redis>=5,<9",
     "livekit-api>=1.2.1",
+    # Server-side Space participants: recorder + seeded community Spaces.
+    "livekit>=1.0.0",
+    "numpy>=1.26",
     "cryptography>=50.0.2",
     "phonenumbers>=9.0.41",
+    "ctranslate2>=4.8.3",
+    "sentencepiece>=0.2.2",
+    "huggingface-hub>=2.3.0",
+    # Studio: text to audio (Kokoro) + auto captions (Whisper); models download on first use.
+    "kokoro-onnx>=0.4.0",
+    "faster-whisper>=1.1.0",
 ]
 
 [project.optional-dependencies]

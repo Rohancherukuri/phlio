@@ -1,3 +1,6 @@
+import 'stream_title_details.dart';
+import 'dart:async';
+import 'package:dio/dio.dart' show DioException;
 import 'playlists_screen.dart';
 import '../../features/profile/presentation/widgets/snap_audience.dart';
 import 'stream_screen.dart';
@@ -10,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../features/authentication/domain/entities/user_entity.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
+import '../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/config/app_config.dart';
@@ -21,10 +25,22 @@ import '../../design_system/typography.dart';
 import '../../design_system/widgets/phlio_card.dart';
 import '../../features/social/presentation/controllers/video_library.dart';
 import '../../features/social/presentation/controllers/video_playback_controller.dart';
+import '../../features/social/presentation/widgets/social_clips_grid.dart'
+    show openClipsPlayer;
+import '../../app/platform/phlio_platform.dart' show PhlioPlatform;
+import '../../app/shell/platform_home_screen.dart' show switchPlatform;
 
 final engagementProvider =
     FutureProvider.autoDispose.family<Map, String>((ref, path) async {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
+  // Keep counts and liker avatars warm for 5 minutes after the last card
+  // using them scrolls away, so stacks re-appear instantly instead of
+  // refetching on every scroll. Invalidation still refreshes immediately.
+  final link = ref.keepAlive();
+  Timer? expiry;
+  ref.onCancel(() => expiry = Timer(const Duration(minutes: 5), link.close));
+  ref.onResume(() => expiry?.cancel());
+  ref.onDispose(() => expiry?.cancel());
   return (await getIt<ApiClient>().dio.get('/content/$path/engagement')).data
       as Map;
 });
@@ -42,8 +58,19 @@ final contentProvider =
 final catalogProvider =
     FutureProvider.autoDispose.family<List, String>((ref, platform) async {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
-  return ((await getIt<ApiClient>().dio.get('/content/$platform')).data
-      as Map)['items'] as List;
+  final items = <dynamic>[];
+  String? cursor;
+  do {
+    final page = (await getIt<ApiClient>().dio.get('/content/$platform',
+            queryParameters: {
+          'limit': 100,
+          if (cursor != null) 'cursor': cursor
+        }))
+        .data as Map;
+    items.addAll(page['items'] as List);
+    cursor = page['next_cursor'] as String?;
+  } while (platform == 'stream' && cursor != null && items.length < 1000);
+  return items;
 });
 final groupsProvider = FutureProvider.autoDispose<List>((ref) async {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
@@ -349,8 +376,7 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
     final people = likerPreview(data,
         liked: liked, me: ref.watch(authControllerProvider).valueOrNull);
     final social = platformShowsSocialMetrics(_platform);
-    num? metric(String key) =>
-        data == null ? null : (data[key] as num? ?? 0);
+    num? metric(String key) => data == null ? null : (data[key] as num? ?? 0);
 
     final allActions = <_EngagementAction>[
       _EngagementAction(
@@ -389,7 +415,7 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
       _EngagementAction(
           kind: _ActionKind.share,
           tooltip: 'Share',
-          icon: Icons.ios_share_rounded,
+          icon: PhlioIcons.send,
           count: metric('shares_count'),
           onTap: () => showContentShare(context, widget.path)),
     ];
@@ -455,8 +481,8 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
                           color: liked
                               ? _EngagementStyle.like
                               : PhlioColors.textSecondary),
-                      child: Text(formatEngagementCount(count),
-                          maxLines: 1)))));
+                      child:
+                          Text(formatEngagementCount(count), maxLines: 1)))));
 
       final likeGroup = Row(mainAxisSize: MainAxisSize.min, children: [
         if (stack.isNotEmpty) ...[
@@ -469,8 +495,7 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
                   child: _LikerAvatarStack(
                       people: stack,
                       size: avatarSize,
-                      ringColor:
-                          Theme.of(context).scaffoldBackgroundColor))),
+                      ringColor: Theme.of(context).scaffoldBackgroundColor))),
           SizedBox(width: dense ? 3 : 5),
         ],
         _LikeButton(
@@ -509,8 +534,7 @@ class _EngagementRowState extends ConsumerState<EngagementRow> {
 
 /// Up to three likers for the stack. Once you've liked something you lead
 /// the stack, so the tap feels acknowledged before the server responds.
-List<Map> likerPreview(Map? data,
-    {required bool liked, UserEntity? me}) {
+List<Map> likerPreview(Map? data, {required bool liked, UserEntity? me}) {
   // People you follow come first, then any other likers the API returned.
   final seen = <String>{};
   final people = [
@@ -550,8 +574,8 @@ void showContentLikers(BuildContext context, Map? data, int count) {
       showDragHandle: true,
       backgroundColor: PhlioColors.surface,
       builder: (sheet) => ConstrainedBox(
-            constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(sheet).height * .7),
+            constraints:
+                BoxConstraints(maxHeight: MediaQuery.sizeOf(sheet).height * .7),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -586,9 +610,8 @@ void showContentLikers(BuildContext context, Map? data, int count) {
                             itemBuilder: (_, index) {
                               if (index == people.length) {
                                 return ListTile(
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: PhlioSpacing.xl),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: PhlioSpacing.xl),
                                     leading: const CircleAvatar(
                                         radius: 20,
                                         backgroundColor:
@@ -669,8 +692,8 @@ class LikersAvatarStack extends ConsumerWidget {
             child: _LikerAvatarStack(
                 people: people,
                 size: size,
-                ringColor: ringColor ??
-                    Theme.of(context).scaffoldBackgroundColor)));
+                ringColor:
+                    ringColor ?? Theme.of(context).scaffoldBackgroundColor)));
   }
 }
 
@@ -756,7 +779,7 @@ class _EngagementActionButton extends StatelessWidget {
                               transitionBuilder: (child, animation) =>
                                   ScaleTransition(
                                       scale: animation, child: child),
-                              child: Icon(
+                              child: PhlioIcon(
                                   action.active
                                       ? action.activeIcon ?? action.icon
                                       : action.icon,
@@ -823,63 +846,151 @@ class _ShareSheet extends ConsumerStatefulWidget {
   ConsumerState<_ShareSheet> createState() => _ShareSheetState();
 }
 
+/// One recipient in the share grid: a person, an existing group or a room.
+class _Recipient {
+  const _Recipient(this.kind, this.data);
+  final String kind; // 'dm' | 'group' | 'room'
+  final Map data;
+  String get id => data['id'].toString();
+  String get key => '$kind:$id';
+  String get label =>
+      (data['display_name'] ?? data['name'] ?? data['username'] ?? '')
+          .toString();
+}
+
+/// Share sheet: search · people/groups/rooms grid (tap avatars to select)
+/// · then "Write a message…", **Send separately** and **Create group chat**
+/// (2+ people). With nothing selected, the external row shows instead.
 class _ShareSheetState extends ConsumerState<_ShareSheet> {
   late Future<Map> destinations;
-  String mode = 'dm', query = '';
+  String query = '';
   bool busy = false;
-  final selected = <String>{};
-  final name = TextEditingController(text: 'Shared plans');
+  final selected = <String, _Recipient>{};
+  final message = TextEditingController();
   String? error;
+
+  static const _violet = PhlioColors.brandViolet;
+
   @override
   void initState() {
     super.initState();
-    destinations = getIt<ApiClient>()
-        .dio
-        .get('/sharing/destinations')
-        .then((r) => r.data as Map);
+    destinations = _load();
   }
+
+  Future<Map> _load() => getIt<ApiClient>()
+      .dio
+      .get('/sharing/destinations')
+      .then((r) => r.data as Map);
 
   @override
   void dispose() {
-    name.dispose();
+    message.dispose();
     super.dispose();
   }
 
-  Future<void> send(String destination, String? target) async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      final result = (await getIt<ApiClient>()
+  List<_Recipient> get _people =>
+      selected.values.where((r) => r.kind == 'dm').toList();
+  bool get _canGroup =>
+      _people.length >= 2 && _people.length == selected.length;
+
+  void _toggle(_Recipient r) => setState(() {
+        if (selected.remove(r.key) == null && selected.length < 20) {
+          selected[r.key] = r;
+        }
+      });
+
+  Future<Map> _post(String destination,
+          {String? target,
+          List<String> members = const [],
+          String? name}) async =>
+      (await getIt<ApiClient>()
               .dio
               .post('/content/${widget.path}/share', data: {
         'destination': destination,
         'target': target,
-        'members': selected.toList(),
-        'name': name.text.trim().isEmpty ? 'Shared plans' : name.text.trim()
+        'members': members,
+        if (name != null) 'name': name,
+        if (message.text.trim().isNotEmpty) 'message': message.text.trim(),
       }))
           .data as Map;
-      ref.invalidate(groupsProvider);
-      ref.invalidate(engagementProvider(widget.path));
-      ref.invalidate(contentLibraryProvider);
+
+  void _refresh() {
+    ref.invalidate(groupsProvider);
+    ref.invalidate(engagementProvider(widget.path));
+    ref.invalidate(contentLibraryProvider);
+  }
+
+  Future<void> _sendSeparately() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    var failed = 0;
+    String? reason;
+    for (final r in selected.values) {
+      try {
+        await _post(r.kind, target: r.id);
+      } on DioException catch (e) {
+        failed++;
+        final data = e.response?.data;
+        if (data is Map && data['detail'] is String) {
+          reason = data['detail'] as String;
+        } else if (data is Map && data['error'] is Map) {
+          reason = (data['error'] as Map)['message'] as String?;
+        }
+      } catch (_) {
+        failed++;
+      }
+    }
+    _refresh();
+    if (!mounted) return;
+    setState(() => busy = false);
+    if (failed == selected.length) {
+      setState(() => error =
+          reason ?? 'Could not send. Check your connection and try again.');
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+    final only = selected.length == 1 ? selected.values.first : null;
+    Navigator.pop(context);
+    messenger.showSnackBar(SnackBar(
+        content: Text(failed == 0
+            ? 'Sent to ${only != null ? only.label : '${selected.length} chats'}'
+            : 'Sent, but $failed could not be delivered.'),
+        action: only != null && only.kind == 'dm' && failed == 0
+            ? SnackBarAction(
+                label: 'View',
+                onPressed: () => router.push(
+                    '/dm/${Uri.encodeComponent((only.data['username'] ?? only.id).toString())}'))
+            : null));
+  }
+
+  Future<void> _createGroup() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    final people = _people;
+    final name = people.map((p) => p.label.split(' ').first).join(', ');
+    try {
+      final result = await _post('new_group',
+          members: [for (final p in people) p.id],
+          name: name.length > 80 ? '${name.substring(0, 77)}…' : name);
+      _refresh();
       if (!mounted) return;
-      final parent = Navigator.of(context);
-      final messenger = ScaffoldMessenger.of(context);
-      parent.pop();
-      if (destination == 'group' || destination == 'new_group') {
-        parent.push(MaterialPageRoute(
-            builder: (_) =>
-                GroupChatScreen(groupId: result['target'] as String)));
-      } else
-        messenger
-            .showSnackBar(const SnackBar(content: Text('Content shared.')));
+      final navigator = Navigator.of(context);
+      navigator.pop();
+      navigator.push(MaterialPageRoute(
+          builder: (_) =>
+              GroupChatScreen(groupId: result['target'] as String)));
     } catch (_) {
-      if (mounted)
-        setState(() =>
-            error = 'Could not share. Check the recipients and try again.');
-    } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = 'Could not create the group. Try again.';
+        });
+      }
     }
   }
 
@@ -926,237 +1037,290 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
     }
   }
 
+  Widget _avatar(_Recipient r) {
+    if (r.kind == 'dm') {
+      return PhlioAvatar(
+          name: r.label, imageUrl: r.data['avatar_url'] as String?, size: 76);
+    }
+    final faces =
+        ((r.data['avatars'] as List?) ?? const []).whereType<Map>().toList();
+    if (r.kind == 'group' && faces.length >= 2) {
+      // Two overlapping faces, like a group chat.
+      return SizedBox(
+        width: 80,
+        height: 76,
+        child: Stack(children: [
+          Positioned(
+              left: 0,
+              top: 0,
+              child: PhlioAvatar(
+                  name: faces[0]['display_name'] as String? ?? '',
+                  imageUrl: faces[0]['avatar_url'] as String?,
+                  size: 54)),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration:
+                  const BoxDecoration(color: _sheetBg, shape: BoxShape.circle),
+              child: PhlioAvatar(
+                  name: faces[1]['display_name'] as String? ?? '',
+                  imageUrl: faces[1]['avatar_url'] as String?,
+                  size: 54),
+            ),
+          ),
+        ]),
+      );
+    }
+    return CircleAvatar(
+        radius: 38,
+        backgroundColor: PhlioColors.surfaceElevated,
+        child: Icon(r.kind == 'room' ? Icons.tag_rounded : Icons.group_rounded,
+            size: 32, color: PhlioColors.textSecondary));
+  }
+
+  static const _sheetBg = Color(0xFF111925);
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-        child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * .82,
-            child: Column(children: [
-              const SizedBox(height: 10),
-              Container(
-                  width: 38,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Colors.white38,
-                      borderRadius: BorderRadius.circular(8))),
+  Widget build(BuildContext context) {
+    final hasSelection = selected.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * .82,
+        child: Column(children: [
+          const SizedBox(height: 10),
+          Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.white38,
+                  borderRadius: BorderRadius.circular(8))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+            child: Row(children: [
               Expanded(
-                  child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
+                child: TextField(
+                    onChanged: (v) => setState(() => query = v.toLowerCase()),
+                    decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        hintText: 'Search',
+                        filled: true,
+                        fillColor: PhlioColors.surfaceElevated,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none))),
+              ),
+              const SizedBox(width: 12),
+              Material(
+                color: PhlioColors.surfaceElevated,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'Tap two or more people, then Create group chat.'))),
+                  child: const SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: Icon(Icons.group_add_outlined,
+                          color: PhlioColors.textPrimary)),
+                ),
+              ),
+            ]),
+          ),
+          if (error != null)
+            Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(error!,
+                    style: const TextStyle(color: PhlioColors.danger))),
+          Expanded(
+            child: FutureBuilder<Map>(
+              future: destinations,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                      child: TextButton(
+                          onPressed: () =>
+                              setState(() => destinations = _load()),
+                          child: const Text('Could not load people. Retry')));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final data = snapshot.data!;
+                final all = [
+                  for (final g in (data['groups'] as List? ?? const []))
+                    _Recipient('group', g as Map),
+                  for (final p in (data['people'] as List? ?? const []))
+                    _Recipient('dm', p as Map),
+                  for (final r in (data['rooms'] as List? ?? const []))
+                    _Recipient('room', r as Map),
+                ]
+                    .where((r) => '${r.label} ${r.data['username'] ?? ''}'
+                        .toLowerCase()
+                        .contains(query))
+                    .toList();
+                if (all.isEmpty) {
+                  return const Center(child: Text('No matching people.'));
+                }
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  itemCount: all.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 8,
+                      mainAxisExtent:
+                          92 + MediaQuery.textScalerOf(context).scale(58)),
+                  itemBuilder: (_, index) {
+                    final r = all[index];
+                    final on = selected.containsKey(r.key);
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: busy ? null : () => _toggle(r),
                       child: Column(children: [
-                        const Text('Share content',
-                            style: TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 14),
-                        Row(children: [
-                          Expanded(
-                              child: TextField(
-                                  decoration: InputDecoration(
-                                      prefixIcon: const Icon(Icons.search_rounded),
-                                      hintText: 'Search',
-                                      filled: true,
-                                      border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(22),
-                                          borderSide: BorderSide.none)),
-                                  onChanged: (v) =>
-                                      setState(() => query = v.toLowerCase()))),
-                          const SizedBox(width: 12),
-                          IconButton.filledTonal(
-                              tooltip: 'Create a group',
-                              onPressed: busy
-                                  ? null
-                                  : () => setState(() => mode = 'new_group'),
-                              icon: const Icon(Icons.group_add_outlined))
-                        ]),
+                        SizedBox(
+                          width: 84,
+                          height: 80,
+                          child: Stack(alignment: Alignment.center, children: [
+                            AnimatedScale(
+                                scale: on ? .94 : 1,
+                                duration: const Duration(milliseconds: 150),
+                                child: IgnorePointer(child: _avatar(r))),
+                            if (on)
+                              Positioned(
+                                right: 2,
+                                bottom: 2,
+                                child: Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: BoxDecoration(
+                                      color: _violet,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: _sheetBg, width: 2.5)),
+                                  child: const Icon(Icons.check_rounded,
+                                      size: 16, color: Colors.white),
+                                ),
+                              ),
+                          ]),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(r.label,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 14)),
+                        // Who this is to you, so a follower is easy to spot.
+                        if (r.kind == 'dm' && r.data['relation'] != null)
+                          Text(
+                              r.data['recent'] == true
+                                  ? 'Recent chat'
+                                  : r.data['relation'].toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: r.data['relation'] == 'Suggested'
+                                      ? PhlioColors.textMuted
+                                      : PhlioColors.brandPeach)),
+                      ]),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          if (busy) const LinearProgressIndicator(minHeight: 2),
+          const Divider(height: 1, color: PhlioColors.borderSubtle),
+          SafeArea(
+            top: false,
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              child: hasSelection
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        TextField(
+                          controller: message,
+                          enabled: !busy,
+                          maxLength: 1000,
+                          minLines: 1,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                              hintText: 'Write a message…',
+                              counterText: '',
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding:
+                                  EdgeInsets.symmetric(vertical: 14)),
+                        ),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                                backgroundColor: _violet,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14))),
+                            onPressed: busy ? null : _sendSeparately,
+                            child: Text(
+                                selected.length == 1
+                                    ? 'Send'
+                                    : 'Send separately',
+                                style: const TextStyle(
+                                    fontSize: 17, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
                         const SizedBox(height: 12),
-                        Wrap(spacing: 8, children: [
-                          for (final item in [
-                            ('dm', 'Messages'),
-                            ('new_group', 'New group'),
-                            ('group', 'Groups'),
-                            ('room', 'Rooms')
-                          ])
-                            ChoiceChip(
-                                label: Text(item.$2),
-                                selected: mode == item.$1,
-                                onSelected: busy
-                                    ? null
-                                    : (_) => setState(() => mode = item.$1))
-                        ]),
-                        if (mode == 'new_group')
-                          Padding(
-                              padding: const EdgeInsets.only(top: 12),
-                              child: TextField(
-                                  controller: name,
-                                  maxLength: 80,
-                                  decoration: const InputDecoration(
-                                      labelText: 'Group name'))),
-                        if (error != null)
-                          Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Text(error!,
-                                  style: const TextStyle(
-                                      color: Colors.redAccent))),
-                        const SizedBox(height: 20),
-                        FutureBuilder<Map>(
-                            future: destinations,
-                            builder: (context, snapshot) {
-                              if (snapshot.hasError)
-                                return TextButton(
-                                    onPressed: () => setState(() =>
-                                        destinations = getIt<ApiClient>()
-                                            .dio
-                                            .get('/sharing/destinations')
-                                            .then((r) => r.data as Map)),
-                                    child: const Text(
-                                        'Could not load recipients. Retry'));
-                              if (!snapshot.hasData)
-                                return const Center(
-                                    child: CircularProgressIndicator());
-                              final items = (snapshot.data![mode == 'room'
-                                      ? 'rooms'
-                                      : mode == 'group'
-                                          ? 'groups'
-                                          : 'people'] as List)
-                                  .where((p) => (p['display_name'] ??
-                                          p['name'] ??
-                                          p['username'])
-                                      .toString()
-                                      .toLowerCase()
-                                      .contains(query))
-                                  .toList();
-                              if (items.isEmpty)
-                                return Padding(
-                                    padding: const EdgeInsets.all(24),
-                                    child: Text(mode == 'room'
-                                        ? 'Join a room to share content there.'
-                                        : 'No matching recipients.'));
-                              return LayoutBuilder(
-                                  builder: (context, bounds) =>
-                                      GridView.builder(
-                                          shrinkWrap: true,
-                                          physics:
-                                              const NeverScrollableScrollPhysics(),
-                                          itemCount: items.length,
-                                          gridDelegate:
-                                              SliverGridDelegateWithFixedCrossAxisCount(
-                                                  crossAxisCount:
-                                                      bounds.maxWidth < 250
-                                                          ? 2
-                                                          : 3,
-                                                  crossAxisSpacing: 12,
-                                                  mainAxisSpacing: 12,
-                                                  mainAxisExtent: 80 +
-                                                      MediaQuery.textScalerOf(
-                                                              context)
-                                                          .scale(36)),
-                                          itemBuilder: (context, index) {
-                                            final p = items[index];
-                                            final id = p['id'] as String;
-                                            final label = (p['display_name'] ??
-                                                p['name']) as String;
-                                            return InkWell(
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                                onTap: busy
-                                                    ? null
-                                                    : () {
-                                                        if (mode ==
-                                                            'new_group') {
-                                                          setState(() {
-                                                            if (!selected
-                                                                    .remove(
-                                                                        id) &&
-                                                                selected.length <
-                                                                    20)
-                                                              selected.add(id);
-                                                          });
-                                                        } else {
-                                                          send(mode, id);
-                                                        }
-                                                      },
-                                                child: Column(children: [
-                                                  SizedBox(
-                                                      height: 68,
-                                                      width: 76,
-                                                      child: Stack(
-                                                          alignment:
-                                                              Alignment.center,
-                                                          children: [
-                                                            if (mode == 'dm' ||
-                                                                mode ==
-                                                                    'new_group')
-                                                              PhlioAvatar(
-                                                                  name: label,
-                                                                  imageUrl: p[
-                                                                          'avatar_url']
-                                                                      as String?,
-                                                                  size: 64)
-                                                            else
-                                                              CircleAvatar(
-                                                                  radius: 32,
-                                                                  child: Icon(
-                                                                      mode == 'room'
-                                                                          ? Icons
-                                                                              .tag
-                                                                          : Icons
-                                                                              .group_outlined,
-                                                                      size:
-                                                                          30)),
-                                                            if (selected
-                                                                    .contains(
-                                                                        id) &&
-                                                                mode ==
-                                                                    'new_group')
-                                                              const Positioned(
-                                                                  right: 0,
-                                                                  bottom: 0,
-                                                                  child: CircleAvatar(
-                                                                      radius:
-                                                                          12,
-                                                                      child: Icon(
-                                                                          Icons
-                                                                              .check,
-                                                                          size:
-                                                                              16))),
-                                                          ])),
-                                                  const SizedBox(height: 8),
-                                                  Text(label,
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      textAlign:
-                                                          TextAlign.center,
-                                                      style: const TextStyle(
-                                                          fontSize: 13)),
-                                                ]));
-                                          }));
-                            }),
-                        if (mode == 'new_group')
-                          FilledButton(
-                              onPressed: busy || selected.length < 2
-                                  ? null
-                                  : () => send('new_group', null),
-                              child: Text(
-                                  'Create group & share (${selected.length})')),
-                      ]))),
-              if (busy) const LinearProgressIndicator(),
-              const Divider(height: 1),
-              SafeArea(
-                  top: false,
-                  child: SingleChildScrollView(
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: PhlioColors.textPrimary,
+                                side: BorderSide(
+                                    color: _canGroup
+                                        ? PhlioColors.textPrimary
+                                        : PhlioColors.border),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14))),
+                            onPressed: busy || !_canGroup ? null : _createGroup,
+                            child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _SelectedFaces(people: _people),
+                                  const SizedBox(width: 10),
+                                  const Text('Create group chat',
+                                      style: TextStyle(fontSize: 17)),
+                                ]),
+                          ),
+                        ),
+                      ]),
+                    )
+                  : SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 14),
                       child: Row(children: [
                         for (final item in [
-                          ('story', 'Add to story',
-                              Icons.add_circle_outline_rounded),
+                          (
+                            'story',
+                            'Add to story',
+                            Icons.add_circle_outline_rounded
+                          ),
                           ('whatsapp', 'WhatsApp', Icons.chat_outlined),
                           ('copy', 'Copy link', Icons.link_rounded),
                           ('share', 'More', Icons.ios_share_rounded),
-                          ('rooms', 'Rooms', Icons.tag_rounded),
                           ('saved', 'Bookmarks', Icons.bookmark_border_rounded),
                           if (platformShowsSocialMetrics(
                               widget.path.split('/').first))
@@ -1178,8 +1342,6 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
                                                       builder: (_) =>
                                                           ContentLibraryScreen(
                                                               verb: item.$1)));
-                                            } else if (item.$1 == 'rooms') {
-                                              setState(() => mode = 'room');
                                             } else {
                                               external(item.$1);
                                             }
@@ -1190,9 +1352,265 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(fontSize: 12))
                               ])),
-                      ]))),
-            ])),
-      );
+                      ]),
+                    ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Up to three overlapping faces of the selected people (Create group chat).
+class _SelectedFaces extends StatelessWidget {
+  const _SelectedFaces({required this.people});
+  final List<_Recipient> people;
+  @override
+  Widget build(BuildContext context) {
+    final faces = people.take(3).toList();
+    if (faces.isEmpty) return const SizedBox.shrink();
+    const size = 26.0;
+    return SizedBox(
+      width: size + (faces.length - 1) * 16,
+      height: size,
+      child: Stack(children: [
+        for (var i = faces.length - 1; i >= 0; i--)
+          Positioned(
+            left: i * 16.0,
+            child: Container(
+              padding: const EdgeInsets.all(1.5),
+              decoration: const BoxDecoration(
+                  color: Color(0xFF111925), shape: BoxShape.circle),
+              child: PhlioAvatar(
+                  name: faces[i].label,
+                  imageUrl: faces[i].data['avatar_url'] as String?,
+                  size: size - 3),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+// -- Shared content in DMs -------------------------------------------------------
+
+final _sharedLink =
+    RegExp(r'phlio://(?:content/|app/shared/)([a-z]+)/([^\s]+)');
+
+/// `platform/ref` of the first Phlio content link in [text], if any.
+String? sharedContentPath(String text) {
+  final match = _sharedLink.firstMatch(text);
+  if (match == null) return null;
+  try {
+    return '${match[1]}/${Uri.decodeComponent(match[2]!)}';
+  } on ArgumentError {
+    return null;
+  }
+}
+
+/// The message text without the share boilerplate ("Shared: …" + link).
+String sharedContentCaption(String text) => text
+    .split('\n')
+    .where(
+        (line) => !_sharedLink.hasMatch(line) && !line.startsWith('Shared: '))
+    .join('\n')
+    .trim();
+
+/// Content preview for share cards — no "viewed" side effect.
+final sharedPreviewProvider =
+    FutureProvider.autoDispose.family<Map, String>((ref, path) async {
+  ref.watch(authControllerProvider.select((v) => v.valueOrNull?.id));
+  return (await getIt<ApiClient>().dio.get('/content/$path')).data as Map;
+});
+
+/// Opens a shared Phlio object where it lives: switches to its platform
+/// (Social, Shop, Book, Stream, News…), then plays clips in the Clips player,
+/// videos in the Social video player, and opens everything else on its
+/// detail page on top of that platform's home.
+Future<void> openSharedContent(
+    BuildContext context, WidgetRef ref, String path) async {
+  final platformName = path.split('/').first;
+  final contentRef = path.substring(platformName.length + 1);
+  final router = GoRouter.of(context);
+  final playback = ref.read(videoPlaybackProvider);
+  final videoApi = ref.read(socialVideoApiProvider);
+  final target =
+      PhlioPlatform.values.where((p) => p.name == platformName).firstOrNull;
+  if (target != null) switchPlatform(context, target);
+  if (platformName == 'social') {
+    var preview = ref.read(sharedPreviewProvider(path)).valueOrNull;
+    try {
+      preview ??=
+          (await getIt<ApiClient>().dio.get('/content/$path')).data as Map;
+    } catch (_) {}
+    final kind = (preview?['kind'] as String?)?.toLowerCase() ?? '';
+    if (kind == 'clip' && context.mounted) {
+      // Like Reels in Instagram DMs: plays over the chat, back returns here.
+      await openClipsPlayer(context, initialClipId: contentRef);
+      return;
+    }
+    if (kind == 'video') {
+      try {
+        final videos = await videoApi.videos();
+        final match = videos
+            .where((v) => v.id == contentRef || v.contentId == contentRef)
+            .firstOrNull;
+        if (match != null) {
+          router.go('/home');
+          await playback.open(match);
+          return;
+        }
+      } catch (_) {}
+    }
+  }
+  router.go('/home');
+  router.push('/shared/$path');
+}
+
+/// Instagram-style shared-post card for DMs: author header, media (with a
+/// play glyph for videos and clips) or a text excerpt, and quick actions
+/// (send on, save) floating beside it.
+class SharedContentCard extends ConsumerWidget {
+  const SharedContentCard({required this.path, required this.mine, super.key});
+  final String path;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(sharedPreviewProvider(path));
+    final item = state.valueOrNull;
+    final author = item?['author'] as Map?;
+    final image = item?['image_url'] as String?;
+    final kind = (item?['kind'] as String?)?.toLowerCase() ?? '';
+    final playable = kind == 'clip' ||
+        kind == 'video' ||
+        (item?['media_url'] as String?)?.isNotEmpty == true;
+    final text = ((item?['description'] as String?)?.isNotEmpty == true
+            ? item!['description']
+            : item?['title'] ?? '')
+        .toString();
+
+    final card = GestureDetector(
+      onTap: () => openSharedContent(context, ref, path),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 264),
+          color: const Color(0xFF26292F),
+          child: state.hasError
+              ? const Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text('This content is no longer available.',
+                      style: TextStyle(color: PhlioColors.textMuted)))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      child: Row(children: [
+                        if (author != null)
+                          PhlioAvatar(
+                              name: author['display_name'] as String? ?? '',
+                              imageUrl: author['avatar_url'] as String?,
+                              size: 32)
+                        else
+                          CircleAvatar(
+                              radius: 16,
+                              backgroundColor: PhlioColors.surfaceElevated,
+                              child: Icon(_platformIcon(path),
+                                  size: 16, color: PhlioColors.textMuted)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                              author?['username'] as String? ??
+                                  'Phlio ${path.split('/').first[0].toUpperCase()}${path.split('/').first.substring(1)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w700)),
+                        ),
+                      ]),
+                    ),
+                    if (item == null)
+                      const SizedBox(
+                          height: 180,
+                          child: Center(child: CircularProgressIndicator()))
+                    else if (image != null && image.isNotEmpty)
+                      AspectRatio(
+                        aspectRatio: kind == 'clip' ? 4 / 5 : 1,
+                        child: Stack(fit: StackFit.expand, children: [
+                          Image.network(AppConfig.mediaUrl(image),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const ColoredBox(color: Color(0xFF1B1E23))),
+                          if (playable) ...[
+                            const Center(
+                                child: Icon(Icons.play_arrow_rounded,
+                                    size: 64,
+                                    color: Colors.white,
+                                    shadows: [
+                                  Shadow(color: Colors.black54, blurRadius: 12)
+                                ])),
+                            Positioned(
+                              left: 12,
+                              bottom: 12,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8)),
+                                child: Icon(
+                                    kind == 'clip'
+                                        ? Icons.movie_filter_rounded
+                                        : Icons.play_arrow_rounded,
+                                    size: 18,
+                                    color: Colors.black),
+                              ),
+                            ),
+                          ],
+                        ]),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                        child: Text(text,
+                            maxLines: 6,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 15, height: 1.35)),
+                      ),
+                    if (item != null &&
+                        image != null &&
+                        image.isNotEmpty &&
+                        text.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                        child: Text(text,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14,
+                                color: PhlioColors.textSecondary)),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
+
+    // Forward / save live in the long-press menu (like Instagram DMs).
+    return card;
+  }
+
+  static IconData _platformIcon(String path) => switch (path.split('/').first) {
+        'shop' => Icons.shopping_bag_outlined,
+        'book' => Icons.local_activity_outlined,
+        'stream' => Icons.play_circle_outline_rounded,
+        'news' => Icons.newspaper_outlined,
+        _ => Icons.public_rounded,
+      };
 }
 
 class ContentDetailScreen extends ConsumerWidget {
@@ -1200,7 +1618,9 @@ class ContentDetailScreen extends ConsumerWidget {
   final String path;
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-      appBar: AppBar(title: const Text('Shared content')),
+      appBar: AppBar(
+          title: Text(
+              path.startsWith('stream/') ? 'Title details' : 'Shared content')),
       body: ref.watch(contentProvider(path)).when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, __) =>
@@ -1222,13 +1642,16 @@ class ContentDetailScreen extends ConsumerWidget {
                   const Text('Demo content', style: TextStyle(fontSize: 12)),
                 const SizedBox(height: 12),
                 Text(item['description'] as String? ?? ''),
+                if (item['platform'] == 'stream')
+                  StreamTitleDetails(item: item),
                 if (item['source_url'] != null)
                   TextButton.icon(
                       onPressed: () => launchUrl(
                           Uri.parse(item['source_url'] as String),
                           mode: LaunchMode.externalApplication),
                       icon: const Icon(Icons.open_in_new),
-                      label: Text('Read at ${item['publisher']}')),
+                      label: Text(
+                          '${item['platform'] == 'stream' ? 'Source' : 'Read at'}: ${item['publisher']}')),
                 if ((item['media_url'] as String?)?.isNotEmpty == true)
                   FilledButton.icon(
                       onPressed: () => item['platform'] == 'stream' &&
@@ -1464,7 +1887,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                               if (mounted) setState(() => busy = false);
                             }
                           },
-                    icon: const Icon(Icons.send))
+                    icon: const PhlioSendIcon())
               ]))
         ])));
   }

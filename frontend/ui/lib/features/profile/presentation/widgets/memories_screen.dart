@@ -8,6 +8,7 @@ import '../../../rooms/data/datasources/messaging_api.dart';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/di/service_locator.dart';
@@ -319,7 +320,7 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
 
   Widget photo(Map item) => ClipRRect(
       borderRadius: BorderRadius.circular(64),
-      child: MemoryPhoto(item['image_url'] as String),);
+      child: MemoryPhoto(item['image_url'] as String, isVideo: item['media_kind']=='video'),);
 
   Widget memoryFeed(List<Map> items) {
     // Friends' active snaps lead the stack; the creator's archive follows.
@@ -525,7 +526,7 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                       suffixIcon: IconButton(
                         tooltip: 'Send reply',
                         onPressed: busy ? null : () => sendReply(item),
-                        icon: const Icon(Icons.send_outlined),
+                        icon: const PhlioSendIcon(),
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(32),

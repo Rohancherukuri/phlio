@@ -17,6 +17,7 @@ void main() {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(ProviderScope(overrides: [
     authControllerProvider.overrideWith(_Auth.new),
+    friendsLikedClipsProvider.overrideWith((ref) async => {}),
     socialVideoCatalogProvider.overrideWith((ref) async => [const PlayableVideo(id:'clip',title:'Test clip',creator:'creator',url:'',kind:'clip')]),
     creatorFollowingProvider.overrideWith((ref) async => {}),
     engagementProvider.overrideWith((ref,id) async => {}),
@@ -29,6 +30,14 @@ void main() {
   expect(mute.overlaps(like), isFalse);
   expect(like.top, greaterThanOrEqualTo(0));
   expect(like.bottom, lessThanOrEqualTo(500));
+  expect(find.text('Clips'), findsOneWidget);
+  await tester.tap(find.byTooltip('Clips feed'));
+  await tester.pumpAndSettle();
+  expect(find.text('Following'), findsOneWidget);
+  expect(find.byIcon(Icons.people_outline_rounded), findsOneWidget);
+  Navigator.of(tester.element(find.text('Following'))).pop();
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byIcon(Icons.notes));
   await tester.tap(find.byIcon(Icons.notes));
   await tester.pumpAndSettle();
   expect(find.text('About this clip'), findsOneWidget);

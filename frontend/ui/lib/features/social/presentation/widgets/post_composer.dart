@@ -1,4 +1,4 @@
-import '../../../../shared/realtime/create_space_screen.dart';
+import '../../../../shared/realtime/spaces_hub_screen.dart';
 import '../../../../design_system/colors.dart';
 import 'dart:convert';
 import 'package:dio/dio.dart';
@@ -606,12 +606,12 @@ class _PostComposerState extends ConsumerState<PostComposer> {
                             tool(Icons.camera_alt_outlined, 'Camera',
                                 () => photo(ImageSource.camera)),
                             tool(
-                                Icons.mic_none_outlined,
-                                'Create Space',
+                                Icons.graphic_eq_rounded,
+                                'Spaces',
                                 () => Navigator.of(context).push(
                                     MaterialPageRoute(
                                         builder: (_) =>
-                                            const CreateSpaceScreen()))),
+                                            const SpacesHubScreen()))),
                             tool(Icons.gif_box_outlined, 'GIF', () async {
                               final gif = await showGiphyPicker(context);
                               if (gif != null && mounted)

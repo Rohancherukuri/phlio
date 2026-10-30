@@ -3,6 +3,7 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:url_launcher/url_launcher.dart';
@@ -160,7 +161,8 @@ class _VideoDetails extends ConsumerWidget {
     num stat(String key) => data?[key] as num? ?? 0;
     final likes = stat('count').toInt();
     final tags = {
-      for (final m in RegExp(r'#([A-Za-z0-9_]+)').allMatches(video.title))
+      for (final m in RegExp(r'#([A-Za-z0-9_]+)')
+          .allMatches('${video.title} ${video.description}'))
         m[1]!.toLowerCase()
     };
     final duration = video.durationSeconds > 0
@@ -227,7 +229,7 @@ class _VideoDetails extends ConsumerWidget {
                 data == null ? null : stat('views_count')),
             _Stat(Icons.chat_bubble_outline_rounded, 'Comments',
                 data == null ? null : stat('comments_count')),
-            _Stat(Icons.ios_share_rounded, 'Shares',
+            _Stat(PhlioIcons.send, 'Shares',
                 data == null ? null : stat('shares_count')),
             _Stat(Icons.bookmark_rounded, 'Bookmarks',
                 data == null ? null : stat('bookmarks_count'),
@@ -274,6 +276,11 @@ class _VideoDetails extends ConsumerWidget {
             icon: Icons.video_library_outlined,
             label: 'Type',
             value: video.kind == 'clip' ? 'Clip' : 'Video'),
+        if (video.location != null)
+          _InfoRow(
+              icon: Icons.location_on_outlined,
+              label: 'Location',
+              value: video.location!),
         if (video.songTitle != null)
           _InfoRow(
               icon: Icons.music_note_rounded,
@@ -285,7 +292,10 @@ class _VideoDetails extends ConsumerWidget {
         // Description
         Text('Description', style: PhlioTypography.title),
         const SizedBox(height: PhlioSpacing.sm),
-        LinkifiedText(video.title,
+        LinkifiedText(
+            video.description.trim().isEmpty
+                ? video.title
+                : '${video.title}\n\n${video.description.trim()}',
             style: PhlioTypography.bodyLarge,
             onMention: onProfile == null
                 ? null
@@ -375,7 +385,7 @@ class _Stat extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20, color: color),
+            PhlioIcon(icon, size: 20, color: color),
             const SizedBox(height: 4),
             Text(value == null ? '—' : formatEngagementCount(value!),
                 style: PhlioTypography.title.copyWith(

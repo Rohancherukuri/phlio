@@ -1,4 +1,4 @@
-param([switch]$Seed, [switch]$RunApp)
+param([switch]$Seed, [switch]$RunApp, [switch]$Restart)
 $ErrorActionPreference = 'Stop'
 $backendRoot = Split-Path -Parent $PSScriptRoot
 $projectRoot = Split-Path -Parent $backendRoot
@@ -7,7 +7,26 @@ try {
 if (Test-Path -LiteralPath (Join-Path $backendRoot 'data/livekit/local.yaml')) {
     & (Join-Path $PSScriptRoot 'Start-Realtime.ps1')
 }
+# -Restart stops the running API processes so code changes are picked up
+# (otherwise an API already listening on 8000/8002 keeps serving old code).
+$spacesPid = Join-Path $backendRoot 'data/seeded-spaces.pid'
+if ($Restart) {
+    # The seeded Spaces runner shares the API code; restart it too.
+    if (Test-Path -LiteralPath $spacesPid) {
+        Stop-Process -Id ([int](Get-Content -LiteralPath $spacesPid)) -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $spacesPid -ErrorAction SilentlyContinue
+    }
+    foreach ($apiPort in @(8000, 8002)) {
+        Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+    }
+    Start-Sleep -Milliseconds 800
+}
 New-Item -ItemType Directory -Force -Path 'data/surreal' | Out-Null
+if ((Test-Path -LiteralPath 'data/translation/madlad400/model.bin') -and -not (Get-NetTCPConnection -LocalPort 8010 -State Listen -ErrorAction SilentlyContinue)) {
+    Start-Process -FilePath (Get-Command uv).Source -ArgumentList @('run', 'python', '-m', 'scripts.translation_server') -WorkingDirectory $backendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $backendRoot 'data/translation-api.log') -RedirectStandardError (Join-Path $backendRoot 'data/translation-api-error.log')
+}
+
 if (-not (Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue)) {
     $surrealExe = (Get-Command surreal -ErrorAction Stop).Source
     $databasePath = (Join-Path $backendRoot 'data/surreal/graph.db').Replace('\', '/')
@@ -46,6 +65,21 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 }
 if (-not $normalApiReady) { throw 'Login API on port 8000 failed to start. See backend/data/api-error.log.' }
 Write-Output 'Normal API: http://127.0.0.1:8000/docs; graph demo: http://127.0.0.1:8002/docs'
+# Community Spaces: demo accounts hosting live audio Spaces on the local
+# LiveKit server (voices in media/spaces_seed). Runs in the background.
+if ((Test-Path -LiteralPath (Join-Path $backendRoot 'data/livekit/local.yaml')) -and (Test-Path -LiteralPath (Join-Path $backendRoot 'media/spaces_seed/spaces.json'))) {
+    $spacesRunning = $false
+    if (Test-Path -LiteralPath $spacesPid) {
+        $spacesRunning = [bool](Get-Process -Id ([int](Get-Content -LiteralPath $spacesPid)) -ErrorAction SilentlyContinue)
+    }
+    if (-not $spacesRunning) {
+        Start-Process -FilePath (Get-Command uv).Source -ArgumentList @('run', 'python', '-m', 'scripts.run_seeded_spaces') -WorkingDirectory $backendRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $backendRoot 'data/seeded-spaces.log') -RedirectStandardError (Join-Path $backendRoot 'data/seeded-spaces-error.log')
+        Write-Output 'Community Spaces starting (log: backend/data/seeded-spaces-error.log).'
+    }
+}
+# Keep the community's 24-hour moments live (re-dates seeded moments; fast).
+uv run python -m scripts.seed_community_moments
+if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not refresh community moments. See the error above.' }
 # localhost in an Android app is the phone, not this PC. Restore both USB
 # tunnels on every start, including after a cable reconnect or device reboot.
 if (Get-Command adb -ErrorAction SilentlyContinue) {
@@ -72,8 +106,8 @@ if ($Seed) {
     if ($LASTEXITCODE -ne 0) { throw 'Licensed social media import failed.' }
     uv run python -m scripts.prepare_video_renditions
     if ($LASTEXITCODE -ne 0) { throw 'Video quality preparation failed.' }
-    uv run python -m scripts.seed_social_comments
-    if ($LASTEXITCODE -ne 0) { throw 'Social demo comment seed failed.' }
+    uv run python -m scripts.humanize_demo_accounts
+    if ($LASTEXITCODE -ne 0) { throw 'Community profile update failed.' }
     uv run python -m scripts.import_shop_catalog
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Retailer refresh failed; continuing with the saved catalog. Retry python -m scripts.import_shop_catalog later.' }
     uv run python -m scripts.import_book_catalog
@@ -86,6 +120,8 @@ if ($Seed) {
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Shared catalog reconciliation failed. See the error above.' }
     uv run python -m scripts.seed_catalog_engagement
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Catalog demo engagement seed failed. See the error above.' }
+    uv run python -m scripts.seed_community_comments
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Community comment seed failed. See the error above.' }
 }
 if ($RunApp) {
     Set-Location -LiteralPath (Join-Path $projectRoot 'frontend/ui')

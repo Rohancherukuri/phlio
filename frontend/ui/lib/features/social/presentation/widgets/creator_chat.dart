@@ -108,13 +108,10 @@ class CreatorChat extends StatelessWidget {
                                                   item['value'] as String,
                                                 ) !=
                                                 null)
-                                              Image.asset(
-                                                FoxyPack.resolve(
-                                                  item['value'] as String,
-                                                )!
-                                                    .assetPath,
-                                                width: 70,
-                                                height: 70,
+                                              FoxyStickerView(
+                                                id: item['value'] as String,
+                                                size: 76,
+                                                interactive: true,
                                               ),
                                         ],
                                       ),

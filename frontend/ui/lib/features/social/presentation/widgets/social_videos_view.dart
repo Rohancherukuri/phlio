@@ -90,12 +90,9 @@ class _SocialVideosViewState extends State<SocialVideosView> {
     final recommended =
         videos.where((v) => !followed.contains(v.creator)).toList();
 
-    final entries = <Object>[
-      if (fromFollows.isNotEmpty) 'Following',
-      ...fromFollows,
-      'Recommended for you',
-      ...recommended,
-    ];
+    // One continuous feed (people you follow first). Categories such as
+    // Following / Recommended / Your uploads live on Explore → Videos.
+    final entries = <Object>[...fromFollows, ...recommended];
     return RefreshIndicator(
       onRefresh: () => ref.refresh(socialVideoCatalogProvider.future),
       child: ListView.builder(

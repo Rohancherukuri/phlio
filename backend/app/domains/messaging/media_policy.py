@@ -9,6 +9,8 @@ from pathlib import Path
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
 
+from app.domains.stickers import ANIMATED_STICKER
+
 IMAGE_LIMIT = 8_000_000
 MEDIA_LIMIT = 25_000_000
 PACK = json.loads((Path(__file__).parents[1] / "stickers" / "chat_pack.json").read_text())
@@ -17,6 +19,8 @@ PACK = json.loads((Path(__file__).parents[1] / "stickers" / "chat_pack.json").re
 def validate_pack(kind: str, value: str):
     if kind in ("gif", "sticker") and re.fullmatch(r"giphy:" + kind + r":[A-Za-z0-9]{1,80}", value):
         return
+    if kind == "sticker" and ANIMATED_STICKER.fullmatch(value):
+        return  # animated Foxy (Rive), rendered from the app bundle
     expected = "gif" if kind == "gif" else "sticker"
     actual = PACK.get(value)
     if actual == "emoji":
@@ -52,8 +56,15 @@ def media_type(name: str):
     return formats[extension]
 
 
-def validate_size(kind: str, size: int):
-    limit = IMAGE_LIMIT if kind == "image" else MEDIA_LIMIT
+STUDIO_IMAGE_LIMIT = 20_000_000
+STUDIO_MEDIA_LIMIT = 200_000_000  # Phlio Studio sources and exports
+
+
+def validate_size(kind: str, size: int, studio: bool = False):
+    if studio:
+        limit = STUDIO_IMAGE_LIMIT if kind == "image" else STUDIO_MEDIA_LIMIT
+    else:
+        limit = IMAGE_LIMIT if kind == "image" else MEDIA_LIMIT
     if size > limit:
         raise HTTPException(
             413,

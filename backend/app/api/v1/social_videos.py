@@ -59,6 +59,7 @@ async def video_response(row, c, creator=None, details=None):
         if path.is_relative_to(root) and path.is_file():
             thumbnail = thumbnail.split('?')[0] + f'?v={path.stat().st_mtime_ns}'
     return dict(
+        tags=details.get("tags", []),
         sources=details.get("sources", []),
         song_title=details.get("song_title"),
         song_artist=details.get("song_artist"),
@@ -73,7 +74,19 @@ async def video_response(row, c, creator=None, details=None):
         kind=row.get("kind", "video"),
         thumbnail_url=thumbnail,
         duration_seconds=row.get("duration_seconds", 0),
+        description=details.get("description", ""),
+        visibility=details.get("visibility", "public"),
+        audience=details.get("audience", "everyone"),
+        location=details.get("location"),
+        related_video=details.get("related_video"),
+        paid_promotion=details.get("paid_promotion", False),
     )
+
+
+def visible_video(row, details, viewer_id):
+    """Private videos are creator-only; unlisted ones stay out of feeds
+    (they still open from a shared link)."""
+    return row["creator"] == viewer_id or details.get("visibility", "public") == "public"
 
 
 @router.get("/videos")
@@ -103,7 +116,9 @@ async def videos(
     for row in rows:
         obj = objects.get(key('phlio_object', 'social', row['id']))
         creator = creators.get(row['creator'])
+        detail = details.get(key('platform_content', 'social', row['id']), {})
         if (creator and (not obj or obj['state'] == 'active')
+            and visible_video(row, detail, user.id)
             and key('block', user.id, creator.id) not in blocked
             and key('block', creator.id, user.id) not in blocked):
             result.append(await video_response(row, c, creator,
@@ -146,6 +161,13 @@ async def upload_video(
     file: UploadFile = File(...),
     kind: Literal["video", "clip"] = Form("video"),
     music_id: str | None = Form(None, pattern=r"^[A-Za-z0-9]{22}$"),
+    description: str = Form("", max_length=5000),
+    visibility: Literal["public", "unlisted", "private"] = Form("public"),
+    audience: Literal["everyone", "adults"] = Form("everyone"),
+    location: str | None = Form(None, max_length=120),
+    related_video: str | None = Form(None, max_length=64),
+    paid_promotion: bool = Form(False),
+    playlist_ids: str = Form("", max_length=2000),
     user: User = Depends(get_current_user),
     c: Container = Depends(get_container),
 ):
@@ -188,10 +210,27 @@ async def upload_video(
         obj = await c.graph.register_object(user.id, "social." + kind, video_id, title)
         await c.graph.action(user.id, obj["id"], "created", trusted=True)
         attach_selection(c,user.id,kind,video_id,music)
+        # Upload details (Add details page).
+        detail_key = key("platform_content", "social", video_id)
+        existing = await c.graph.store.get(detail_key) or {}
+        await c.graph.store.put(detail_key, dict(
+            {k: v for k, v in existing.items() if k != "id"},
+            description=description.strip(), visibility=visibility, audience=audience,
+            location=(location or "").strip() or None,
+            related_video=related_video or None, paid_promotion=paid_promotion))
     except BaseException:
         target.unlink(missing_ok=True)
         cover.unlink(missing_ok=True)
         raise
+    # Add to the chosen Social playlists (bookmarks the video for the owner).
+    if playlist_ids.strip():
+        from app.api.v1.playlists import SaveBookmark, save_bookmark
+        for pid in [p for p in playlist_ids.split(",") if p.strip()][:20]:
+            try:
+                await save_bookmark(SaveBookmark(platform="social", ref=video_id,
+                                                 playlist_id=pid.strip(), move=False), user, c)
+            except HTTPException:
+                continue
     return dict(
         id=video_id,
         title=title,
@@ -246,3 +285,19 @@ async def report_clip(clip_id: str, user=Depends(get_current_user), c=Depends(ge
     obj = await resolve(c, user.id, "social", clip_id)
     await c.graph.store.put(key("content_report", user.id, obj["id"]), dict(
         user_id=user.id, object_id=obj["id"], status="pending", created_at=now()))
+
+@router.get('/clips/friends-liked')
+async def friends_liked_clips(user=Depends(get_current_user), c=Depends(get_container)):
+    from app.api.v1.content import accepted_friends
+    friends = await accepted_friends(c, user.id)
+    result = {}
+    for friend in friends:
+        if await c.graph.blocked(user.id, friend): continue
+        for activity in await c.graph.store.rows('activity', {'in':'user:'+friend, 'verb':'liked'}):
+            signal = await c.graph.signal(user.id, activity)
+            if not signal or not signal.get('actor'): continue
+            try: obj = await c.graph.object_for(user.id, activity['out'])
+            except HTTPException: continue
+            if obj['object_type'] != 'social.clip': continue
+            result[obj['domain_ref']] = result.get(obj['domain_ref'], 0) + 1
+    return result
