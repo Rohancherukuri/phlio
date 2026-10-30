@@ -16,6 +16,7 @@ String streamCategory(Map item) {
       kind.trim() == 'audio') {
     return 'Music';
   }
+  if (kind.contains('anime')) return 'Anime';
   if (kind.contains('reality')) return 'Reality Shows';
   if (kind.contains('series') ||
       kind.contains('episode') ||
@@ -56,7 +57,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
   bool get audioMode => ref.read(streamAudioModeProvider);
   List<String> get categories => audioMode
       ? const ['All', 'Music', 'Podcasts']
-      : const ['All', 'Movies', 'TV Series', 'Reality Shows'];
+      : const ['All', 'Movies', 'TV Series', 'Anime', 'Reality Shows'];
   @override
   void initState() {
     super.initState();
@@ -99,6 +100,13 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
   }
 
   Future<void> open(Map item) async {
+    if (!['Music', 'Podcasts'].contains(streamCategory(item))) {
+      await _player?.pause();
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => ContentDetailScreen(path: 'stream/${item['ref']}')));
+      return;
+    }
     trackContentView(context, 'stream/${item['ref']}');
     final url = item['media_url'] as String?;
     if (url == null || url.isEmpty) {
@@ -214,6 +222,16 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
+                      if (!audio)
+                        Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                                (item['media_url'] as String?)?.isNotEmpty ==
+                                        true
+                                    ? 'Watch free'
+                                    : 'Details & viewing links',
+                                style: const TextStyle(
+                                    fontSize: 11, color: Colors.white70))),
                       EngagementRow(
                           path: 'stream/${item['ref']}', compact: true),
                     ],
@@ -266,7 +284,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                 prefixIcon: const Icon(Icons.search),
                 hintText: audioMode
                     ? 'Songs, artists and podcasts'
-                    : 'Movies, TV series and reality shows',
+                    : 'Movies, TV series and anime',
                 suffixIcon: search.text.isEmpty
                     ? null
                     : IconButton(
@@ -353,9 +371,10 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                                     height: 60,
                                   ),
                                   title: Text(item['title'] as String),
-                                  subtitle: Text(streamCategory(item)),
+                                  subtitle: Text(
+                                      '${streamCategory(item)} · ${audioMode ? 'Listen' : (item['media_url'] as String?)?.isNotEmpty == true ? 'Watch free' : 'Details & viewing links'}'),
                                   trailing: const Icon(
-                                    Icons.play_circle_outline,
+                                    Icons.info_outline,
                                   ),
                                   onTap: () => open(item),
                                 ),
@@ -425,7 +444,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                                                                 as String?)
                                                             ?.isNotEmpty ==
                                                         true
-                                                    ? 'Play'
+                                                    ? 'View film'
                                                     : 'View details',
                                               ),
                                             ),

@@ -25,3 +25,21 @@ async def test_preferences_are_private_and_replaceable(settings):
     await c.cache.close()
     c.social_video_service.db.close()
     c.messaging_service.db.close()
+
+@pytest.mark.asyncio
+async def test_friend_liked_clips_respect_identity_privacy(settings):
+    from app.api.v1.social_videos import friends_liked_clips
+    c = await build_container(settings)
+    await seed_memory_backend(c)
+    viewer, friend = await c.identity_repository.search_users('', 2)
+    await c.graph.store.put('friend:cliptest', {'in': 'user:'+viewer.id, 'out': 'user:'+friend.id, 'status': 'accepted'})
+    obj = await c.graph.register_object(viewer.id, 'social.clip', 'friend-clip', 'A clip')
+    policy = dict(platform='social', object_type='*', verb='liked', audience='public', identity_mode='identified', foxy_access='none', selected_users=[])
+    await c.graph.set_policy(friend.id, policy)
+    await c.graph.action(friend.id, obj['id'], 'liked')
+    assert await friends_liked_clips(viewer, c) == {'friend-clip': 1}
+    await c.graph.set_policy(friend.id, {**policy, 'audience': 'nobody', 'identity_mode': 'hidden'})
+    assert await friends_liked_clips(viewer, c) == {}
+    await c.cache.close()
+    c.social_video_service.db.close()
+    c.messaging_service.db.close()

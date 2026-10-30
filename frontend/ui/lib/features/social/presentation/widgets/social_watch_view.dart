@@ -12,6 +12,7 @@ import '../../../../shared/content/social_comments_sheet.dart';
 import '../controllers/video_library.dart';
 import '../controllers/video_playback_controller.dart';
 import 'creator_follow_button.dart';
+import 'video_overlay_controls.dart';
 
 /// Portrait watch page: pinned picture, compact actions, and the same rich
 /// comment list/composer that Clips presents as a modal.
@@ -57,13 +58,7 @@ class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
   Widget build(BuildContext context) {
     final c = ref.watch(videoPlaybackProvider);
     final data = ref.watch(engagementProvider(path)).valueOrNull;
-    final p = c.player;
-    final ready = p?.value.isInitialized == true;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-    String time(Duration d) =>
-        '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
-    Widget button(IconData icon, String label, VoidCallback tap) => IconButton(
-        tooltip: label, onPressed: tap, icon: Icon(icon, color: Colors.white));
     return Padding(
         padding: EdgeInsets.only(bottom: keyboard),
         child: LayoutBuilder(builder: (context, bounds) {
@@ -72,98 +67,18 @@ class _SocialWatchViewState extends ConsumerState<SocialWatchView> {
           return Column(children: [
             SizedBox(
                 height: pictureHeight,
-                child: Stack(fit: StackFit.expand, children: [
-                  widget.picture,
-                  const IgnorePointer(
-                      child: DecoratedBox(
-                          decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                        Colors.black45,
-                        Colors.transparent,
-                        Colors.black54
-                      ])))),
-                  Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: Row(children: [
-                        button(Icons.keyboard_arrow_down, 'Minimize player',
-                            () => c.setMode(SocialPlayerMode.floating)),
-                        const Spacer(),
-                        button(Icons.settings_outlined, 'Playback settings',
-                            widget.onSettings),
-                        button(Icons.close, 'Close player', c.close),
-                      ])),
-                  if (ready)
-                    Center(
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      button(
-                          Icons.replay_10,
-                          'Back 10 seconds',
-                          () => c.seek(
-                              p!.value.position - const Duration(seconds: 10))),
-                      button(
-                          p!.value.isPlaying
-                              ? Icons.pause_circle_filled
-                              : Icons.play_circle_filled,
-                          'Play or pause',
-                          c.toggle),
-                      button(
-                          Icons.forward_10,
-                          'Forward 10 seconds',
-                          () => c.seek(
-                              p.value.position + const Duration(seconds: 10))),
-                    ])),
-                  if (ready)
-                    Positioned(
-                        left: 12,
-                        right: 12,
-                        bottom: 0,
-                        child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                          Row(children: [
-                            Text(
-                                '${time(p!.value.position)} / ${time(p.value.duration)}',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 12)),
-                            const Spacer(),
-                            button(
-                                Icons.picture_in_picture_alt,
-                                'Floating player',
-                                () => c.setMode(SocialPlayerMode.floating)),
-                            button(Icons.fullscreen, 'Fullscreen',
-                                () => c.setMode(SocialPlayerMode.fullscreen))
-                          ]),
-                          Slider(
-                              min: 0,
-                              max: p.value.duration.inMilliseconds
-                                  .toDouble()
-                                  .clamp(1, double.infinity),
-                              value: p.value.position.inMilliseconds
-                                  .toDouble()
-                                  .clamp(
-                                      0,
-                                      p.value.duration.inMilliseconds
-                                          .toDouble()),
-                              onChanged: (value) => c
-                                  .seek(Duration(milliseconds: value.round()))),
-                        ])),
-                  if (!ready)
-                    Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Row(children: [
-                          button(
-                              Icons.picture_in_picture_alt,
-                              'Floating player',
-                              () => c.setMode(SocialPlayerMode.floating)),
-                          button(Icons.fullscreen, 'Fullscreen',
-                              () => c.setMode(SocialPlayerMode.fullscreen)),
-                        ])),
-                ])),
+                // Twitch-style: every control lives inside the picture.
+                child: VideoOverlayControls(
+                    controller: c,
+                    picture: widget.picture,
+                    fullscreen: false,
+                    onSettings: widget.onSettings,
+                    onClose: c.close,
+                    onShare: widget.onShare,
+                    live: widget.video.kind == 'live',
+                    viewers: widget.video.kind == 'live'
+                        ? (data?['viewers_count'] ?? data?['views_count']) as num?
+                        : null)),
             if (keyboard == 0 && !choosingMedia)
               ConstrainedBox(
                   constraints:

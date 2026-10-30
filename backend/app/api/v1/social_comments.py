@@ -8,7 +8,7 @@ from app.api.deps import get_container, get_current_user
 from app.api.v1.content import resolve
 from app.core.container import media_root_path
 from app.domains.graph.store import now
-from app.domains.stickers import STICKER_IDS
+from app.domains.stickers import STICKER_IDS, is_known_sticker
 
 router = APIRouter(prefix='/social', tags=['social comments'])
 
@@ -29,6 +29,10 @@ async def comments(ref: str, platform: str = 'social', user=Depends(get_current_
         legacy, _ = await c.social_service.get_comments(ref,cursor=None,limit=100)
         removed = await deleted_comment_ids(c, obj['id'])
         rows = rows + [dict(id=x.id,author_id=x.author_id,text=x.text,sticker_id=x.sticker_id,created_at=x.created_at.isoformat()) for x in legacy if x.id not in removed]
+        # Legacy comments live in the social repository; edits are overlaid.
+        edits = {e['comment_id']: e for e in await c.graph.store.rows('comment_edit', {'object_id': obj['id']})}
+        if edits:
+            rows = [dict(r, text=edits[r['id']]['text'], mentions=edits[r['id']].get('mentions', []), edited_at=edits[r['id']]['edited_at']) if r['id'] in edits else r for r in rows]
     result = []
     for row in sorted(rows,key=lambda r:r['created_at'],reverse=True)[:200]:
         if await c.graph.blocked(user.id,row['author_id']): continue
@@ -46,7 +50,7 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
     await c.cache.rate_limit(user.id,'comment',30)
     text = text.strip()
     if not text and not sticker_id and not image: raise HTTPException(422,'Write a comment or choose an image, GIF or sticker.')
-    if sticker_id and sticker_id not in STICKER_IDS and not re.fullmatch(r'giphy:(gif|sticker):[A-Za-z0-9]{1,80}', sticker_id): raise HTTPException(422,'Unknown sticker.')
+    if sticker_id and not is_known_sticker(sticker_id): raise HTTPException(422,'Unknown sticker.')
     if parent_id:
         existing = await comments(ref, platform, user, c)
         if not any(r['id'] == parent_id for r in existing['items']):
@@ -78,6 +82,43 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
     except Exception:
         if target: target.unlink(missing_ok=True)
         raise
+
+async def comment_mentions(c, user, text):
+    mentioned = []
+    for handle in set(re.findall(r'@([A-Za-z0-9_]{1,50})', text)):
+        person = await c.identity_repository.get_by_username(handle.lower())
+        if person and not await c.graph.blocked(user.id, person.id): mentioned.append(c.graph.profile(person))
+    return mentioned
+
+@router.patch('/content/{ref}/comments/{comment_id}')
+async def edit_comment(ref: str, comment_id: str, text: str = Form('', max_length=2000), platform: str = 'social',
+                       user=Depends(get_current_user), c=Depends(get_container)):
+    """Edit the text of your own comment or reply (media stays as posted)."""
+    from app.domains.graph.service import key
+    obj = await resolve(c, user.id, platform, ref)
+    await c.cache.rate_limit(user.id, 'comment_edit', 30)
+    visible = await comments(ref, platform, user, c)
+    target = next((row for row in visible['items'] if row['id'] == comment_id), None)
+    if not target:
+        raise HTTPException(404, 'Comment is no longer available.')
+    if target['author_id'] != user.id:
+        raise HTTPException(403, 'You can only edit your own comments.')
+    text = text.strip()
+    if not text and not target.get('image_url') and not target.get('sticker_id'):
+        raise HTTPException(422, 'A comment cannot be empty.')
+    mentioned = await comment_mentions(c, user, text)
+    edited_at = now()
+    stored = await c.graph.store.get(comment_id) if comment_id.startswith('content_comment:') else None
+    if stored:
+        stored.update(text=text, mentions=mentioned, edited_at=edited_at)
+        saved = await c.graph.store.put(comment_id, stored)
+    else:
+        await c.graph.store.put(key('comment_edit', comment_id), dict(
+            comment_id=comment_id, object_id=obj['id'], text=text, mentions=mentioned,
+            edited_by=user.id, edited_at=edited_at))
+        saved = dict({k: v for k, v in target.items() if k not in {'author', 'likes_count', 'liked_by_me'}},
+                     text=text, mentions=mentioned, edited_at=edited_at)
+    return dict(saved, author=c.graph.profile(user))
 
 async def deleted_comment_ids(c, object_id):
     """Legacy post comments can't be removed from the social repository, so

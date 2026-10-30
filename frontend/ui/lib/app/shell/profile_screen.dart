@@ -1,4 +1,6 @@
 import '../../features/profile/presentation/widgets/memories_screen.dart';
+import '../../shared/moments/moments.dart';
+import '../../features/social/presentation/widgets/moment_composer.dart';
 import '../../features/profile/presentation/widgets/invite_friends.dart';
 import '../../shared/music/song_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -436,7 +438,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 onTap: _openAvatarEditor,
                 child: Stack(
                   children: [
-                    MeAvatar(name: user.fullName, size: 88),
+                    MomentRingAvatar(
+                      userId: user.id,
+                      size: 88,
+                      plain: MeAvatar(name: user.fullName, size: 88),
+                      ringed: (inner) =>
+                          MeAvatar(name: user.fullName, size: inner),
+                    ),
                     Positioned(
                       right: 0,
                       bottom: 0,
@@ -641,46 +649,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           const SizedBox(height: PhlioSpacing.xl),
 
           // -- Moments (highlights) ------------------------------------------------
-          Text('Moments', style: PhlioTypography.headline),
+          Text('Highlights', style: PhlioTypography.headline),
           const SizedBox(height: PhlioSpacing.md),
-          SizedBox(
-            height: 96,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _momentNew(() => _comingSoon(context, 'New moments')),
-                for (final moment in _seedMoments)
-                  GestureDetector(
-                    onTap: () => _comingSoon(context, 'Moment: ${moment.$1}'),
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: PhlioSpacing.md),
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(2.5),
-                            decoration: const BoxDecoration(
-                              gradient: PhlioColors.sunsetGradient,
-                              shape: BoxShape.circle,
-                            ),
-                            child: ClipOval(
-                              child: Image.asset(
-                                moment.$2,
-                                width: 58,
-                                height: 58,
-                                fit: BoxFit.cover,
-                                filterQuality: FilterQuality.low,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: PhlioSpacing.xs),
-                          Text(moment.$1, style: PhlioTypography.caption),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+          MomentHighlightsRow(
+              user: user.id, onNew: () => openMomentComposer(context)),
           const SizedBox(height: PhlioSpacing.lg),
 
           // -- Content tabs ----------------------------------------------------------
@@ -709,12 +681,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ),
     );
   }
-
-  static const List<(String, String)> _seedMoments = [
-    ('cafe', 'assets/images/placeholders/shop/product_ceramics.png'),
-    ('dusk', 'assets/images/placeholders/social/thumb_travel_1.png'),
-    ('gym', 'assets/images/placeholders/social/thumb_fitness_1.png'),
-  ];
 
   Widget _stat(String value, String label) {
     return Column(

@@ -330,20 +330,45 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
         raise HTTPException(422, 'Invalid audience.')
     policy = await validate_audience(c, user.id, choice)
     await c.cache.rate_limit(user.id, 'create_memory', 20)
-    if not (file.content_type or '').startswith('image/'):
-        raise HTTPException(422, 'Choose a photo for your memory.')
-    uploaded = await composer_upload(file, user, c)
-    if uploaded.get('kind') != 'image':
-        raise HTTPException(422, 'Choose a photo for your memory.')
-    memory_id = 'social_memory:' + uuid.uuid4().hex
+    from pathlib import Path
+    import subprocess
+    from fastapi.concurrency import run_in_threadpool
+    from app.domains.messaging.media_policy import validate_signature
     root = media_root_path(c.settings).resolve()
-    source = root / uploaded['url'].removeprefix('/media/')
     private = root.parent / (root.name + '_private_memories')
     private.mkdir(parents=True, exist_ok=True)
-    source.replace(private / source.name)
+    video = (file.content_type or '').startswith('video/')
+    if video:
+        if kind != 'experience': raise HTTPException(422, 'Video exports are supported for experiences.')
+        destination = private / (uuid.uuid4().hex + '.mp4')
+        try:
+            size = 0
+            with destination.open('wb') as out:
+                while chunk := await file.read(1024*1024):
+                    size += len(chunk)
+                    if size > 120*1024*1024: raise HTTPException(413,'Choose a video under 120 MB.')
+                    out.write(chunk)
+            validate_signature(destination,'video/mp4')
+            def check():
+                result=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=codec_type','-of','csv=p=0',str(destination)],check=True,capture_output=True,timeout=15)
+                if b'video' not in result.stdout: raise ValueError()
+            await run_in_threadpool(check)
+        except BaseException as exc:
+            destination.unlink(missing_ok=True)
+            if isinstance(exc,HTTPException): raise
+            raise HTTPException(422,'Could not read this video.') from exc
+        filename = destination.name
+    else:
+        if not (file.content_type or '').startswith('image/'):
+            raise HTTPException(422, 'Choose a photo or experience video.')
+        uploaded = await composer_upload(file, user, c)
+        source = root / uploaded['url'].removeprefix('/media/')
+        source.replace(private / source.name)
+        filename = source.name
+    memory_id = 'social_memory:' + uuid.uuid4().hex
     return await c.graph.store.put(memory_id, dict(
         author=user.id, image_url='/social/memories/' + memory_id + '/photo',
-        private_file=source.name, caption=caption.strip(), kind=kind, **policy, created_at=now()))
+        private_file=filename, media_kind='video' if video else 'image', caption=caption.strip(), kind=kind, **policy, created_at=now()))
 
 
 

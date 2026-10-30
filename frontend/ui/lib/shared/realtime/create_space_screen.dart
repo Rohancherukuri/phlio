@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../design_system/colors.dart';
 import '../music/song_picker.dart';
-import 'realtime_screen.dart';
+import 'space_room_screen.dart';
 import 'spaces.dart';
 import '../../design_system/typography.dart';
 
@@ -79,14 +79,17 @@ class _CreateSpaceScreenState extends ConsumerState<CreateSpaceScreen> {
 
   Future<void> start() async {
     setState(() => busy = true);
-    await openRealtime(context,
-        endpoint: '/realtime/live',
+    final navigator = Navigator.of(context);
+    await openSpace(context,
+        create: true,
         title: title.text.trim(),
-        video: false,
-        rooms: true,
         record: record,
         topics: List.of(topics));
-    if (mounted) setState(() => busy = false);
+    // Back from your Space: return to where you came from.
+    if (mounted) {
+      setState(() => busy = false);
+      navigator.maybePop();
+    }
   }
 
   Future<void> schedule() async {
@@ -115,7 +118,8 @@ class _CreateSpaceScreenState extends ConsumerState<CreateSpaceScreen> {
           .post('/realtime/spaces/scheduled', data: {
         'title': title.text.trim(),
         'topics': topics,
-        'starts_at': when.toUtc().toIso8601String()
+        'starts_at': when.toUtc().toIso8601String(),
+        'record': record
       });
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -153,11 +157,11 @@ class _CreateSpaceScreenState extends ConsumerState<CreateSpaceScreen> {
                             onTap: () => Navigator.pop(c, item))
                     ])));
       if (item != null && mounted)
-        await openRealtime(context,
-            endpoint: '/realtime/spaces/scheduled/${item['id']}/start',
-            title: item['title'],
-            video: false,
-            rooms: true);
+        await openSpace(context,
+            scheduledId: item['id'].toString(),
+            title: item['title'] as String? ?? 'Space',
+            topics: ((item['topics'] as List?) ?? const []).cast<String>(),
+            record: item['record'] == true);
     } catch (e) {
       error(e);
     }

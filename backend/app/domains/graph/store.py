@@ -1,3 +1,6 @@
+import asyncio
+import random
+
 import copy
 import datetime as dt
 import uuid
@@ -5,6 +8,7 @@ import uuid
 from app.infrastructure.database.surreal.client import record
 
 TABLES = {
+    "stream_catalog_state",
     "memory_seen",
     "memory_reaction",
     "social_memory",
@@ -20,8 +24,18 @@ TABLES = {
     "playlist_item",
     "shop_cart",
     "content_comment",
+    "comment_tombstone",
+    "comment_edit",
+    "share_event",
+    "space_report",
+    "space_request",
+    "space_recording",
     "comment_reaction",
     "shared_story",
+    "social_moment",
+    "moment_view",
+    "moment_highlight",
+    "moment_mute",
     "platform_content",
     "graph_group",
     "graph_group_message",
@@ -94,6 +108,23 @@ class MemoryGraphStore:
 class SurrealGraphStore:
     def __init__(self, db):
         self.db = db
+        self._write_lock = asyncio.Lock()
+
+    async def _transaction(self, query, params):
+        # All graph writes touch the shared revision record. Serialise this
+        # process, then back off for competing API/seeder processes. Retry only
+        # explicit commit conflicts (rolled back), never ambiguous network errors.
+        async with self._write_lock:
+            for attempt in range(8):
+                try:
+                    return await self.db.query(query, params)
+                except RuntimeError as exc:
+                    message = str(exc).lower()
+                    conflict = ('failed to commit transaction' in message
+                                and 'read or write conflict' in message)
+                    if not conflict or attempt == 7:
+                        raise
+                    await asyncio.sleep(random.uniform(.5, 1.0) * min(.025 * 2**attempt, .8))
 
     async def get(self, key):
         assert key.split(":", 1)[0] in TABLES
@@ -136,12 +167,12 @@ class SurrealGraphStore:
             params["event"] = dict(event=table, entity=key, created_at=now(), delivered=False)
             event = "CREATE graph_outbox CONTENT $event;"
         revision = " UPDATE graph_meta:revision SET value += 1;" if event else ""
-        await self.db.query("BEGIN TRANSACTION; " + write + event + revision + " COMMIT TRANSACTION;", params)
+        await self._transaction("BEGIN TRANSACTION; " + write + event + revision + " COMMIT TRANSACTION;", params)
         return await self.get(key)
 
     async def delete(self, key):
         assert key.split(":", 1)[0] in TABLES
-        await self.db.query(
+        await self._transaction(
             "BEGIN TRANSACTION; DELETE $rid; CREATE graph_outbox CONTENT $event; "
             "UPDATE graph_meta:revision SET value += 1; COMMIT TRANSACTION;",
             {

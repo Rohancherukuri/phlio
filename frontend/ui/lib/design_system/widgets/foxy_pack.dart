@@ -13,6 +13,9 @@ import '../colors.dart';
 import '../radii.dart';
 import '../spacing.dart';
 import '../typography.dart';
+import 'foxy_stickers.dart';
+
+export 'foxy_stickers.dart';
 
 enum FoxyReactionKind { emoji, sticker, gif }
 
@@ -376,6 +379,157 @@ abstract final class FoxyPack {
   ];
 
   /// Looping Foxy GIF tiles.
+  /// Foxy Moves — the rigged, animated sticker pack (animated WebP built by
+  /// scripts/media/foxy_rig/: Foxy's art on a bone rig — waving paws,
+  /// wagging tails, blinks, bows).
+  static const String _moveBase = 'assets/stickers/moves/move_';
+  static const List<FoxyPackItem> moves = [
+    (
+      id: 'move_hi',
+      label: 'Hi!',
+      assetPath: '${_moveBase}hi.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_thumbs_up',
+      label: 'Thumbs up',
+      assetPath: '${_moveBase}thumbs_up.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_clap',
+      label: 'Clap',
+      assetPath: '${_moveBase}clap.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_giggle',
+      label: 'Giggle',
+      assetPath: '${_moveBase}giggle.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_love',
+      label: 'Love',
+      assetPath: '${_moveBase}love.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_sad',
+      label: 'Sad',
+      assetPath: '${_moveBase}sad.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_angry',
+      label: 'Grr',
+      assetPath: '${_moveBase}angry.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_confused',
+      label: 'Huh?',
+      assetPath: '${_moveBase}confused.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_sorry',
+      label: 'Sorry',
+      assetPath: '${_moveBase}sorry.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_good_job',
+      label: 'Good job',
+      assetPath: '${_moveBase}good_job.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_cheers',
+      label: 'Cheers',
+      assetPath: '${_moveBase}cheers.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_wink',
+      label: 'Wink',
+      assetPath: '${_moveBase}wink.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_yay',
+      label: 'Yay!',
+      assetPath: '${_moveBase}yay.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_wag',
+      label: 'Tail wag',
+      assetPath: '${_moveBase}wag.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_coffee',
+      label: 'Coffee',
+      assetPath: '${_moveBase}coffee.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_sleep',
+      label: 'Sleepy',
+      assetPath: '${_moveBase}sleep.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_wizard',
+      label: 'Magic',
+      assetPath: '${_moveBase}wizard.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_chef',
+      label: 'Pancakes',
+      assetPath: '${_moveBase}chef.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_samurai',
+      label: 'Slash',
+      assetPath: '${_moveBase}samurai.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_space',
+      label: 'Floating',
+      assetPath: '${_moveBase}space.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_rainy',
+      label: 'Rainy day',
+      assetPath: '${_moveBase}rainy.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_winter',
+      label: 'Brr',
+      assetPath: '${_moveBase}winter.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_hoodie',
+      label: 'Vibing',
+      assetPath: '${_moveBase}hoodie.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+    (
+      id: 'move_student',
+      label: 'Studying',
+      assetPath: '${_moveBase}student.webp',
+      kind: FoxyReactionKind.sticker
+    ),
+  ];
+
   static const List<FoxyPackItem> gifs = [
     (
       id: 'anim_idle_blink',
@@ -458,12 +612,13 @@ abstract final class FoxyPack {
   ];
 
   static final Map<String, FoxyPackItem> _byId = {
-    for (final item in [...emoji, ...stickers, ...gifs]) item.id: item,
+    for (final item in [...emoji, ...stickers, ...moves, ...gifs]) item.id: item,
   };
 
   /// Resolves a backend value id ("costume_wizard", "anim_heart", …) to its
   /// bundled asset, or null when unknown (renderer falls back gracefully).
-  static FoxyPackItem? resolve(String id) => _byId[id];
+  static FoxyPackItem? resolve(String id) =>
+      _byId[id] ?? FoxyAnimatedStickers.item(id);
 
   static FoxyPackItem? find(FoxyReactionKind kind, String id) {
     final item = _byId[id];
@@ -486,6 +641,9 @@ class FoxyReactionChipContent extends StatelessWidget {
     if (kind == FoxyReactionKind.emoji && FoxyPack.resolve(value) == null) {
       // Plain unicode emoji reaction.
       return Text(value, style: TextStyle(fontSize: size * 0.95, height: 1.0));
+    }
+    if (value.startsWith(FoxyAnimatedStickers.prefix)) {
+      return FoxyStickerView(id: value, size: size * 1.35);
     }
     final item = FoxyPack.resolve(value);
     final path = item?.assetPath;
@@ -523,11 +681,11 @@ Future<FoxyPackItem?> showFoxyPicker(
     isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
       child: DefaultTabController(
-        length: includeGifs ? 3 : 2,
+        length: includeGifs ? 4 : 3,
         initialIndex: switch (initialTab) {
           FoxyReactionKind.emoji => 0,
-          FoxyReactionKind.sticker => 1,
-          FoxyReactionKind.gif => includeGifs ? 2 : 1,
+          FoxyReactionKind.sticker => 2,
+          FoxyReactionKind.gif => includeGifs ? 3 : 2,
         },
         child: SizedBox(
           height: MediaQuery.of(sheetContext).size.height * 0.62,
@@ -547,6 +705,7 @@ Future<FoxyPackItem?> showFoxyPicker(
               TabBar(
                 tabs: [
                   const Tab(text: 'Emoji'),
+                  const Tab(text: 'Animated'),
                   const Tab(text: 'Stickers'),
                   if (includeGifs) const Tab(text: 'GIFs'),
                 ],
@@ -560,6 +719,7 @@ Future<FoxyPackItem?> showFoxyPicker(
                   children: [
                     for (final items in [
                       FoxyPack.emoji,
+                      FoxyAnimatedStickers.items,
                       FoxyPack.stickers,
                       if (includeGifs) FoxyPack.gifs
                     ])
@@ -590,13 +750,11 @@ Future<FoxyPackItem?> showFoxyPicker(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Expanded(
-                                    child: Image.asset(
-                                      item.assetPath,
-                                      fit: BoxFit.contain,
-                                      filterQuality: FilterQuality.high,
-                                      errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.pets_rounded,
-                                        color: PhlioColors.brandOrange,
+                                    child: LayoutBuilder(
+                                      builder: (context, box) => Center(
+                                        child: FoxyStickerView(
+                                            id: item.id,
+                                            size: box.biggest.shortestSide),
                                       ),
                                     ),
                                   ),

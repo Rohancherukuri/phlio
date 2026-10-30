@@ -1,0 +1,114 @@
+[
+ {
+  "id": "pop",
+  "name": "Pop",
+  "category": "Cartoon",
+  "duration": 0.12,
+  "url": "/media/studio_sfx/pop.m4a"
+ },
+ {
+  "id": "whoosh",
+  "name": "Whoosh",
+  "category": "Transitions",
+  "duration": 0.7,
+  "url": "/media/studio_sfx/whoosh.m4a"
+ },
+ {
+  "id": "swoosh_up",
+  "name": "Swoosh up",
+  "category": "Transitions",
+  "duration": 0.5,
+  "url": "/media/studio_sfx/swoosh_up.m4a"
+ },
+ {
+  "id": "ding",
+  "name": "Ding",
+  "category": "Notification",
+  "duration": 1.2,
+  "url": "/media/studio_sfx/ding.m4a"
+ },
+ {
+  "id": "chime",
+  "name": "Chime",
+  "category": "Notification",
+  "duration": 1.5,
+  "url": "/media/studio_sfx/chime.m4a"
+ },
+ {
+  "id": "click",
+  "name": "Click",
+  "category": "UI",
+  "duration": 0.04,
+  "url": "/media/studio_sfx/click.m4a"
+ },
+ {
+  "id": "boing",
+  "name": "Boing",
+  "category": "Cartoon",
+  "duration": 0.6,
+  "url": "/media/studio_sfx/boing.m4a"
+ },
+ {
+  "id": "laser",
+  "name": "Laser",
+  "category": "Game",
+  "duration": 0.35,
+  "url": "/media/studio_sfx/laser.m4a"
+ },
+ {
+  "id": "coin",
+  "name": "Coin",
+  "category": "Game",
+  "duration": 0.48,
+  "url": "/media/studio_sfx/coin.m4a"
+ },
+ {
+  "id": "boom",
+  "name": "Boom",
+  "category": "Impact",
+  "duration": 1.2,
+  "url": "/media/studio_sfx/boom.m4a"
+ },
+ {
+  "id": "riser",
+  "name": "Riser",
+  "category": "Transitions",
+  "duration": 2.0,
+  "url": "/media/studio_sfx/riser.m4a"
+ },
+ {
+  "id": "drumroll",
+  "name": "Drum roll",
+  "category": "Impact",
+  "duration": 1.6,
+  "url": "/media/studio_sfx/drumroll.m4a"
+ },
+ {
+  "id": "record_scratch",
+  "name": "Record scratch",
+  "category": "Funny",
+  "duration": 0.5,
+  "url": "/media/studio_sfx/record_scratch.m4a"
+ },
+ {
+  "id": "camera",
+  "name": "Camera shutter",
+  "category": "UI",
+  "duration": 0.19,
+  "url": "/media/studio_sfx/camera.m4a"
+ },
+ {
+  "id": "heartbeat",
+  "name": "Heartbeat",
+  "category": "Ambient",
+  "duration": 1.1,
+  "url": "/media/studio_sfx/heartbeat.m4a"
+ },
+ {
+  "id": "applause",
+  "name": "Applause",
+  "category": "Crowd",
+  "duration": 2.5,
+  "url": "/media/studio_sfx/applause.m4a"
+ }
+]

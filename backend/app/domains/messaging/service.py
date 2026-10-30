@@ -44,6 +44,15 @@ class MessagingService:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS message_overlays (message_id TEXT PRIMARY KEY, overlays TEXT)"
         )
+        # Instagram-style message actions: reply threads, per-user "Delete for
+        # you", and pinned messages per conversation.
+        self.db.execute("CREATE TABLE IF NOT EXISTS message_meta (message_id TEXT PRIMARY KEY, reply_to TEXT)")
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS message_hidden (message_id TEXT, user_id TEXT, PRIMARY KEY(message_id, user_id))"
+        )
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS message_pins (message_id TEXT PRIMARY KEY, pinned_by TEXT, pinned_at TEXT)"
+        )
         self.db.commit()
         self.calls: dict[str, dict] = {}
 
@@ -206,7 +215,73 @@ class MessagingService:
         self.db.commit()
         return self._reactions_for([message_id])[message_id]
 
-    def send(self, sender: str, recipient: str, text: str, attachments: list[dict]) -> dict:
+    def _participant_message(self, message_id: str, user: str, peer: str | None = None):
+        row = self.db.execute("SELECT * FROM messages WHERE id=?", (message_id,)).fetchone()
+        if not row or user not in (row["sender"], row["recipient"]):
+            raise HTTPException(404, "Message not found.")
+        if peer and peer not in (row["sender"], row["recipient"]):
+            raise HTTPException(404, "Message not found.")
+        return row
+
+    def hide(self, message_id: str, user: str, peer: str) -> None:
+        """Delete for you: only this user stops seeing the message."""
+        self._participant_message(message_id, user, peer)
+        self.db.execute("INSERT OR IGNORE INTO message_hidden VALUES (?, ?)", (message_id, user))
+        self.db.commit()
+
+    def unsend(self, message_id: str, user: str, peer: str) -> None:
+        """Unsend: the sender removes the message for both people."""
+        row = self._participant_message(message_id, user, peer)
+        if row["sender"] != user:
+            raise HTTPException(403, "You can only unsend your own messages.")
+        for table, column in [("messages", "id"), ("reactions", "message_id"), ("message_overlays", "message_id"),
+                              ("message_meta", "message_id"), ("message_hidden", "message_id"),
+                              ("message_pins", "message_id")]:
+            self.db.execute(f"DELETE FROM {table} WHERE {column}=?", (message_id,))
+        self.db.commit()
+
+    def pin(self, message_id: str, user: str, peer: str, pinned: bool) -> bool:
+        self._participant_message(message_id, user, peer)
+        if pinned:
+            self.db.execute("INSERT OR REPLACE INTO message_pins VALUES (?, ?, ?)",
+                            (message_id, user, dt.datetime.now(dt.UTC).isoformat()))
+        else:
+            self.db.execute("DELETE FROM message_pins WHERE message_id=?", (message_id,))
+        self.db.commit()
+        return pinned
+
+    def forward(self, message_id: str, user: str, recipient: str, file_prefix: str) -> dict:
+        """Copy a message's text and attachments into another conversation.
+        Uploaded files get a new record so the new recipient can open them."""
+        row = self._participant_message(message_id, user)
+        attachments = []
+        for raw in json.loads(row["attachments"] or "[]"):
+            item = dict(raw, id=uuid.uuid4().hex)
+            url = item.get("url") or ""
+            if url.startswith(file_prefix):
+                source = self.file(url.removeprefix(file_prefix), user)
+                file_id = uuid.uuid4().hex
+                self.store_file(file_id, user, recipient, source["path"], source["name"], source["mime"])
+                item["url"] = file_prefix + file_id
+            attachments.append(item)
+        return self.send(user, recipient, row["text"], attachments)
+
+    def _reply_preview(self, message_id: str | None):
+        if not message_id:
+            return None
+        row = self.db.execute("SELECT * FROM messages WHERE id=?", (message_id,)).fetchone()
+        if not row:
+            return dict(id=message_id, deleted=True)
+        attachments = json.loads(row["attachments"] or "[]")
+        return dict(id=row["id"], sender_id=row["sender"], text=row["text"][:280],
+                    kind=(attachments[0].get("kind") if attachments else None))
+
+    def send(self, sender: str, recipient: str, text: str, attachments: list[dict],
+             reply_to: str | None = None) -> dict:
+        if reply_to:
+            original = self.db.execute("SELECT sender, recipient FROM messages WHERE id=?", (reply_to,)).fetchone()
+            if not original or {original["sender"], original["recipient"]} != {sender, recipient}:
+                reply_to = None
         message = {
             "id": uuid.uuid4().hex,
             "sender_id": sender,
@@ -227,14 +302,20 @@ class MessagingService:
                 message["created_at"],
             ),
         )
+        if reply_to:
+            self.db.execute("INSERT OR REPLACE INTO message_meta VALUES (?, ?)", (message["id"], reply_to))
         self.db.commit()
+        message["reply_to"] = self._reply_preview(reply_to)
+        message["pinned"] = False
         return message
 
     def history(self, user: str, peer: str, before: str | None = None) -> list[dict]:
         rows = self.db.execute(
             "SELECT * FROM messages WHERE ((sender=? AND recipient=?) OR (sender=? AND recipient=?)) "
-            "AND (? IS NULL OR created_at < ?) ORDER BY created_at DESC LIMIT 100",
-            (user, peer, peer, user, before, before),
+            "AND (? IS NULL OR created_at < ?) "
+            "AND id NOT IN (SELECT message_id FROM message_hidden WHERE user_id=?) "
+            "ORDER BY created_at DESC LIMIT 100",
+            (user, peer, peer, user, before, before, user),
         ).fetchall()
         messages = [
             dict(
@@ -254,6 +335,11 @@ class MessagingService:
                 "SELECT overlays FROM message_overlays WHERE message_id=?", (m["id"],)
             ).fetchone()
             m["overlays"] = json.loads(overlay["overlays"]) if overlay else []
+            meta = self.db.execute("SELECT reply_to FROM message_meta WHERE message_id=?", (m["id"],)).fetchone()
+            m["reply_to"] = self._reply_preview(meta["reply_to"]) if meta else None
+            pin = self.db.execute("SELECT pinned_at FROM message_pins WHERE message_id=?", (m["id"],)).fetchone()
+            m["pinned"] = bool(pin)
+            m["pinned_at"] = pin["pinned_at"] if pin else None
         return messages
 
     def peers(self, user: str) -> list[str]:

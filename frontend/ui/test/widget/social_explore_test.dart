@@ -1,3 +1,4 @@
+import 'package:phlio/features/social/presentation/widgets/social_explore_posts_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,14 +6,47 @@ import 'package:phlio/features/social/presentation/controllers/video_library.dar
 import 'package:phlio/features/social/presentation/widgets/social_explore_videos_view.dart';
 
 void main() {
-  testWidgets('Title search excludes unrelated videos and clips', (tester) async {
-    await tester.pumpWidget(ProviderScope(overrides: [
-      explorePostsProvider.overrideWith((ref) async => []),
-      socialVideoCatalogProvider.overrideWith((ref) async => [
-        const PlayableVideo(id: 'v1', title: 'Ocean diving', creator: 'alex', url: '', kind: 'video'),
-        const PlayableVideo(id: 'c1', title: 'Mountain walk', creator: 'sam', url: '', kind: 'clip'),
-      ]),
-    ], child: const MaterialApp(home: Scaffold(body: SocialExploreVideosView()))));
+  testWidgets('Explore category tabs have finite widths and can switch',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(ProviderScope(
+        child: MaterialApp(
+            home: Scaffold(
+      body: SocialExplorePostsView(
+          posts: const [], query: '', onRefresh: () async {}),
+    ))));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.text('For you')).width.isFinite, isTrue);
+    await tester.tap(find.text('Trending'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('No posts to explore yet.'), findsOneWidget);
+  });
+
+  testWidgets('Title search excludes unrelated videos and clips',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          explorePostsProvider.overrideWith((ref) async => []),
+          socialVideoCatalogProvider.overrideWith((ref) async => [
+                const PlayableVideo(
+                    id: 'v1',
+                    title: 'Ocean diving',
+                    creator: 'alex',
+                    url: '',
+                    kind: 'video'),
+                const PlayableVideo(
+                    id: 'c1',
+                    title: 'Mountain walk',
+                    creator: 'sam',
+                    url: '',
+                    kind: 'clip'),
+              ]),
+        ],
+        child: const MaterialApp(
+            home: Scaffold(body: SocialExploreVideosView()))));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Mountain');
     await tester.pump(const Duration(milliseconds: 300));
@@ -54,5 +88,3 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
-
-

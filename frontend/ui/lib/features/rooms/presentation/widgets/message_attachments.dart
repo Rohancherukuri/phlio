@@ -92,16 +92,12 @@ class MessageAttachmentView extends StatelessWidget {
           height: 160,
           child: GiphyReferenceView(reference: attachment.value));
     if (attachment.isSticker) {
-      final item = FoxyPack.resolve(attachment.value);
       return ClipRRect(
         borderRadius: PhlioRadii.lgRadius,
-        child: Image.asset(
-          item?.assetPath ?? 'assets/stickers/sticker_foxy_happy.png',
-          width: attachment.kind == 'gif' ? 120 : 96,
-          height: attachment.kind == 'gif' ? 120 : 96,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          errorBuilder: (_, __, ___) => _docCard(context, attachment, maxW),
+        child: FoxyStickerView(
+          id: attachment.value,
+          size: attachment.kind == 'gif' ? 120 : 112,
+          interactive: true,
         ),
       );
     }

@@ -52,7 +52,7 @@ class MessagingApi {
   }) async =>
       ((await dio.get(
         '${peerPath(peer)}/messages',
-        queryParameters: {'before': before},
+        queryParameters: {if (before != null) 'before': before},
       ))
               .data as List)
           .map((v) => Map<String, dynamic>.from(v as Map))
@@ -62,12 +62,49 @@ class MessagingApi {
     String peer,
     String text, {
     List<Map<String, dynamic>> attachments = const [],
+    String? replyTo,
   }) async {
     await dio.post(
       '${peerPath(peer)}/messages',
-      data: {'text': text, 'attachments': attachments},
+      data: {
+        'text': text,
+        'attachments': attachments,
+        if (replyTo != null) 'reply_to': replyTo,
+      },
     );
   }
+
+  Future<void> improveAudio(String peer, String id, String attachmentId,
+      {bool restore = false}) async {
+    await dio.post('${peerPath(peer)}/messages/$id/improve-audio',
+        data: {'attachment_id': attachmentId, 'restore': restore},
+        options: Options(receiveTimeout: const Duration(minutes: 5)));
+  }
+
+  /// "Delete for you" (default) or Unsend for both people ([everyone]).
+  Future<void> deleteMessage(String peer, String id, {bool everyone = false}) =>
+      dio.delete('${peerPath(peer)}/messages/$id',
+          queryParameters: {'scope': everyone ? 'everyone' : 'me'});
+
+  Future<void> pin(String peer, String id, bool pinned) =>
+      dio.put('${peerPath(peer)}/messages/$id/pin', data: {'pinned': pinned});
+
+  /// Forwards a message (text + attachments) to other people; returns the
+  /// usernames it reached.
+  Future<List<String>> forward(String peer, String id, List<String> to) async {
+    final data = (await dio
+            .post('${peerPath(peer)}/messages/$id/forward', data: {'to': to}))
+        .data as Map;
+    return [for (final u in data['sent'] as List) u.toString()];
+  }
+
+  /// People you can send to, ordered recent chats → connections → suggested.
+  Future<List<Map<String, dynamic>>> destinations() async => [
+        for (final p in ((await dio.get('/sharing/destinations')).data
+                as Map)['people'] as List? ??
+            const [])
+          Map<String, dynamic>.from(p as Map),
+      ];
 
   /// Instagram-style message reaction; the backend toggles the emoji for
   /// this user and returns the message's updated reaction list.

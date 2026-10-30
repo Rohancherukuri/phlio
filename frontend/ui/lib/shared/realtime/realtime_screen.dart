@@ -120,8 +120,15 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
     await previous?.dispose();
     if (!mounted) return;
     final next = lk.Room(
-        roomOptions:
-            const lk.RoomOptions(adaptiveStream: true, dynacast: true));
+        roomOptions: const lk.RoomOptions(
+            adaptiveStream: true,
+            dynacast: true,
+            defaultAudioCaptureOptions: lk.AudioCaptureOptions(
+              noiseSuppression: true,
+              echoCancellation: true,
+              autoGainControl: true,
+              highPassFilter: true,
+            )));
     room = next;
     next.addListener(changed);
     try {

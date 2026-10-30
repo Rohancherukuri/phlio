@@ -37,3 +37,17 @@ backend/media/demo_graph/
 backend/media/licensed_social/
 # Downloaded test portraits; regenerate with add_profile_test_followers.py
 backend/media/test_followers/
+
+# Runtime uploads and recordings (written while the backend / seeded Spaces
+# run — tracking them makes `git add` fail with "unstable object source data")
+backend/media/space_recordings/
+backend/media/live_recordings/
+backend/media/post_uploads/
+backend/media/rooms/
+backend/media/social/
+backend/media/social_comments/
+*.pid
+*.log
+
+# Full-length demo films are far over GitHub's 100 MB limit; keep them local.
+backend/media/stream_films/

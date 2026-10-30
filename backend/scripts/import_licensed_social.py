@@ -66,7 +66,7 @@ async def main():
                 caption = f'Tears of Steel · film study {i+1:02}: {"a still from the scene" if j == 1 else "watch the scene"}. {CREDIT}'
                 post = await c.social_repository.get_post(pid)
                 if post:
-                    await c.social_repository._db.merge('post:' + pid, dict(text=caption, tags=['openfilm', 'cinema', 'demo'],
+                    await c.social_repository._db.merge('post:' + pid, dict(text=caption, tags=['openfilm', 'cinema', 'tearsofsteel'],
                         media=[dict(kind='image' if j == 1 else 'video', url=thumb if j == 1 else '/media/licensed_social/' + source.name, thumbnail_url=thumb)]))
                     obj = await c.graph.store.get(key('phlio_object', 'social', pid))
                     if obj:

@@ -30,6 +30,7 @@ def settings(tmp_path) -> Settings:
         livekit_api_secret="",
         news_ingestion_enabled=False,
         messaging_database=":memory:",
+        pay_gateway_database=str(tmp_path / "pay.sqlite3"),
         social_video_database=":memory:",
         music_database=str(tmp_path / "music.sqlite3"),
         media_root=str(tmp_path / "media"),

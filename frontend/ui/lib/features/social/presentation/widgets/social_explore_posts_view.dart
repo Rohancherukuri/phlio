@@ -42,17 +42,47 @@ const _fallbackCategory = 'Lifestyle';
 const Map<String, List<String>> _categoryKeywords = {
   'News': ['news', 'politics', 'world', 'breaking', 'election', 'economy'],
   'Sports': [
-    'sport', 'sports', 'cricket', 'football', 'soccer', 'nba', 'ipl',
-    'tennis', 'f1', 'fitness', 'gym', 'running'
+    'sport',
+    'sports',
+    'cricket',
+    'football',
+    'soccer',
+    'nba',
+    'ipl',
+    'tennis',
+    'f1',
+    'fitness',
+    'gym',
+    'running'
   ],
   'Entertainment': [
-    'entertainment', 'movie', 'movies', 'film', 'tv', 'series', 'netflix',
-    'celebrity', 'bollywood', 'hollywood', 'anime', 'meme', 'memes', 'comedy'
+    'entertainment',
+    'movie',
+    'movies',
+    'film',
+    'tv',
+    'series',
+    'netflix',
+    'celebrity',
+    'bollywood',
+    'hollywood',
+    'anime',
+    'meme',
+    'memes',
+    'comedy'
   ],
   'Music': ['music', 'song', 'songs', 'album', 'concert', 'spotify', 'band'],
   'Tech': [
-    'tech', 'ai', 'coding', 'code', 'startup', 'gadgets', 'flutter',
-    'programming', 'science', 'design'
+    'tech',
+    'ai',
+    'coding',
+    'code',
+    'startup',
+    'gadgets',
+    'flutter',
+    'programming',
+    'science',
+    'design'
   ],
   'Gaming': ['gaming', 'game', 'games', 'esports', 'playstation', 'xbox'],
   'Food': ['food', 'recipe', 'cooking', 'coffee', 'restaurant', 'foodie'],
@@ -91,14 +121,13 @@ class _Topic {
     return ranked.isEmpty ? _fallbackCategory : ranked.first.key;
   }
 
-  DateTime get latest => posts
-      .map((p) => p.createdAt)
-      .reduce((a, b) => a.isAfter(b) ? a : b);
+  DateTime get latest =>
+      posts.map((p) => p.createdAt).reduce((a, b) => a.isAfter(b) ? a : b);
 
-  PostEntity get lead => ([...posts]..sort((a, b) =>
-          (b.likeCount + b.commentCount)
+  PostEntity get lead =>
+      ([...posts]..sort((a, b) => (b.likeCount + b.commentCount)
               .compareTo(a.likeCount + a.commentCount)))
-      .first;
+          .first;
 
   List<String> get authors => [
         for (final id in posts.map((p) => p.authorId).toSet()) id
@@ -265,8 +294,8 @@ class _CategoryTabs extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         height: 46,
         decoration: const BoxDecoration(
-            border: Border(
-                bottom: BorderSide(color: PhlioColors.borderSubtle))),
+            border:
+                Border(bottom: BorderSide(color: PhlioColors.borderSubtle))),
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.sm),
@@ -279,7 +308,10 @@ class _CategoryTabs extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Column(
+                // Horizontal lists leave width unbounded. Measure the label
+                // before stretching the underline to the same finite width.
+                child: IntrinsicWidth(
+                    child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -301,7 +333,7 @@ class _CategoryTabs extends StatelessWidget {
                           borderRadius: BorderRadius.circular(2)),
                     ),
                   ],
-                ),
+                )),
               ),
             );
           },
@@ -336,8 +368,8 @@ class _EmptyNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
       padding: const EdgeInsets.all(PhlioSpacing.xxl),
-      child: Text(text,
-          textAlign: TextAlign.center, style: PhlioTypography.body));
+      child:
+          Text(text, textAlign: TextAlign.center, style: PhlioTypography.body));
 }
 
 /// Headline row: lead post as the title, then a stack of up to three
@@ -389,8 +421,8 @@ class _TrendRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final muted =
-        PhlioTypography.caption.copyWith(color: PhlioColors.textMuted, fontSize: 13);
+    final muted = PhlioTypography.caption
+        .copyWith(color: PhlioColors.textMuted, fontSize: 13);
     return InkWell(
       onTap: () => _openTopic(context, topic),
       child: Padding(

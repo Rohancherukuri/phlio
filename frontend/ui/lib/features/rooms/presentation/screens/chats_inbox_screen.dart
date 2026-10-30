@@ -69,12 +69,35 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
     }
   }
 
+  String _sharedNoun(String path, String text) {
+    final platform = path.split('/').first;
+    final ref = path.substring(platform.length + 1);
+    if (platform == 'social') {
+      if (ref.contains('clip')) return 'a clip';
+      if (ref.contains('video')) return 'a video';
+      return 'a post';
+    }
+    return switch (platform) {
+      'shop' => 'a product',
+      'book' => 'an event',
+      'stream' => 'something to watch',
+      'news' => 'an article',
+      _ => 'a post',
+    };
+  }
+
   String label(String value) => value[0].toUpperCase() + value.substring(1);
   String preview(Map item) {
     final message = item['last_message'] as Map?;
     if (message == null) return 'Start a conversation';
     final text = message['text'] as String? ?? '';
-    final content = text.isNotEmpty
+    // Shared Phlio objects read like Instagram: "Sent a clip", not the link.
+    final shared = sharedContentPath(text);
+    final mine = message['sender_id'] ==
+        ref.read(authControllerProvider).valueOrNull?.id;
+    final content = shared != null
+        ? '${mine ? 'You sent' : 'Sent'} ${_sharedNoun(shared, text)}'
+        : text.isNotEmpty
         ? text
         : ((message['attachments'] as List?)?.isNotEmpty == true
             ? 'Sent an attachment'

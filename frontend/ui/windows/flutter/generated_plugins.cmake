@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_webrtc
   livekit_client
   record_windows
+  rive_common
   share_plus
   url_launcher_windows
   video_player_win

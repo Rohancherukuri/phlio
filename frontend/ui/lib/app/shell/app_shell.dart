@@ -6,6 +6,7 @@ import '../../shared/content/playlists_screen.dart';
 import '../../features/shop/presentation/screens/cart_sheet.dart';
 import '../../features/shop/presentation/controllers/cart_controller.dart';
 import '../../features/social/presentation/widgets/video_publish_sheet.dart';
+import '../../features/social/presentation/widgets/moment_composer.dart';
 // The persistent app chrome: platform-aware bottom navigation wrapping the
 // three shell tabs — Home (current platform's home), Explore (current
 // platform's discovery), and Profile (shared across all platforms). The
@@ -287,10 +288,13 @@ class AppShell extends ConsumerWidget {
             icon: Icons.photo_library_rounded,
             color: PhlioColors.domainNews,
             title: 'New moment',
-            subtitle: 'Save a memory to your timeline',
+            subtitle: 'Share a photo or video for 24 hours',
             onTap: () {
+              final navigator = Navigator.of(context, rootNavigator: true);
               Navigator.pop(context);
-              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MemoriesScreen(kind: 'moment', openCamera: true)));
+              navigator.push(MaterialPageRoute<void>(
+                  fullscreenDialog: true,
+                  builder: (_) => const MomentComposerScreen()));
             },
           ),
           _CreateOption(
@@ -298,10 +302,8 @@ class AppShell extends ConsumerWidget {
             color: PhlioColors.domainArt,
             title: 'New experience',
             subtitle: 'Start a collaborative story',
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MemoriesScreen(kind: 'experience', openCamera: true)));
-            },
+            // On hold for now: show a coming-soon message only.
+            onTap: comingSoon('Experiences'),
           ),
           _CreateOption(
             icon: Icons.photo_camera_rounded,

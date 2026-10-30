@@ -8,12 +8,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/material.dart';
+import '../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/config/app_config.dart';
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/widgets/phlio_card.dart';
+import '../../design_system/widgets/foxy_stickers.dart';
 import '../../design_system/widgets/phlio_fox.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
@@ -102,6 +104,9 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   final expandedThreads = <String>{};
   String? path, sticker, error;
   Map? replying;
+
+  /// Your own comment or reply being edited in the composer.
+  Map? editing;
   bool sending = false;
   String? pickerKind;
 
@@ -223,7 +228,11 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                               fontWeight: FontWeight.w700, fontSize: 13)),
                       Text(age(item),
                           style: const TextStyle(
-                              color: Colors.white54, fontSize: 12))
+                              color: Colors.white54, fontSize: 12)),
+                      if (item['edited_at'] != null)
+                        const Text('Edited',
+                            style: TextStyle(
+                                color: Colors.white38, fontSize: 12)),
                     ]),
                     if ((item['text'] as String? ?? '').isNotEmpty)
                       Padding(
@@ -267,7 +276,13 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                 minimumSize: const Size(0, 32),
                                 foregroundColor: Colors.white60),
                             onPressed: () {
-                              setState(() => replying = item);
+                              setState(() {
+                                replying = item;
+                                if (editing != null) {
+                                  editing = null;
+                                  text.clear();
+                                }
+                              });
                               composerFocus.requestFocus();
                             },
                             child: const Text('Reply')),
@@ -352,11 +367,18 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             ListTile(
-                                                leading: const Icon(
-                                                    Icons.send_outlined),
+                                                leading:
+                                                    const PhlioSendIcon(),
                                                 title: const Text('Share'),
                                                 onTap: () => Navigator.pop(
                                                     dialogContext, 'share')),
+                                            if (mine)
+                                              ListTile(
+                                                  leading: const Icon(
+                                                      Icons.edit_outlined),
+                                                  title: const Text('Edit'),
+                                                  onTap: () => Navigator.pop(
+                                                      dialogContext, 'edit')),
                                             if (mine)
                                               ListTile(
                                                   leading: const Icon(
@@ -394,6 +416,20 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
         await SharePlus.instance.share(ShareParams(
             text:
                 '${(item['author'] as Map)['username']}: ${item['text']}\nphlio://app/shared/${widget.contentId.contains('/') ? widget.contentId : 'social/${widget.contentId}'}'));
+      } else if (action == 'edit') {
+        final draft = item['text'] as String? ?? '';
+        setState(() {
+          editing = item;
+          replying = null;
+          attachPanel = null;
+          pickerKind = null;
+          path = null;
+          sticker = null;
+          text.value = TextEditingValue(
+              text: draft,
+              selection: TextSelection.collapsed(offset: draft.length));
+        });
+        composerFocus.requestFocus();
       } else if (action == 'delete') {
         final confirmed = await showDialog<bool>(
             context: context,
@@ -458,6 +494,27 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
         child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (editing != null)
+                Row(children: [
+                  const Icon(Icons.edit_outlined,
+                      size: 16, color: Colors.white60),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: Text(
+                          editing!['parent_id'] != null
+                              ? 'Editing your reply'
+                              : 'Editing your comment',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white70))),
+                  IconButton(
+                      tooltip: 'Cancel edit',
+                      onPressed: () => setState(() {
+                            editing = null;
+                            text.clear();
+                          }),
+                      icon: const Icon(Icons.close, size: 18))
+                ]),
               if (replying != null)
                 Row(children: [
                   Expanded(
@@ -557,7 +614,12 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                               asset: 'assets/images/chat_icons/image.svg',
                               onTap: sending ? null : pickPhoto),
                           _ComposerIcon(
-                              tooltip: 'GIFs and stickers',
+                              tooltip: 'Foxy stickers',
+                              icon: Icons.emoji_emotions_outlined,
+                              asset: 'assets/images/chat_icons/sticker.svg',
+                              onTap: sending ? null : pickFoxySticker),
+                          _ComposerIcon(
+                              tooltip: 'GIFs',
                               icon: Icons.gif_box_outlined,
                               active: pickerKind != null,
                               onTap: sending ? null : () => pickGiphy('gif')),
@@ -622,6 +684,18 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
     widget.onPickerChanged?.call(false);
   }
 
+  Future<void> pickFoxySticker() async {
+    FocusScope.of(context).unfocus();
+    if (pickerKind != null) closePicker();
+    setState(() => attachPanel = null);
+    final id = await showFoxyStickerSheet(context);
+    if (id == null || !mounted) return;
+    setState(() {
+      sticker = id;
+      path = null;
+    });
+  }
+
   Future<void> pickGiphy(String kind) async {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -679,7 +753,44 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
     });
   }
 
+  Future<void> saveEdit() async {
+    final item = editing!;
+    final value = text.text.trim();
+    final hasMedia = item['image_url'] != null || item['sticker_id'] != null;
+    if (sending || (value.isEmpty && !hasMedia)) return;
+    if (value == (item['text'] as String? ?? '').trim()) {
+      setState(() {
+        editing = null;
+        text.clear();
+      });
+      return;
+    }
+    setState(() {
+      sending = true;
+      error = null;
+    });
+    try {
+      await getIt<ApiClient>().dio.patch(
+          '${commentUrl(widget.contentId)}/${item['id']}',
+          queryParameters: commentQuery(widget.contentId),
+          data: FormData.fromMap({'text': value}));
+      refreshCommentCounts(ref, widget.contentId);
+      if (mounted)
+        setState(() {
+          editing = null;
+          text.clear();
+          people = [];
+        });
+    } catch (_) {
+      if (mounted)
+        setState(() => error = 'Could not save your edit. Try again.');
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
   Future<void> send() async {
+    if (editing != null) return saveEdit();
     if (sending ||
         (text.text.trim().isEmpty && path == null && sticker == null)) return;
     setState(() {

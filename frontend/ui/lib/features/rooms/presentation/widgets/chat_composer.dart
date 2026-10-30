@@ -1,3 +1,4 @@
+import 'dm_media_studio.dart';
 import '../../../../shared/giphy/giphy_picker.dart';
 // Shared composer with audience-specific attachment menus and validation.
 // Public creator chat supports text and pack GIFs/stickers; private Messages
@@ -9,6 +10,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 import 'package:image_picker/image_picker.dart';
@@ -260,11 +262,13 @@ class ChatComposer extends StatefulWidget {
     required this.onSendFiles,
     required this.onSendVoice,
     super.key,
+    this.dmPeer,
     this.compact = false,
     this.audience = ChatAudience.rooms,
     this.surfaceColor = PhlioColors.surfaceInput,
   });
 
+  final String? dmPeer;
   final String hint;
 
   /// Plain text message.
@@ -418,6 +422,21 @@ class _ChatComposerState extends State<ChatComposer> {
   Future<void> _editAttachment(int index) async {
     if (_isSending) return;
     final original = _staged[index];
+    if (widget.dmPeer != null) {
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DmMediaStudio(
+                peer: widget.dmPeer!,
+                initial: original,
+                onSend: (edited) async {
+                  await widget.onSendFiles([edited], '');
+                  // The edit replaces the original that was waiting here.
+                  if (mounted && _staged.contains(original)) {
+                    setState(() => _staged.remove(original));
+                  }
+                },
+              )));
+      return;
+    }
     final edited = await Navigator.of(context).push<StagedAttachment>(
       MaterialPageRoute(
         builder: (_) => MessageMediaEditor(attachment: original),
@@ -438,10 +457,27 @@ class _ChatComposerState extends State<ChatComposer> {
         await showAttachmentTypeMenu(context, audience: widget.audience);
     if (pickedType == null) return; // sheet dismissed
 
-    // Stickers and GIFs come from the bundled Foxy pack — no file system.
-    if (pickedType == 'Sticker' || pickedType == 'GIF') {
-      final item = await showGiphyPicker(context,
-          kind: pickedType == 'GIF' ? 'gif' : 'sticker');
+    // Stickers come from the Foxy sheet (animated Foxy, the pack, or a
+    // GIPHY search from inside it); GIFs from GIPHY. No file system.
+    if (pickedType == 'Sticker') {
+      final id = await showFoxyStickerSheet(context);
+      if (id == null || !mounted) return;
+      final giphyKind = id.startsWith('giphy:') ? id.split(':')[1] : null;
+      setState(() {
+        _staged.add(
+          StagedAttachment(
+            kind: giphyKind ?? 'sticker',
+            name: giphyKind != null
+                ? 'GIPHY'
+                : (FoxyPack.resolve(id)?.label ?? 'Foxy sticker'),
+            packId: id,
+          ),
+        );
+      });
+      return;
+    }
+    if (pickedType == 'GIF') {
+      final item = await showGiphyPicker(context, kind: 'gif');
       if (item == null || !mounted) return;
       setState(() {
         _staged.add(
@@ -460,6 +496,7 @@ class _ChatComposerState extends State<ChatComposer> {
       // supports it, else fall back to the full safe set. Multi-select
       // everywhere; bytes stay on disk (Dio streams the upload).
       final (type, extensions) = switch (pickedType) {
+        'Media' => (FileType.media, const <String>[]),
         'Image' => (FileType.image, const <String>[]),
         'Video' => (FileType.video, const <String>[]),
         'Audio' => (FileType.audio, const <String>[]),
@@ -554,7 +591,8 @@ class _ChatComposerState extends State<ChatComposer> {
       final path =
           '${Directory.systemTemp.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc),
+        const RecordConfig(
+            encoder: AudioEncoder.aacLc, noiseSuppress: true, echoCancel: true),
         path: path,
       );
       setState(() {
@@ -620,13 +658,13 @@ class _ChatComposerState extends State<ChatComposer> {
             widget.compact ? PhlioSpacing.sm : PhlioSpacing.lg,
           ),
           child: Container(
-            padding: widget.audience == ChatAudience.directMessage &&
-                    !_isRecording
-                ? const EdgeInsets.fromLTRB(6, 6, 8, 6)
-                : EdgeInsets.symmetric(
-                    horizontal: PhlioSpacing.md,
-                    vertical: widget.compact ? 4 : 6,
-                  ),
+            padding:
+                widget.audience == ChatAudience.directMessage && !_isRecording
+                    ? const EdgeInsets.fromLTRB(6, 6, 8, 6)
+                    : EdgeInsets.symmetric(
+                        horizontal: PhlioSpacing.md,
+                        vertical: widget.compact ? 4 : 6,
+                      ),
             decoration: widget.audience == ChatAudience.directMessage
                 ? BoxDecoration(
                     // Messages: borderless pill, like the reference.
@@ -965,7 +1003,7 @@ class _ChatComposerState extends State<ChatComposer> {
       else ...[
         action('Voice message', 'mic', _startRecording),
         action('Photos and videos', 'image',
-            () => _pickAttachments(type: 'Image')),
+            () => _pickAttachments(type: 'Media')),
         action('Stickers', 'sticker', () {
           _focusNode.unfocus();
           _pickAttachments(type: 'Sticker');
@@ -1172,8 +1210,7 @@ class _ChatComposerState extends State<ChatComposer> {
                       color: PhlioColors.textOnBrand,
                     ),
                   )
-                : Icon(
-                    Icons.send_rounded,
+                : PhlioSendIcon(
                     size: 17,
                     color: _canSend
                         ? PhlioColors.textOnBrand
@@ -1220,10 +1257,11 @@ class _ChatComposerState extends State<ChatComposer> {
               gradient: PhlioColors.sunsetGradient,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.send_rounded,
-              color: PhlioColors.textOnBrand,
-              size: 16,
+            child: const Center(
+              child: PhlioSendIcon(
+                color: PhlioColors.textOnBrand,
+                size: 16,
+              ),
             ),
           ),
         ),
@@ -1277,12 +1315,33 @@ class _StagedChip extends StatelessWidget {
                 ),
                 if (onEdit != null)
                   Positioned(
-                    top: 0,
-                    left: 0,
-                    child: IconButton.filledTonal(
-                      tooltip: 'Edit media',
-                      onPressed: onEdit,
-                      icon: const Icon(Icons.edit, size: 18),
+                    left: 4,
+                    bottom: 4,
+                    child: Tooltip(
+                      message: 'Edit in Studio',
+                      child: Material(
+                        color: Colors.black.withValues(alpha: .62),
+                        shape: const StadiumBorder(),
+                        child: InkWell(
+                          customBorder: const StadiumBorder(),
+                          onTap: onEdit,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 5),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.content_cut_rounded,
+                                  size: 15, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text('Edit',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800)),
+                            ]),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 Positioned(

@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
+import '../../../../design_system/widgets/phlio_card.dart';
 import 'content_owner_menu.dart';
 import '../../../../shared/music/song_picker.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 import 'video_thumbnail.dart';
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
@@ -34,6 +39,8 @@ class _SocialClipsViewState extends ConsumerState<SocialClipsView> {
   String catalogKey = '';
   PageController pages = PageController();
   bool autoScroll = false;
+  bool friendsOnly = false;
+  bool followingOnly = false;
   bool _startApplied = false;
   @override
   void dispose() {
@@ -66,7 +73,33 @@ class _SocialClipsViewState extends ConsumerState<SocialClipsView> {
                 final i = only.indexOf(v.id);
                 return i >= 0 ? i : only.indexOf(v.contentId ?? '');
               }
+
               clips.sort((a, b) => order(a).compareTo(order(b)));
+            }
+            final friendLikes =
+                ref.watch(friendsLikedClipsProvider).valueOrNull ??
+                    <String, int>{};
+            final following =
+                ref.watch(creatorFollowingProvider).valueOrNull ?? <String>{};
+            if (only == null) {
+              if (followingOnly) {
+                clips = clips
+                    .where((clip) => following.contains(clip.creator))
+                    .toList();
+              }
+              final original = {
+                for (var i = 0; i < clips.length; i++) clips[i].id: i
+              };
+              if (friendsOnly)
+                clips =
+                    clips.where((c) => (friendLikes[c.id] ?? 0) > 0).toList();
+              clips.sort((a, b) {
+                final score =
+                    (friendLikes[b.id] ?? 0).compareTo(friendLikes[a.id] ?? 0);
+                return score != 0
+                    ? score
+                    : original[a.id]!.compareTo(original[b.id]!);
+              });
             }
             final nextKey = clips.map((clip) => clip.id).join(',');
             if (catalogKey != nextKey) {
@@ -95,32 +128,120 @@ class _SocialClipsViewState extends ConsumerState<SocialClipsView> {
                 });
               }
             }
-            if (clips.isEmpty)
-              return Center(
-                  child: Text(widget.query.isEmpty
-                      ? 'No clips yet.'
-                      : 'No clips match your search.'));
-            return PageView.builder(
-                key: ValueKey(catalogKey),
-                controller: pages,
-                scrollDirection: Axis.vertical,
-                itemCount: clips.length,
-                onPageChanged: (i) => setState(() => selected = i),
-                itemBuilder: (_, i) => _Reel(
-                    key: ValueKey(clips[i].id),
-                    clip: clips[i],
-                    active: i == selected,
-                    autoScroll: autoScroll,
-                    onAutoScroll: (value) => setState(() => autoScroll = value),
-                    onEnded: () {
-                      if (mounted &&
-                          selected == i &&
-                          i + 1 < clips.length &&
-                          pages.hasClients)
-                        pages.animateToPage(i + 1,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic);
-                    }));
+            final empty = Center(
+                child: Text(widget.query.isEmpty
+                    ? (followingOnly
+                        ? 'No clips from people you follow yet.'
+                        : friendsOnly
+                            ? 'No friends-liked clips yet.'
+                            : 'No clips yet.')
+                    : 'No clips match your search.'));
+            return Stack(children: [
+              Positioned.fill(
+                  child: clips.isEmpty
+                      ? empty
+                      : PageView.builder(
+                          key: ValueKey(catalogKey),
+                          controller: pages,
+                          scrollDirection: Axis.vertical,
+                          itemCount: clips.length,
+                          onPageChanged: (i) => setState(() => selected = i),
+                          itemBuilder: (_, i) => _Reel(
+                              key: ValueKey(clips[i].id),
+                              clip: clips[i],
+                              active: i == selected,
+                              autoScroll: autoScroll,
+                              onAutoScroll: (value) =>
+                                  setState(() => autoScroll = value),
+                              onEnded: () {
+                                if (mounted &&
+                                    selected == i &&
+                                    i + 1 < clips.length &&
+                                    pages.hasClients)
+                                  pages.animateToPage(i + 1,
+                                      duration:
+                                          const Duration(milliseconds: 300),
+                                      curve: Curves.easeOutCubic);
+                              }))),
+              Positioned(
+                  top: 8,
+                  left: 48,
+                  right: 48,
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        PopupMenuButton<bool>(
+                          tooltip: 'Clips feed',
+                          position: PopupMenuPosition.under,
+                          offset: const Offset(-24, 8),
+                          color: const Color(0xFF24272B),
+                          surfaceTintColor: Colors.transparent,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24)),
+                          constraints: const BoxConstraints(minWidth: 195),
+                          onSelected: (value) => setState(() {
+                            followingOnly = value;
+                            friendsOnly = false;
+                          }),
+                          itemBuilder: (_) => [
+                            PopupMenuItem(
+                                value: !followingOnly,
+                                height: 58,
+                                child: Row(children: [
+                                  const Icon(Icons.people_outline_rounded,
+                                      color: Colors.white, size: 28),
+                                  const SizedBox(width: 14),
+                                  Text(followingOnly ? 'For you' : 'Following',
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 18)),
+                                ])),
+                          ],
+                          child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('Clips',
+                                        style: TextStyle(
+                                            color: friendsOnly
+                                                ? Colors.white60
+                                                : Colors.white,
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.w700)),
+                                    const Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        color: Colors.white,
+                                        size: 18),
+                                  ])),
+                        ),
+                        const SizedBox(width: 18),
+                        Flexible(
+                            child: TextButton(
+                                style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4)),
+                                onPressed: () => setState(() {
+                                      friendsOnly = !friendsOnly;
+                                      followingOnly = false;
+                                    }),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('Friends',
+                                          style: TextStyle(
+                                              color: friendsOnly
+                                                  ? Colors.white
+                                                  : Colors.white60,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w700)),
+                                      const SizedBox(width: 8),
+                                      const _FollowingStack(),
+                                    ])))),
+                      ])),
+            ]);
           });
 }
 
@@ -149,6 +270,13 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
       busy = false,
       foreground = true;
   double speed = 1;
+  bool boosting = false;
+  Future<void> boost(bool enabled) async {
+    if (enabled && (!ready || !widget.active)) return;
+    if (mounted) setState(() => boosting = enabled);
+    await player?.setPlaybackSpeed(enabled ? 2 : speed);
+  }
+
   bool controlsOpen = false, advanced = false;
   String get path => 'social/${widget.clip.id}';
   @override
@@ -181,6 +309,7 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
     final play =
         widget.active && TickerMode.of(context) && foreground && !controlsOpen;
     if (!play) {
+      if (boosting) await boost(false);
       await player?.pause();
       return;
     }
@@ -396,7 +525,7 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
           IconButton(
               tooltip: label,
               onPressed: tap,
-              icon: Icon(icon,
+              icon: PhlioIcon(icon,
                   color: icon == Icons.favorite
                       ? const Color(0xFFFF2851)
                       : Colors.white,
@@ -479,6 +608,29 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
                                   mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onLongPressStart: (_) => boost(true),
+                                  onLongPressEnd: (_) => boost(false),
+                                  onLongPressCancel: () => boost(false),
+                                  child: Semantics(
+                                      label: 'Hold for double speed',
+                                      child: SizedBox(
+                                          width: 60,
+                                          height: 48,
+                                          child: Center(
+                                              child: boosting
+                                                  ? const Text('2x',
+                                                      style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold))
+                                                  : const Icon(
+                                                      Icons
+                                                          .fast_forward_rounded,
+                                                      color: Colors.white54,
+                                                      size: 22)))),
+                                ),
                                 // Like: liker preview to the left of the
                                 // heart; the heart stays in the rail column.
                                 Row(
@@ -486,13 +638,6 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 14),
-                                          child: LikersAvatarStack(
-                                              path: path,
-                                              size: 20,
-                                              ringColor: Colors.black54)),
                                       rail(
                                           data?['liked_by_me'] == true
                                               ? Icons.favorite
@@ -520,7 +665,7 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
                                         data?['reposts_count'] as num? ?? 0),
                                     () => action('reposted')),
                                 rail(
-                                    Icons.ios_share_rounded,
+                                    PhlioIcons.send,
                                     formatEngagementCount(
                                         data?['shares_count'] as num? ?? 0),
                                     () => sheet(false)),
@@ -533,6 +678,13 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
                                     () => action('saved')),
                                 rail(Icons.notes, '', about),
                               ])))),
+                  // "Liked by people you follow" bubbles for 3s at start.
+                  Positioned(
+                      left: 16,
+                      bottom: 190,
+                      child: IgnorePointer(
+                          child: _LikedByBubbles(
+                              path: path, active: widget.active))),
                   Positioned(
                       top: 8,
                       right: 8,
@@ -577,6 +729,24 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
                                     color: Colors.white,
                                     fontSize: 14,
                                     height: 1.4)),
+                            if (widget.clip.tags.isNotEmpty ||
+                                RegExp(r'#[^\s#]+').hasMatch(
+                                    '${widget.clip.title} ${widget.clip.description}'))
+                              Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(
+                                      {
+                                        ...widget.clip.tags.map((t) =>
+                                            t.startsWith('#') ? t : '#$t'),
+                                        ...RegExp(r'#[^\s#]+')
+                                            .allMatches(
+                                                '${widget.clip.title} ${widget.clip.description}')
+                                            .map((m) => m.group(0)!)
+                                      }.join(' '),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 13))),
                             const SizedBox(height: 6),
                             ContentSongBadge(
                                 kind: 'clip', target: widget.clip.id),
@@ -757,7 +927,7 @@ class _ClipAboutState extends State<_ClipAbout> {
                                       height: 22,
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2))
-                                  : const Icon(Icons.send_outlined))
+                                  : const PhlioSendIcon())
                         ]),
                         if (answer != null)
                           Padding(
@@ -790,4 +960,183 @@ class _ClipAboutState extends State<_ClipAbout> {
                                 style: TextStyle(color: Colors.redAccent)),
                             onTap: () => Navigator.pop(context, 'report')),
                       ])))));
+}
+
+/// People you follow, as a small overlapping stack beside "Friends".
+final _followingPreviewProvider =
+    FutureProvider.autoDispose<List<Map>>((ref) async {
+  try {
+    final data =
+        (await getIt<ApiClient>().dio.get('/social/connections')).data as Map;
+    // People you follow; else friends, else followers.
+    final following = (data['following'] as List? ?? const []).cast<Map>();
+    if (following.isNotEmpty) return following;
+    final friends = [
+      for (final f in (data['friends'] as List? ?? const []))
+        if (f is Map && f['peer'] is Map) f['peer'] as Map
+    ];
+    if (friends.isNotEmpty) return friends;
+    final followers = (data['followers'] as List? ?? const []).cast<Map>();
+    if (followers.isNotEmpty) return followers;
+    // Brand-new account: creators from the moments rail.
+    final feed = (await getIt<ApiClient>().dio.get('/social/moments/feed')).data
+        as List;
+    return [for (final g in feed) (g as Map)['author'] as Map];
+  } catch (_) {
+    return const [];
+  }
+});
+
+class _FollowingStack extends ConsumerWidget {
+  const _FollowingStack();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final people =
+        (ref.watch(_followingPreviewProvider).valueOrNull ?? const []).take(3).toList();
+    if (people.isEmpty) return const SizedBox.shrink();
+    const size = 30.0;
+    return SizedBox(
+      width: size + (people.length - 1) * size * .62,
+      height: size,
+      child: Stack(clipBehavior: Clip.none, children: [
+        for (var i = people.length - 1; i >= 0; i--)
+          Positioned(
+            left: i * size * .62,
+            child: Container(
+              width: size,
+              height: size,
+              padding: const EdgeInsets.all(1.5),
+              decoration:
+                  const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
+              child: PhlioAvatar(
+                  name: people[i]['display_name'] as String? ?? '',
+                  imageUrl: people[i]['avatar_url'] as String?,
+                  size: size - 3,
+                  showMomentRing: false),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Instagram-style floating faces of people you follow who liked the clip,
+/// each with a heart badge. Up to three; shown for 3 seconds when the clip
+/// starts, then fade away.
+class _LikedByBubbles extends ConsumerStatefulWidget {
+  const _LikedByBubbles({required this.path, required this.active});
+  final String path;
+  final bool active;
+  @override
+  ConsumerState<_LikedByBubbles> createState() => _LikedByBubblesState();
+}
+
+class _LikedByBubblesState extends ConsumerState<_LikedByBubbles> {
+  bool visible = false;
+  int generation = 0;
+  Timer? hide;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LikedByBubbles old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) _start();
+    if (!widget.active && old.active) {
+      hide?.cancel();
+      visible = false;
+    }
+  }
+
+  void _start() {
+    hide?.cancel();
+    setState(() {
+      visible = true;
+      generation++;
+    });
+    hide = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => visible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    hide?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = ref.watch(engagementProvider(widget.path)).valueOrNull;
+    final me = ref.watch(authControllerProvider).valueOrNull?.id;
+    List<Map> pick(String key) => [
+          for (final p in (data?[key] as List? ?? const []))
+            if (p is Map && p['id'] != me) p
+        ];
+    var people = pick('following_avatars');
+    if (people.isEmpty) people = pick('follower_avatars');
+    if (people.isEmpty) people = pick('avatars');
+    people = people.take(3).toList();
+    if (people.isEmpty) return const SizedBox.shrink();
+    const offsets = [Offset(0, 14), Offset(58, -10), Offset(118, 20)];
+    return AnimatedOpacity(
+      opacity: visible ? 1 : 0,
+      duration: const Duration(milliseconds: 420),
+      child: SizedBox(
+        width: 180,
+        height: 86,
+        child: Stack(clipBehavior: Clip.none, children: [
+          for (var i = 0; i < people.length; i++)
+            Positioned(
+              left: offsets[i].dx,
+              top: 10 + offsets[i].dy,
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey('bubble-$generation-$i'),
+                tween: Tween(begin: 0, end: 1),
+                duration: Duration(milliseconds: 520 + i * 180),
+                curve: Interval(i * .25, 1, curve: Curves.easeOutBack),
+                builder: (_, t, child) => Opacity(
+                  opacity: t.clamp(0.0, 1.0),
+                  child: Transform.scale(scale: .4 + .6 * t, child: child),
+                ),
+                child: Stack(clipBehavior: Clip.none, children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 10)],
+                    ),
+                    child: PhlioAvatar(
+                        name: people[i]['display_name'] as String? ?? '',
+                        imageUrl: people[i]['avatar_url'] as String?,
+                        size: 48,
+                        showMomentRing: false),
+                  ),
+                  Positioned(
+                    right: -4,
+                    bottom: -2,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                            colors: [Color(0xFFFF5A8A), Color(0xFFE795D7)]),
+                      ),
+                      child: const Icon(Icons.favorite,
+                          size: 13, color: Colors.white),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
 }

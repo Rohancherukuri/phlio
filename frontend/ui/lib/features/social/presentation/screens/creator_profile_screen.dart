@@ -11,6 +11,7 @@ import '../../../profile/presentation/widgets/profile_posts.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../controllers/video_library.dart';
 import '../widgets/social_videos_view.dart';
+import '../../../../shared/moments/moments.dart';
 
 /// Creator profile screen — opened by tapping any creator's avatar (video
 /// cards, live rail, stories strip). A replica of the own-profile layout:
@@ -359,28 +360,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           ],
                         ),
                       ),
-                      if (profile.moments.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                              PhlioSpacing.lg,
-                              PhlioSpacing.xl,
-                              PhlioSpacing.lg,
-                              PhlioSpacing.sm),
-                          child: Text('Moments', style: PhlioTypography.title),
-                        ),
-                        SizedBox(
-                          height: 104,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: PhlioSpacing.lg),
-                            children: [
-                              for (var i = 0; i < profile.moments.length; i++)
-                                _moment(profile.moments[i], i),
-                            ],
-                          ),
-                        ),
-                      ],
+                      _CreatorHighlights(user: profile.handle),
                     ],
                   ),
                 ),
@@ -524,8 +504,14 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
   Widget _avatar(CreatorProfile profile, double size) {
     if (profile.avatarUrl != null || profile.avatarAsset.isEmpty) {
-      return PhlioAvatar(
-          name: profile.displayName, imageUrl: profile.avatarUrl, size: size);
+      return MomentRingAvatar(
+        userId: profile.handle,
+        size: size,
+        plain: PhlioAvatar(
+            name: profile.displayName, imageUrl: profile.avatarUrl, size: size),
+        ringed: (inner) => PhlioAvatar(
+            name: profile.displayName, imageUrl: profile.avatarUrl, size: inner),
+      );
     }
     return ClipOval(
       child: Image.asset(
@@ -748,4 +734,29 @@ class _ProfileTabBar extends SliverPersistentHeaderDelegate {
       oldDelegate.tabs != tabs ||
       oldDelegate.postType != postType ||
       oldDelegate.extent != extent;
+}
+
+/// "Highlights" title + circles, only when the creator has any.
+class _CreatorHighlights extends ConsumerWidget {
+  const _CreatorHighlights({required this.user});
+  final String user;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(momentHighlightsProvider(user)).valueOrNull;
+    if ((data?['highlights'] as List? ?? const []).isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          PhlioSpacing.lg, PhlioSpacing.xl, PhlioSpacing.lg, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Highlights', style: PhlioTypography.title),
+          const SizedBox(height: PhlioSpacing.sm),
+          MomentHighlightsRow(user: user),
+        ],
+      ),
+    );
+  }
 }

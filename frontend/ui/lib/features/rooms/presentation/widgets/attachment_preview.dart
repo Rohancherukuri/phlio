@@ -91,11 +91,13 @@ class AttachmentPreview extends StatefulWidget {
       {required this.attachment,
       this.compact = false,
       this.mediaOnly = false,
+      this.previewHeight,
       this.loadPrivateFile,
       super.key});
   final MessageAttachmentEntity attachment;
   final bool compact;
   final bool mediaOnly;
+  final double? previewHeight;
   final Future<String> Function()? loadPrivateFile;
   @override
   State<AttachmentPreview> createState() => _AttachmentPreviewState();
@@ -244,10 +246,18 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
     if (a.value.startsWith('giphy:'))
       return GiphyReferenceView(reference: a.value);
     if (a.isSticker) {
-      final item = FoxyPack.resolve(a.value);
-      return Image.asset(
-          item?.assetPath ?? 'assets/stickers/sticker_foxy_happy.png',
-          fit: BoxFit.contain);
+      return LayoutBuilder(
+        builder: (context, box) {
+          final side = box.biggest.shortestSide;
+          return Center(
+            child: FoxyStickerView(
+              id: a.value,
+              size: side.isFinite ? side : 120,
+              interactive: !widget.compact,
+            ),
+          );
+        },
+      );
     }
     if (a.isImage || (a.kind == 'gif' && a.url.isNotEmpty)) {
       if (_path != null)
@@ -431,11 +441,14 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
                       ? _openPreview
                       : null,
                   child: SizedBox(
-                      height: widget.compact
-                          ? 74
-                          : widget.attachment.kind == 'audio'
-                              ? 120
-                              : widget.mediaOnly ? 260 : 190,
+                      height: widget.previewHeight ??
+                          (widget.compact
+                              ? 74
+                              : widget.attachment.kind == 'audio'
+                                  ? 120
+                                  : widget.mediaOnly
+                                      ? 260
+                                      : 190),
                       child: _body())),
               if (!widget.compact && !widget.mediaOnly)
                 Padding(

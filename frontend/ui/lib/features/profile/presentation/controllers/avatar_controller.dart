@@ -21,6 +21,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../design_system/widgets/phlio_card.dart';
+import '../../../../shared/moments/moments.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 
 /// Filter presets offered after cropping. Matrices are standard color
@@ -350,6 +351,7 @@ class MeAvatar extends ConsumerWidget {
     return PhlioAvatar(
         name: name,
         size: size,
+        showMomentRing: false,
         imageUrl: ref.watch(authControllerProvider).valueOrNull?.avatarUrl);
   }
 }
@@ -372,7 +374,14 @@ class ContentAuthorAvatar extends ConsumerWidget {
         (author == me.id ||
             author == me.username ||
             author == '@${me.username}')) {
-      return MeAvatar(name: me.fullName, size: size);
+      final own = MeAvatar(name: me.fullName, size: size);
+      if (size < 24) return own;
+      return MomentRingAvatar(
+        userId: me.id,
+        size: size,
+        plain: own,
+        ringed: (inner) => MeAvatar(name: me.fullName, size: inner),
+      );
     }
     return PhlioAvatar(
         name: name, imageUrl: imageUrl, size: size, profileId: author);

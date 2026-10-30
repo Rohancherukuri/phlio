@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -44,6 +45,7 @@ def profile(user: User) -> dict:
 class MessageIn(BaseModel):
     text: str = Field(default="", max_length=4000)
     attachments: list[AttachmentIn] = Field(default_factory=list, max_length=10)
+    reply_to: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def not_empty(self):
@@ -151,7 +153,9 @@ async def messages(
     target = await resolve_peer(peer, c)
     if await c.graph.blocked(user.id, target.id):
         raise HTTPException(403, "This conversation is unavailable.")
-    return c.messaging_service.history(user.id, target.id, before)
+    # Dio sends `?before` with no value for null, which arrives as "" and
+    # would filter out every message (created_at < "").
+    return c.messaging_service.history(user.id, target.id, before or None)
 
 
 @router.post("/peers/{peer}/messages", status_code=201)
@@ -178,7 +182,70 @@ async def send(
         a.mime = uploaded["mime"]
         a.kind = a.mime.split("/")[0] if a.mime.startswith(("image/", "video/", "audio/")) else "document"
     attachments = [dict(id=uuid.uuid4().hex, **a.model_dump()) for a in body.attachments]
-    return c.messaging_service.send(user.id, target.id, body.text, attachments)
+    return c.messaging_service.send(user.id, target.id, body.text, attachments, reply_to=body.reply_to)
+
+
+@router.delete("/peers/{peer}/messages/{message_id}", status_code=204)
+async def delete_message(
+    peer: str,
+    message_id: str,
+    scope: Literal["me", "everyone"] = "me",
+    user: User = Depends(get_current_user),
+    c: Container = Depends(get_container),
+):
+    """`scope=me` is "Delete for you"; `scope=everyone` is Unsend (sender only)."""
+    target = await resolve_peer(peer, c)
+    if scope == "everyone":
+        c.messaging_service.unsend(message_id, user.id, target.id)
+    else:
+        c.messaging_service.hide(message_id, user.id, target.id)
+
+
+class PinIn(BaseModel):
+    pinned: bool = True
+
+
+@router.put("/peers/{peer}/messages/{message_id}/pin")
+async def pin_message(
+    peer: str,
+    message_id: str,
+    body: PinIn,
+    user: User = Depends(get_current_user),
+    c: Container = Depends(get_container),
+):
+    target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
+    return {"pinned": c.messaging_service.pin(message_id, user.id, target.id, body.pinned)}
+
+
+class ForwardIn(BaseModel):
+    to: list[str] = Field(min_length=1, max_length=20)
+
+
+@router.post("/peers/{peer}/messages/{message_id}/forward")
+async def forward_message(
+    peer: str,
+    message_id: str,
+    body: ForwardIn,
+    user: User = Depends(get_current_user),
+    c: Container = Depends(get_container),
+):
+    await resolve_peer(peer, c)
+    prefix = f"{c.settings.api_v1_prefix}/messaging/files/"
+    sent, failed = [], []
+    for handle in dict.fromkeys(body.to):
+        try:
+            recipient = await resolve_peer(handle, c)
+            if recipient.id == user.id or await c.graph.blocked(user.id, recipient.id):
+                raise HTTPException(403, "Unavailable.")
+            c.messaging_service.forward(message_id, user.id, recipient.id, prefix)
+            sent.append(recipient.username)
+        except HTTPException:
+            failed.append(handle)
+    if not sent:
+        raise HTTPException(404, "Could not forward this message.")
+    return {"sent": sent, "failed": failed}
 
 
 @router.post("/peers/{peer}/messages/{message_id}/reactions")
@@ -198,9 +265,13 @@ async def files(
     peer: str,
     files: list[UploadFile] = File(...),
     edits: str = Form(default="[]"),
+    purpose: str = Form(default="message"),
     user: User = Depends(get_current_user),
     c: Container = Depends(get_container),
 ):
+    # Phlio Studio sources (clips, music, overlays) may be larger than a
+    # message attachment; they are only ever sent after rendering.
+    studio = purpose == "studio"
     target = await resolve_peer(peer, c)
     if await c.graph.blocked(user.id, target.id):
         raise HTTPException(403, "This conversation is unavailable.")
@@ -223,7 +294,7 @@ async def files(
         for index, file in enumerate(files):
             kind, mime = media_type(file.filename or "")
             if file.size is not None:
-                validate_size(kind, file.size)
+                validate_size(kind, file.size, studio)
             file_id = uuid.uuid4().hex
             path = root / file_id
             created.append(path)
@@ -234,9 +305,9 @@ async def files(
                 with destination.open("wb") as out:
                     while chunk := source.read(1024 * 1024):
                         size += len(chunk)
-                        validate_size(category, size)
+                        validate_size(category, size, studio)
                         out.write(chunk)
-                validate_size(category, size)
+                validate_size(category, size, studio)
 
             await run_in_threadpool(copy)
             validate_signature(path, mime)
@@ -482,3 +553,340 @@ async def search_rooms_content(
                 break
     results.sort(key=lambda item: item["created_at"], reverse=True)
     return results[:100]
+
+
+_audio_enhancement_lock = asyncio.Lock()
+
+class EnhanceVoiceIn(BaseModel):
+    attachment_id: str = Field(min_length=1, max_length=64)
+    restore: bool = False
+
+
+@router.post('/peers/{peer}/messages/{message_id}/improve-audio')
+async def improve_audio(peer: str, message_id: str, body: EnhanceVoiceIn,
+                        user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    from app.domains.messaging.audio_enhancement import enhance_audio
+    target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, 'This conversation is unavailable.')
+    service = c.messaging_service
+    row = service._participant_message(message_id, user.id, target.id)
+    if row['sender'] != user.id:
+        raise HTTPException(403, 'You can only improve your own voice messages.')
+    attachments = json.loads(row['attachments'])
+    audio = next((a for a in attachments if a.get('id') == body.attachment_id and a.get('kind') == 'audio'), None)
+    if audio is None:
+        raise HTTPException(404, 'Voice message not found.')
+    if body.restore:
+        original = audio.get('original_audio')
+        if original:
+            audio.clear()
+            audio.update(original)
+            service.db.execute('UPDATE messages SET attachments=? WHERE id=?', (json.dumps(attachments), message_id))
+            service.db.commit()
+        return {'improved': False}
+    if audio.get('enhanced_by'):
+        return {'improved': True}
+    await c.cache.rate_limit(user.id, 'improve_voice', 5)
+    if _audio_enhancement_lock.locked():
+        raise HTTPException(429, 'Foxy is improving another recording. Please try again shortly.')
+    async with _audio_enhancement_lock:
+        prefix = f'{c.settings.api_v1_prefix}/messaging/files/'
+        url = audio.get('url', '')
+        if not url.startswith(prefix):
+            raise HTTPException(422, 'Use an uploaded voice message.')
+        source = service.file(url.removeprefix(prefix), user.id)
+        if source['owner'] != user.id or source['peer'] != target.id:
+            raise HTTPException(403, 'File belongs to another conversation.')
+        root = Path(c.settings.messaging_media_root).resolve()
+        file_id = uuid.uuid4().hex
+        destination = root / (file_id + '.m4a')
+        try:
+            await run_in_threadpool(enhance_audio, Path(source['path']), destination)
+            # Recheck after inference: an unsent message must not be recreated.
+            latest = service._participant_message(message_id, user.id, target.id)
+            if latest['attachments'] != row['attachments'] or await c.graph.blocked(user.id, target.id):
+                raise HTTPException(409, 'Message changed while processing. Please try again.')
+            original = dict(audio)
+            audio.update(id=uuid.uuid4().hex, url=prefix+file_id, mime='audio/mp4',
+                         name='Voice message - Foxy AI.m4a', size=destination.stat().st_size,
+                         original_audio=original, enhanced_by='DeepFilterNet3')
+            service.store_file(file_id, user.id, target.id, str(destination), audio['name'], audio['mime'])
+            service.db.execute('UPDATE messages SET attachments=? WHERE id=?', (json.dumps(attachments), message_id))
+            service.db.commit()
+        except BaseException:
+            destination.unlink(missing_ok=True)
+            raise
+    return {'improved': True}
+
+
+from app.domains.messaging.media_studio import (LIBRARY_PREFIXES, StudioPlan, extract_speech, filmstrip,
+                                                render_studio, waveform)
+from app.domains.messaging import studio_speech
+
+_studio_lock = asyncio.Lock()
+_studio_jobs: dict[str, dict] = {}
+_studio_tasks: set = set()
+
+
+def _studio_file(c, user, target, file_id, kinds):
+    row = c.messaging_service.file(file_id, user.id)
+    if row['owner'] != user.id or row['peer'] != target.id:
+        raise HTTPException(403, 'File belongs to another conversation.')
+    if not row['mime'].startswith(kinds):
+        raise HTTPException(422, 'Unsupported source media.')
+    return dict(row)
+
+
+def _library_path(c, url: str) -> str:
+    from app.core.container import media_root_path
+    root = media_root_path(c.settings).resolve()
+    path = (root / url.removeprefix('/media/')).resolve()
+    allowed = [(root / p.strip('/').removeprefix('media/')).resolve() for p in LIBRARY_PREFIXES]
+    if not any(lib in path.parents for lib in allowed) or not path.is_file():
+        raise HTTPException(404, 'That sound is no longer available.')
+    return str(path)
+
+
+def _studio_inputs(c, user, target, body: StudioPlan):
+    sources = [_studio_file(c, user, target, clip.file_id, ('image/', 'video/')) for clip in body.clips]
+    music = _studio_file(c, user, target, body.music_id, ('audio/',)) if body.music_id else None
+    overlays = [_studio_file(c, user, target, o.file_id, ('image/',)) for o in body.overlays]
+    audios = []
+    for spec in body.audios:
+        if spec.file_id:
+            path = _studio_file(c, user, target, spec.file_id, ('audio/', 'video/'))['path']
+        else:
+            path = _library_path(c, spec.library_url)
+        audios.append(dict(path=path, spec=spec))
+    pips = []
+    for spec in body.pips:
+        row = _studio_file(c, user, target, spec.file_id, ('image/', 'video/'))
+        if spec.mask_id:
+            row['mask_path'] = _studio_file(c, user, target, spec.mask_id, ('image/',))['path']
+        pips.append(row)
+    extras = {}
+    if body.cover and (body.cover.time is not None or body.cover.file_id):
+        cover = {}
+        if body.cover.file_id:
+            cover['path'] = _studio_file(c, user, target, body.cover.file_id, ('image/',))['path']
+        if body.cover.overlay_id:
+            cover['overlay'] = _studio_file(c, user, target, body.cover.overlay_id, ('image/',))['path']
+        extras['cover'] = cover
+    return sources, music, overlays, audios, pips, extras
+
+
+async def _studio_render(c, user, target, body: StudioPlan, report=None):
+    sources, music, overlays, audios, pips, extras = _studio_inputs(c, user, target, body)
+    image = body.image_only and sources[0]['mime'].startswith('image/')
+    file_id = uuid.uuid4().hex
+    name = ('edited.' + body.image_format) if image else 'edited.mp4'
+    mime = ('image/png' if body.image_format == 'png' else 'image/jpeg') if image else 'video/mp4'
+    path = Path(c.settings.messaging_media_root).resolve() / (file_id + Path(name).suffix)
+    try:
+        kind = await run_in_threadpool(render_studio, sources, music, body, path, overlays, audios, report,
+                                       pips, extras)
+        validate_size(kind, path.stat().st_size, True)
+        if await c.graph.blocked(user.id, target.id):
+            raise HTTPException(403, 'Conversation unavailable.')
+        c.messaging_service.store_file(file_id, user.id, target.id, str(path), name, mime)
+        return dict(kind=kind, name=name, mime=mime, size=path.stat().st_size,
+                    url=f'{c.settings.api_v1_prefix}/messaging/files/{file_id}')
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+
+@router.post('/peers/{peer}/studio/render')
+async def studio_render(peer: str, body: StudioPlan, user=Depends(get_current_user), c=Depends(get_container)):
+    """Synchronous export (v1 editor)."""
+    target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, 'Conversation unavailable.')
+    _studio_inputs(c, user, target, body)
+    await c.cache.rate_limit(user.id, 'studio_render', 10)
+    if _studio_lock.locked():
+        raise HTTPException(429, 'Another export is running. Try again shortly.')
+    async with _studio_lock:
+        return await _studio_render(c, user, target, body)
+
+
+@router.post('/peers/{peer}/studio/jobs', status_code=202)
+async def studio_job(peer: str, body: StudioPlan, user=Depends(get_current_user), c=Depends(get_container)):
+    """Start an export; poll GET .../studio/jobs/{id} for progress."""
+    target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, 'Conversation unavailable.')
+    _studio_inputs(c, user, target, body)  # fail fast on bad sources
+    await c.cache.rate_limit(user.id, 'studio_render', 20)
+    if sum(j['owner'] == user.id and j['status'] in ('queued', 'running') for j in _studio_jobs.values()) >= 2:
+        raise HTTPException(429, 'You already have exports running.')
+    job_id = uuid.uuid4().hex
+    job = dict(id=job_id, owner=user.id, status='queued', progress=0.0,
+               stage='Waiting for another export to finish' if _studio_lock.locked() else 'Starting')
+    _studio_jobs[job_id] = job
+
+    def report(value, stage):
+        job.update(progress=round(min(.99, max(job['progress'], value)), 3), stage=stage)
+
+    async def work():
+        try:
+            async with _studio_lock:
+                job.update(status='running', stage='Preparing')
+                job['result'] = await _studio_render(c, user, target, body, report)
+                job.update(status='done', progress=1.0, stage='Done')
+        except HTTPException as exc:
+            job.update(status='failed', error=exc.detail)
+        except Exception:
+            job.update(status='failed', error='Could not render this project. Try again.')
+        finally:
+            # Forget finished jobs after a while.
+            await asyncio.sleep(1800)
+            _studio_jobs.pop(job_id, None)
+
+    task = asyncio.create_task(work())
+    _studio_tasks.add(task)
+    task.add_done_callback(_studio_tasks.discard)
+    return {k: v for k, v in job.items() if k != 'owner'}
+
+
+@router.get('/peers/{peer}/studio/jobs/{job_id}')
+async def studio_job_status(peer: str, job_id: str, user=Depends(get_current_user)):
+    job = _studio_jobs.get(job_id)
+    if not job or job['owner'] != user.id:
+        raise HTTPException(404, 'Export not found.')
+    return {k: v for k, v in job.items() if k != 'owner'}
+
+
+@router.get('/peers/{peer}/studio/filmstrip/{file_id}')
+async def studio_filmstrip(peer: str, file_id: str, frames: int = Query(default=12, ge=1, le=40),
+                           user=Depends(get_current_user), c=Depends(get_container)):
+    """Thumbnail strip for the timeline (cached next to the file)."""
+    row = c.messaging_service.file(file_id, user.id)
+    if row['owner'] != user.id or not row['mime'].startswith(('image/', 'video/')):
+        raise HTTPException(404, 'File not found.')
+    strip = Path(row['path'] + f'.strip{frames}.jpg')
+    if not strip.exists():
+        try:
+            await run_in_threadpool(filmstrip, row['path'], row['mime'], strip, frames)
+        except Exception as exc:
+            strip.unlink(missing_ok=True)
+            raise HTTPException(422, 'Could not preview this clip.') from exc
+    return FileResponse(str(strip), media_type='image/jpeg', headers={'Cache-Control': 'private, max-age=86400'})
+
+
+@router.get('/peers/{peer}/studio/waveform/{file_id}')
+async def studio_waveform(peer: str, file_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    row = c.messaging_service.file(file_id, user.id)
+    if row['owner'] != user.id or not row['mime'].startswith(('audio/', 'video/')):
+        raise HTTPException(404, 'File not found.')
+    try:
+        return await run_in_threadpool(waveform, row['path'])
+    except Exception as exc:
+        raise HTTPException(422, 'Could not read this audio.') from exc
+
+
+@router.get('/studio/library-waveform')
+async def studio_library_waveform(url: str, user=Depends(get_current_user), c=Depends(get_container)):
+    if not url.startswith(LIBRARY_PREFIXES):
+        raise HTTPException(404, 'Track not found.')
+    path = _library_path(c, url)
+    key = f'studio-wave:{url}'
+    cached = await c.cache.get(key)
+    if cached is not None:
+        return cached
+    result = await run_in_threadpool(waveform, path)
+    await c.cache.put(key, result, ttl=86400)
+    return result
+
+
+@router.get('/studio/sounds')
+async def studio_sounds(user=Depends(get_current_user), c=Depends(get_container)):
+    """Built-in sound effects."""
+    from app.core.container import media_root_path
+    index = media_root_path(c.settings) / 'studio_sfx' / 'index.json'
+    if not index.is_file():
+        return {'items': []}
+    return {'items': json.loads(index.read_text(encoding='utf-8'))}
+
+
+@router.get('/studio/voices')
+async def studio_voices(user=Depends(get_current_user)):
+    return {'items': [dict(id=k, name=v[2], tone=v[3]) for k, v in studio_speech.VOICES.items()]}
+
+
+class StudioSpeech(BaseModel):
+    text: str = Field(min_length=1, max_length=600)
+    voice: str = Field(default='nova', max_length=20)
+    speed: float = Field(default=1, ge=.5, le=2, allow_inf_nan=False)
+
+
+@router.post('/peers/{peer}/studio/tts')
+async def studio_tts(peer: str, body: StudioSpeech, user=Depends(get_current_user), c=Depends(get_container)):
+    """Text to audio: returns an audio file usable on the timeline."""
+    target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, 'Conversation unavailable.')
+    if body.voice not in studio_speech.VOICES:
+        raise HTTPException(422, 'Unknown voice.')
+    await c.cache.rate_limit(user.id, 'studio_tts', 30)
+    file_id = uuid.uuid4().hex
+    path = Path(c.settings.messaging_media_root).resolve() / (file_id + '.m4a')
+    try:
+        duration = await run_in_threadpool(studio_speech.speak, body.text, body.voice, body.speed, path)
+        c.messaging_service.store_file(file_id, user.id, target.id, str(path), 'speech.m4a', 'audio/mp4')
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return dict(id=file_id, duration=duration, mime='audio/mp4', name='speech.m4a',
+                url=f'{c.settings.api_v1_prefix}/messaging/files/{file_id}')
+
+
+class StudioCaptionSource(BaseModel):
+    file_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    at: float = Field(default=0, ge=0, le=3600, allow_inf_nan=False)  # timeline position
+    start: float = Field(default=0, ge=0, le=7200, allow_inf_nan=False)
+    end: float = Field(gt=0, le=7200, allow_inf_nan=False)
+    speed: float = Field(default=1, ge=.1, le=10, allow_inf_nan=False)
+
+
+class StudioCaptions(BaseModel):
+    sources: list[StudioCaptionSource] = Field(min_length=1, max_length=40)
+    language: str | None = Field(default=None, pattern=r'^[a-z]{2}$')
+
+
+@router.post('/peers/{peer}/studio/captions')
+async def studio_captions(peer: str, body: StudioCaptions, user=Depends(get_current_user),
+                          c=Depends(get_container)):
+    """Auto captions: speech in clips / audio → timed lines on the timeline."""
+    target = await resolve_peer(peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, 'Conversation unavailable.')
+    if sum(s.end - s.start for s in body.sources) > 600:
+        raise HTTPException(422, 'Captions work on up to ten minutes of audio.')
+    rows = [_studio_file(c, user, target, s.file_id, ('audio/', 'video/')) for s in body.sources]
+    await c.cache.rate_limit(user.id, 'studio_captions', 10)
+    lines = []
+
+    def run():
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='phlio-captions-') as temp:
+            for i, (row, src) in enumerate(zip(rows, body.sources)):
+                wav = Path(temp) / f'{i}.wav'
+                try:
+                    extract_speech(row['path'], src.start, src.end, src.speed, wav)
+                except Exception:
+                    continue  # no audio stream
+                for line in studio_speech.transcribe(wav, body.language):
+                    shift = src.at
+                    line['start'] = round(line['start'] + shift, 3)
+                    line['end'] = round(line['end'] + shift, 3)
+                    for w in line['words']:
+                        w['start'] = round(w['start'] + shift, 3)
+                        w['end'] = round(w['end'] + shift, 3)
+                    lines.append(line)
+
+    async with _studio_lock:
+        await run_in_threadpool(run)
+    lines.sort(key=lambda l: l['start'])
+    return {'lines': lines}

@@ -7,6 +7,8 @@
 //    interested" and "Report".
 //  * [showRecordSpaceInfo] / [showGetToKnowSpaces]: explainer sheets used
 //    by Create your Space.
+//  * The room itself is [SpaceRoomScreen] (space_room_screen.dart), the
+//    hub is [SpacesHubScreen] and recordings play in [SpaceRecordingScreen].
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -20,7 +22,7 @@ import '../../design_system/colors.dart';
 import '../../design_system/typography.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
-import 'realtime_screen.dart';
+import 'space_room_screen.dart';
 
 // -- Data ---------------------------------------------------------------------
 
@@ -47,6 +49,24 @@ final spaceParticipantsProvider =
   ref.onDispose(timer.cancel);
   return (await getIt<ApiClient>().dio.get('/realtime/live/$id/participants'))
       .data as Map;
+});
+
+/// Finished Spaces that were recorded (newest first).
+final spaceRecordingsProvider =
+    FutureProvider.autoDispose<List<Map>>((ref) async {
+  ref.watch(authControllerProvider.select((v) => v.valueOrNull?.id));
+  final items = ((await getIt<ApiClient>().dio.get('/realtime/spaces/recordings'))
+          .data as Map)['items'] as List;
+  return items.whereType<Map>().toList();
+});
+
+/// Your scheduled Spaces.
+final scheduledSpacesProvider =
+    FutureProvider.autoDispose<List<Map>>((ref) async {
+  ref.watch(authControllerProvider.select((v) => v.valueOrNull?.id));
+  final items = ((await getIt<ApiClient>().dio.get('/realtime/spaces/scheduled'))
+          .data as Map)['items'] as List;
+  return items.whereType<Map>().toList();
 });
 
 /// Spaces the viewer marked "Not interested" this session.
@@ -99,44 +119,64 @@ class _SpacePill extends StatelessWidget {
     final count = (space['participants_count'] as num?)?.toInt() ??
         ((space['viewers'] as num?)?.toInt() ?? 0) + 1;
     final extra = count - preview.length;
-    return Material(
-      color: _violet.withValues(alpha: .18),
-      shape: StadiumBorder(
-          side: BorderSide(color: _violet.withValues(alpha: .35))),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: () => showSpacePreview(context, space),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(6, 6, 16, 6),
-          child: Row(children: [
-            _FaceStack(people: preview, size: 38),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text.rich(
-                TextSpan(children: [
-                  if (extra > 0)
-                    TextSpan(
-                        text: '+$extra · ',
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                  TextSpan(text: space['title'] as String? ?? 'Space'),
-                ]),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PhlioTypography.bodyStrong
-                    .copyWith(fontSize: 15, color: PhlioColors.textPrimary),
-              ),
+    // Gradient hairline border around a violet-tinted pill.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(colors: [
+          _violet.withValues(alpha: .7),
+          PhlioColors.brandPink.withValues(alpha: .5),
+          PhlioColors.brandPeach.withValues(alpha: .6),
+        ]),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(1.2),
+        child: Material(
+          color: Color.alphaBlend(
+              _violet.withValues(alpha: .16), PhlioColors.surface),
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: () => showSpacePreview(context, space),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 16, 6),
+              child: Row(children: [
+                SpaceFaces(people: preview, size: 36),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(space['title'] as String? ?? 'Space',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PhlioTypography.bodyStrong.copyWith(
+                                fontSize: 14.5,
+                                color: PhlioColors.textPrimary)),
+                        Text(
+                            extra > 0
+                                ? '${space['name'] ?? 'Live'} +$extra listening'
+                                : '${space['name'] ?? 'Live'} · live now',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PhlioTypography.caption
+                                .copyWith(color: PhlioColors.textMuted)),
+                      ]),
+                ),
+                const SizedBox(width: 10),
+                const SpaceEqualiser(),
+              ]),
             ),
-            const SizedBox(width: 10),
-            const _Equaliser(),
-          ]),
+          ),
         ),
       ),
     );
   }
 }
 
-class _FaceStack extends StatelessWidget {
-  const _FaceStack({required this.people, required this.size});
+class SpaceFaces extends StatelessWidget {
+  const SpaceFaces({required this.people, required this.size, super.key});
   final List<Map> people;
   final double size;
   @override
@@ -147,7 +187,7 @@ class _FaceStack extends StatelessWidget {
           backgroundColor: _violet.withValues(alpha: .3),
           child: const Icon(Icons.graphic_eq_rounded, color: Colors.white));
     }
-    final step = size * .7;
+    final step = size * .62;
     return SizedBox(
       width: size + step * (people.length - 1),
       height: size,
@@ -159,8 +199,8 @@ class _FaceStack extends StatelessWidget {
               width: size,
               height: size,
               padding: const EdgeInsets.all(2),
-              decoration:
-                  const BoxDecoration(color: _violet, shape: BoxShape.circle),
+              decoration: const BoxDecoration(
+                  color: PhlioColors.surface, shape: BoxShape.circle),
               child: IgnorePointer(
                 child: ContentAuthorAvatar(
                     author: people[i]['id'].toString(),
@@ -175,14 +215,17 @@ class _FaceStack extends StatelessWidget {
   }
 }
 
-/// Three bouncing bars — the "live audio" glyph.
-class _Equaliser extends StatefulWidget {
-  const _Equaliser();
+/// Bouncing bars — the "live audio" glyph.
+class SpaceEqualiser extends StatefulWidget {
+  const SpaceEqualiser({this.height = 18, this.bars = 3, this.color, super.key});
+  final double height;
+  final int bars;
+  final Color? color;
   @override
-  State<_Equaliser> createState() => _EqualiserState();
+  State<SpaceEqualiser> createState() => _SpaceEqualiserState();
 }
 
-class _EqualiserState extends State<_Equaliser>
+class _SpaceEqualiserState extends State<SpaceEqualiser>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 900))
@@ -194,23 +237,41 @@ class _EqualiserState extends State<_Equaliser>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _c,
-        builder: (_, __) => Row(mainAxisSize: MainAxisSize.min, children: [
-          for (var i = 0; i < 3; i++)
-            Container(
-              width: 3.5,
-              height: 6 +
-                  12 *
-                      (0.5 +
-                          0.5 *
-                              math.sin((_c.value * 2 * math.pi) + i * 1.7)),
-              margin: const EdgeInsets.symmetric(horizontal: 1.5),
-              decoration: BoxDecoration(
-                  color: _violet, borderRadius: BorderRadius.circular(2)),
-            ),
-        ]),
-      );
+  Widget build(BuildContext context) {
+    final w = widget.height / 5;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) => SizedBox(
+        height: widget.height,
+        child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              for (var i = 0; i < widget.bars; i++)
+                Container(
+                  width: w,
+                  height: widget.height *
+                      (.3 +
+                          .7 *
+                              (0.5 +
+                                  0.5 *
+                                      math.sin((_c.value * 2 * math.pi) +
+                                          i * 1.7))),
+                  margin: EdgeInsets.symmetric(horizontal: w * .4),
+                  decoration: BoxDecoration(
+                      gradient: widget.color == null
+                          ? const LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [_violet, PhlioColors.brandPeach])
+                          : null,
+                      color: widget.color,
+                      borderRadius: BorderRadius.circular(w)),
+                ),
+            ]),
+      ),
+    );
+  }
 }
 
 // -- Preview / join sheet ---------------------------------------------------------
@@ -391,17 +452,17 @@ class _SpacePreviewState extends ConsumerState<_SpacePreview> {
         GradientPillButton(
           label: isHost ? 'Rejoin your Space' : 'Start listening',
           onPressed: () {
-            // The sheet lives on the root navigator: close it and open the
-            // Space from the same navigator.
+            // The sheet lives on the root navigator: close it, then open
+            // the Space from the page underneath.
             final navigator = Navigator.of(context, rootNavigator: true);
+            final host = navigator.context;
             navigator.pop();
-            navigator.push(MaterialPageRoute<void>(
-                builder: (_) => RealtimeScreen(
-                    endpoint:
-                        '/realtime/live/$_id/join${anonymous && !isHost ? '?anonymous=true' : ''}',
-                    title: title,
-                    video: false,
-                    rooms: true)));
+            openSpace(host,
+                spaceId: _id,
+                anonymous: anonymous && !isHost,
+                title: title,
+                topics: topics,
+                record: record);
           },
         ),
       ]),

@@ -7,7 +7,7 @@ import logging
 from app.common.exceptions import NotFoundError, ValidationAppError
 from app.domains.social.entities import Comment, MediaAttachment, Post
 from app.domains.social.repository import SocialRepository
-from app.domains.stickers import STICKER_IDS
+from app.domains.stickers import STICKER_IDS, is_known_sticker
 from app.infrastructure.core_engine.client import CoreEngineClient
 
 logger = logging.getLogger("phlio.social")
@@ -117,7 +117,7 @@ class SocialService:
         text = text.strip()
         if not text and not sticker_id:
             raise ValidationAppError("Comment cannot be empty.")
-        if sticker_id and sticker_id not in STICKER_IDS:
+        if sticker_id and not is_known_sticker(sticker_id):
             raise ValidationAppError("Unknown sticker.")
         comment = Comment(
             id=await self._core_engine.generate_id("cmt"),

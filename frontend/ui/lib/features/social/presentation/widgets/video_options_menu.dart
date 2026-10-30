@@ -3,6 +3,7 @@
 // don't recommend creator and report — plus Edit/Delete for the owner.
 
 import 'package:flutter/material.dart';
+import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -54,7 +55,7 @@ class VideoOptionsButton extends ConsumerWidget {
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.xl),
           child: Row(children: [
-            Icon(icon, size: 24, color: color ?? PhlioColors.textPrimary),
+            PhlioIcon(icon, size: 24, color: color ?? PhlioColors.textPrimary),
             const SizedBox(width: PhlioSpacing.lg),
             Expanded(
               child: Text(label,
@@ -82,7 +83,7 @@ class VideoOptionsButton extends ConsumerWidget {
             'Save to Watch later'),
         item(_VideoAction.playlist, Icons.bookmark_border_rounded,
             'Save to playlist'),
-        item(_VideoAction.share, Icons.ios_share_rounded, 'Share'),
+        item(_VideoAction.share, PhlioIcons.send, 'Share'),
         if (!own) ...[
           item(_VideoAction.notInterested, Icons.block_rounded,
               'Not interested'),

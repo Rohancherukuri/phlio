@@ -25,11 +25,13 @@ class PlayableVideo {
     this.sources = const [],
     this.createdAt,
     this.description = '',
+    this.tags = const [],
     this.location,
   });
 
   /// Long-form description and place from the Add details page.
   final String description;
+  final List<String> tags;
   final String? location;
 
   /// When the video was uploaded (null for local/legacy items).
@@ -59,6 +61,7 @@ class PlayableVideo {
       sources: sources,
       createdAt: createdAt,
       description: description,
+      tags: tags,
       location: location);
   final String? localPath, creatorName, avatarUrl, songTitle, songArtist;
   factory PlayableVideo.fromJson(Map json) => PlayableVideo(
@@ -77,9 +80,10 @@ class PlayableVideo {
         kind: json['kind'] as String? ?? 'video',
         durationSeconds: json['duration_seconds'] as int? ?? 0,
         thumbnailUrl: json['thumbnail_url'] as String?,
-        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '')
-            ?.toLocal(),
+        createdAt:
+            DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal(),
         description: json['description'] as String? ?? '',
+        tags: (json['tags'] as List? ?? []).whereType<String>().toList(),
         location: json['location'] as String?,
       );
 }
@@ -202,3 +206,12 @@ List<PlayableVideo> rankClips(
   });
   return indexed.map((e) => e.value).toList();
 }
+
+final friendsLikedClipsProvider =
+    FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  ref.watch(authControllerProvider.select((v) => v.valueOrNull?.id));
+  final data = (await getIt<ApiClient>().dio.get('/social/clips/friends-liked'))
+      .data as Map;
+  return data
+      .map((key, value) => MapEntry(key.toString(), (value as num).toInt()));
+});

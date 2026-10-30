@@ -194,7 +194,7 @@ class _MomentMediaState extends State<_MomentMedia>
                                     child: VideoPlayer(player!)))
                             : const CircularProgressIndicator()
                         : widget.item['image_url'] != null
-                            ? MemoryPhoto(widget.item['image_url'] as String, fit: BoxFit.contain)
+                            ? MemoryPhoto(widget.item['image_url'] as String, fit: BoxFit.contain, isVideo: widget.item['media_kind']=='video')
                             : const SizedBox.shrink())),
         Padding(
             padding: const EdgeInsets.all(20),

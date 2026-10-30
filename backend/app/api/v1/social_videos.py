@@ -59,6 +59,7 @@ async def video_response(row, c, creator=None, details=None):
         if path.is_relative_to(root) and path.is_file():
             thumbnail = thumbnail.split('?')[0] + f'?v={path.stat().st_mtime_ns}'
     return dict(
+        tags=details.get("tags", []),
         sources=details.get("sources", []),
         song_title=details.get("song_title"),
         song_artist=details.get("song_artist"),
@@ -284,3 +285,19 @@ async def report_clip(clip_id: str, user=Depends(get_current_user), c=Depends(ge
     obj = await resolve(c, user.id, "social", clip_id)
     await c.graph.store.put(key("content_report", user.id, obj["id"]), dict(
         user_id=user.id, object_id=obj["id"], status="pending", created_at=now()))
+
+@router.get('/clips/friends-liked')
+async def friends_liked_clips(user=Depends(get_current_user), c=Depends(get_container)):
+    from app.api.v1.content import accepted_friends
+    friends = await accepted_friends(c, user.id)
+    result = {}
+    for friend in friends:
+        if await c.graph.blocked(user.id, friend): continue
+        for activity in await c.graph.store.rows('activity', {'in':'user:'+friend, 'verb':'liked'}):
+            signal = await c.graph.signal(user.id, activity)
+            if not signal or not signal.get('actor'): continue
+            try: obj = await c.graph.object_for(user.id, activity['out'])
+            except HTTPException: continue
+            if obj['object_type'] != 'social.clip': continue
+            result[obj['domain_ref']] = result.get(obj['domain_ref'], 0) + 1
+    return result

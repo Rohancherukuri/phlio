@@ -1,20 +1,23 @@
-// Login screen — mirrors the reference "1. LOGIN — Welcome to what's next."
-// screen: the logo lockup up top, Foxy waving beside a "Good to see you
-// again!" speech bubble, identifier + password fields, a gradient
-// "Continue" button, labeled social sign-in chips (Google / Apple /
-// Passkey — wired to a "coming soon" snackbar since OAuth providers are
-// out of scope for this build stage).
+// Log in — Foxy greets you (Duolingo-style) and reacts as you go.
+//
+// Foxy is a live puppet ([FoxyPuppet]) next to a speech bubble. He waves
+// hello, turns toward what you type, shuts his eyes while you enter a
+// password (and owns up to peeking if you reveal it), thinks while the
+// request is out, shakes his head and tells you what went wrong on a bad
+// password, and bounces under confetti when you're in.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../design_system/colors.dart';
-import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
+import '../../../../design_system/widgets/foxy_puppet.dart';
 import '../../../../design_system/widgets/phlio_button.dart';
-import '../../../../design_system/widgets/phlio_fox.dart';
-import '../../../../design_system/widgets/phlio_text_field.dart';
+import '../../../onboarding/presentation/widgets/onboarding_kit.dart';
 import '../controllers/auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -25,183 +28,263 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _identifierController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isSubmitting = false;
-  String? _formError;
+  final _identifier = TextEditingController();
+  final _password = TextEditingController();
+  final _identifierFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  bool _obscure = true;
+  bool _submitting = false;
+  bool _success = false;
+  bool _greeting = true;
+  bool _talking = false;
+  String? _error;
+  int _oops = 0;
+  int _confetti = 0;
+  Timer? _greetTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final node in [_identifierFocus, _passwordFocus]) {
+      node.addListener(() => setState(() => _greeting = false));
+    }
+    _greetTimer = Timer(const Duration(milliseconds: 3200), () {
+      if (mounted) setState(() => _greeting = false);
+    });
+  }
 
   @override
   void dispose() {
-    _identifierController.dispose();
-    _passwordController.dispose();
+    _greetTimer?.cancel();
+    _identifier.dispose();
+    _password.dispose();
+    _identifierFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
+  bool get _canSubmit =>
+      _identifier.text.trim().isNotEmpty && _password.text.isNotEmpty;
+
+  FoxyAct get _act {
+    if (_success) return FoxyAct.cheer;
+    if (_submitting) return FoxyAct.think;
+    if (_error != null) return FoxyAct.sad;
+    if (_passwordFocus.hasFocus || _password.text.isNotEmpty) {
+      if (_obscure && _passwordFocus.hasFocus) return FoxyAct.peek;
+    }
+    if (_greeting) return FoxyAct.wave;
+    return _talking ? FoxyAct.talk : FoxyAct.idle;
+  }
+
+  String get _line {
+    if (_success) return 'You\'re in!';
+    if (_submitting) return 'One sec…';
+    if (_error != null) return _error!;
+    if (_passwordFocus.hasFocus) {
+      return _obscure ? 'I\'m not looking, promise.' : 'Okay, I peeked a little.';
+    }
+    if (_identifierFocus.hasFocus) {
+      return 'Your username, email or mobile number all work.';
+    }
+    return 'Welcome back! Log in to pick up where you left off.';
+  }
+
+  /// Foxy follows the caret: further right as the identifier gets longer.
+  double get _lean {
+    if (!_identifierFocus.hasFocus) return 0;
+    return (-0.4 + _identifier.text.length / 20).clamp(-0.4, 0.8);
+  }
+
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!_canSubmit || _submitting) return;
+    FocusScope.of(context).unfocus();
     setState(() {
-      _isSubmitting = true;
-      _formError = null;
+      _submitting = true;
+      _error = null;
     });
-
     final result = await ref.read(authControllerProvider.notifier).login(
-          identifier: _identifierController.text.trim(),
-          password: _passwordController.text,
+          identifier: _identifier.text.trim(),
+          password: _password.text,
         );
-
     if (!mounted) return;
     result.when(
-      success: (_) => context.go('/home'),
-      failure: (failure) => setState(() => _formError = failure.message),
+      success: (_) {
+        HapticFeedback.heavyImpact();
+        setState(() {
+          _success = true;
+          _submitting = false;
+          _confetti++;
+        });
+        // Let the celebration land, then in.
+        Future.delayed(const Duration(milliseconds: 1100), () {
+          if (mounted) context.go('/home');
+        });
+      },
+      failure: (failure) {
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _submitting = false;
+          _error = failure.message;
+          _oops++;
+        });
+      },
     );
-    setState(() => _isSubmitting = false);
+  }
+
+  void _forgotPassword() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PhlioColors.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const FoxyPuppet(act: FoxyAct.think, size: 140),
+              const SizedBox(height: 8),
+              Text('Trouble logging in?',
+                  style: PhlioTypography.headline, textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text(
+                'Self-serve password reset isn\'t live yet. Log in with your '
+                'username, email or mobile number — any of them works with '
+                'the same password.',
+                style: PhlioTypography.body.copyWith(fontSize: 15),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              PhlioSecondaryButton(
+                  label: 'Got it', onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       backgroundColor: PhlioColors.backgroundDeep,
-      body: Form(
-        key: _formKey,
-        child: Column(
+      body: OnboardingBackdrop(
+        child: Stack(
           children: [
-            Expanded(
-              child: SafeArea(
-                bottom: true,
-                child: ListView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: PhlioSpacing.xxl),
-                  children: [
-                    const SizedBox(height: PhlioSpacing.lg),
-                    // Logo lockup.
-                    Center(
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: 84,
-                            child: Image.asset(
-                              'assets/images/logo/logo_mark.png',
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
-                              errorBuilder: (_, __, ___) =>
-                                  const SizedBox.shrink(),
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: AutofillGroup(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 18),
+                            StaggerIn(
+                              child: Image.asset(
+                                'assets/images/logo/logo_wordmark.png',
+                                height: 34,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
+                                errorBuilder: (_, __, ___) => Text('Phlio',
+                                    style: PhlioTypography.displayMedium),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: PhlioSpacing.sm),
-                          SizedBox(
-                            height: 30,
-                            child: Image.asset(
-                              'assets/images/logo/logo_wordmark.png',
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
-                              errorBuilder: (_, __, ___) =>
-                                  const SizedBox.shrink(),
+                            const Spacer(flex: 2),
+                            _foxyRow(keyboard),
+                            const SizedBox(height: 22),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 200),
+                              child: OnboardingField(
+                                controller: _identifier,
+                                focusNode: _identifierFocus,
+                                label: 'Username, email or mobile',
+                                keyboardType: TextInputType.emailAddress,
+                                autofillHints: const [AutofillHints.username],
+                                error: _error != null,
+                                onChanged: (_) => setState(() => _error = null),
+                                onSubmitted: (_) => _passwordFocus.requestFocus(),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: PhlioSpacing.xs),
-                          Text('PEOPLE. PLACES. POSSIBILITIES.',
-                              style: PhlioTypography.tagline),
-                        ],
+                            const SizedBox(height: 14),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 260),
+                              child: OnboardingField(
+                                controller: _password,
+                                focusNode: _passwordFocus,
+                                label: 'Password',
+                                obscureText: _obscure,
+                                textInputAction: TextInputAction.done,
+                                autofillHints: const [AutofillHints.password],
+                                error: _error != null,
+                                onChanged: (_) => setState(() => _error = null),
+                                onSubmitted: (_) => _submit(),
+                                suffix: _password.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: _obscure
+                                            ? 'Show password'
+                                            : 'Hide password',
+                                        onPressed: () =>
+                                            setState(() => _obscure = !_obscure),
+                                        icon: Icon(
+                                          _obscure
+                                              ? Icons.visibility_off_outlined
+                                              : Icons.visibility_outlined,
+                                          size: 22,
+                                          color: PhlioColors.textMuted,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 320),
+                              child: PhlioPrimaryButton(
+                                label: 'Log in',
+                                isLoading: _submitting,
+                                onPressed: _canSubmit ? _submit : null,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 360),
+                              child: OnboardingLink(
+                                  label: 'Forgot password?',
+                                  onTap: _forgotPassword),
+                            ),
+                            const Spacer(flex: 3),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 420),
+                              child: PhlioSecondaryButton(
+                                label: 'Create new account',
+                                onPressed: () => context.go('/signup'),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text('PEOPLE. PLACES. POSSIBILITIES.',
+                                style: PhlioTypography.tagline.copyWith(
+                                    fontSize: 9.5,
+                                    color: PhlioColors.textMuted)),
+                            const SizedBox(height: 14),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: PhlioSpacing.huge),
-                    // Foxy + speech bubble, side by side.
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const PhlioFoxAnimation(
-                            size: 104, animation: PhlioFoxLoop.wave),
-                        Flexible(
-                            child: Transform.translate(
-                          offset: const Offset(0, -14),
-                          child: _speechBubble(context),
-                        )),
-                      ],
-                    ),
-                    const SizedBox(height: PhlioSpacing.huge),
-                    PhlioTextField(
-                      controller: _identifierController,
-                      hintText: 'Email or phone number',
-                      semanticLabel: 'Email or phone number',
-                      prefixIcon: Icons.mail_outline_rounded,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.username],
-                      validator: (value) =>
-                          (value == null || value.trim().isEmpty)
-                              ? 'Enter your email or phone number'
-                              : null,
-                    ),
-                    const SizedBox(height: PhlioSpacing.md),
-                    PhlioTextField(
-                      controller: _passwordController,
-                      hintText: 'Password',
-                      semanticLabel: 'Password',
-                      prefixIcon: Icons.lock_outline_rounded,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.password],
-                      onChanged: (_) => setState(() => _formError = null),
-                      validator: (value) => (value == null || value.isEmpty)
-                          ? 'Enter your password'
-                          : null,
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {}, // Out of scope for this build stage.
-                        child: Text('Forgot password?',
-                            style: PhlioTypography.label),
-                      ),
-                    ),
-                    if (_formError != null) ...[
-                      const SizedBox(height: PhlioSpacing.xs),
-                      Text(_formError!,
-                          style: PhlioTypography.caption
-                              .copyWith(color: PhlioColors.danger)),
-                    ],
-                    const SizedBox(height: PhlioSpacing.sm),
-                    PhlioPrimaryButton(
-                      label: 'Continue',
-                      icon: Icons.arrow_forward_rounded,
-                      isLoading: _isSubmitting,
-                      onPressed: _submit,
-                    ),
-                    const SizedBox(height: PhlioSpacing.xl),
-                    _buildDivider(),
-                    const SizedBox(height: PhlioSpacing.lg),
-                    // Labeled social sign-in chips.
-                    Row(
-                      children: [
-                        _socialButton(Icons.g_mobiledata_rounded, 'Google'),
-                        const SizedBox(width: PhlioSpacing.sm),
-                        _socialButton(Icons.apple_rounded, 'Apple'),
-                        const SizedBox(width: PhlioSpacing.sm),
-                        _socialButton(Icons.key_rounded, 'Passkey'),
-                      ],
-                    ),
-                    const SizedBox(height: PhlioSpacing.xl),
-                    Center(
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        children: [
-                          Text('New to Phlio? ', style: PhlioTypography.body),
-                          GestureDetector(
-                            onTap: () => context.go('/signup'),
-                            child: Text(
-                              'Create an account',
-                              style: PhlioTypography.bodyStrong
-                                  .copyWith(color: PhlioColors.brandBlue),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: PhlioSpacing.xl),
-                  ],
+                  ),
                 ),
               ),
+            ),
+            Positioned.fill(
+              child: ConfettiBurst(
+                  trigger: _confetti, origin: const Alignment(0, -0.35)),
             ),
           ],
         ),
@@ -209,68 +292,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _speechBubble(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.sm),
-      decoration: BoxDecoration(
-        color: PhlioColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: PhlioColors.borderSubtle),
-      ),
-      child: Text('Good to\nsee you\nagain!',
-          style: PhlioTypography.bodyStrong.copyWith(height: 1.25)),
-    );
-  }
-
-  Widget _buildDivider() {
+  Widget _foxyRow(bool keyboard) {
+    final size = keyboard ? 104.0 : 150.0;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Expanded(child: Divider(color: PhlioColors.borderSubtle)),
-        Flexible(
-            flex: 3,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.md),
-              child: Text('or continue with',
-                  textAlign: TextAlign.center, style: PhlioTypography.caption),
-            )),
-        const Expanded(child: Divider(color: PhlioColors.borderSubtle)),
+        TweenAnimationBuilder<double>(
+          tween: Tween(end: size),
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          builder: (context, s, _) => FoxyPuppet(
+            act: _act,
+            size: s,
+            talking: _talking,
+            lean: _lean,
+            oopsSignal: _oops,
+          ),
+        ),
+        Expanded(
+          child: Transform.translate(
+            offset: const Offset(-10, 0),
+            child: FoxyBubble(
+              text: _line,
+              tone: _error != null ? PhlioColors.danger : null,
+              onTyping: (typing) {
+                if (mounted && typing != _talking) {
+                  setState(() => _talking = typing);
+                }
+              },
+            ),
+          ),
+        ),
       ],
-    );
-  }
-
-  Widget _socialButton(IconData icon, String label) {
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$label sign-in is coming soon.')),
-        ),
-        child: Container(
-          height: 52,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: PhlioColors.surfaceElevated,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: PhlioColors.border),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: PhlioColors.textPrimary, size: 22),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  style: PhlioTypography.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
