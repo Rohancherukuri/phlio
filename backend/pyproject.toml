@@ -30,6 +30,8 @@ dependencies = [
     # Studio: text to audio (Kokoro) + auto captions (Whisper); models download on first use.
     "kokoro-onnx>=0.4.0",
     "faster-whisper>=1.1.0",
+    # Thumbnails, sticker/moment image processing at runtime.
+    "pillow>=12.3.0",
 ]
 
 [project.optional-dependencies]

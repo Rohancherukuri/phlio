@@ -7,3 +7,17 @@ frontend
 .git
 *.md
 !backend/README.md
+# Runtime data and big local-only media (never baked into images)
+backend/.env
+backend/data
+backend/media/demo_graph
+backend/media/licensed_social
+backend/media/test_followers
+backend/media/space_recordings
+backend/media/live_recordings
+backend/media/post_uploads
+backend/media/rooms
+backend/media/social
+backend/media/social_comments
+backend/media/stream_films
+Claude outputs
