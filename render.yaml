@@ -1,0 +1,30 @@
+# Render Blueprint — Phlio backend (free demo mode).
+# In-memory seeded data: resets on every deploy/restart, sleeps after 15
+# minutes idle. Switch DATABASE_BACKEND to surreal + add a disk for real data.
+services:
+  - type: web
+    name: phlio-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: dev
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_BACKEND
+        value: memory
+      - key: REDIS_ENABLED
+        value: "false"
+      - key: LOG_FORMAT
+        value: json
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ALLOW_ORIGINS
+        value: "*"
+      - key: ANTHROPIC_API_KEY
+        sync: false

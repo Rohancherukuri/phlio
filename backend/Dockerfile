@@ -19,7 +19,7 @@ FROM python:3.12-slim-bookworm AS backend
 
 # uv is a single static binary — copying it from its official distroless
 # image is the fastest, smallest way to install it (no pip bootstrap needed).
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.8.0 /uv /uvx /usr/local/bin/
 
 # Exports trimmed, muted and rotated DM videos.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
@@ -35,6 +35,10 @@ RUN uv sync --frozen --no-install-project --no-dev --extra surreal
 
 COPY backend/app ./app
 COPY backend/migrations ./migrations
+# Bundled libraries served under /media (Stream music, Studio sound effects,
+# seeded Spaces audio). Runtime uploads are git-ignored, so a clean checkout
+# (what Render builds from) only carries these.
+COPY backend/media ./media
 
 # Bring in the compiled Rust binary from stage 1, at the path
 # `app/config.py`'s default `core_engine_binary_path` resolves relative to
@@ -49,6 +53,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8000\")}/health')" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Hosts like Render inject $PORT; locally it stays 8000.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
