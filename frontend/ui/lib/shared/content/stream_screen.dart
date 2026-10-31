@@ -7,6 +7,11 @@ import '../../app/config/app_config.dart';
 import '../../features/social/presentation/controllers/video_library.dart';
 import '../../features/social/presentation/controllers/video_playback_controller.dart';
 import 'content_surface.dart';
+import '../../features/stream/music/music_explore.dart';
+import '../../features/stream/music/music_home.dart';
+import '../../features/stream/music/music_library.dart' show trackFromStreamItem;
+import '../../features/stream/music/music_player.dart';
+import '../../features/stream/music/now_playing.dart' show openNowPlaying;
 
 String streamCategory(Map item) {
   final kind = '${item['kind'] ?? ''} ${item['category'] ?? ''}'.toLowerCase();
@@ -133,8 +138,15 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
           );
       return;
     }
-    if (loading) return;
+    // Music & podcasts play in Phlio Stream's music player (Retro-style),
+    // with lock-screen controls and the full queue.
     ref.read(videoPlaybackProvider).close();
+    await _player?.pause();
+    await ref.read(musicPlayerProvider).playTracks([trackFromStreamItem(item)]);
+    if (mounted) unawaited(openNowPlaying(context));
+    return;
+    // ignore: dead_code
+    if (loading) return;
     final current = ++request;
     setState(() {
       playing = item;
@@ -252,6 +264,20 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
       if (!audio) _player?.pause();
     });
     if (!categories.contains(category)) category = 'All';
+    if (audioMode) {
+      // Music mode: Home shows your library (Retro-style), Explore shows
+      // search, the Phlio Code scanner and the Audius charts.
+      void toVideo() {
+        FocusScope.of(context).unfocus();
+        search.clear();
+        category = 'All';
+        ref.read(streamAudioModeProvider.notifier).state = false;
+      }
+
+      return widget.explore
+          ? MusicExploreScreen(onSwitchToVideo: toVideo)
+          : RetroMusicHome(onSwitchToVideo: toVideo);
+    }
     return Scaffold(
       backgroundColor: audioMode ? const Color(0xff121212) : Colors.black,
       appBar: AppBar(

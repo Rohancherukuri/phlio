@@ -12,11 +12,18 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import os
+from typing import Any
+from urllib.parse import quote
 from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from app.api.router import api_router
 from app.config import Settings, get_settings
@@ -37,6 +44,10 @@ logger = logging.getLogger("phlio.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = app.state.settings
+    # Disk-less hosts: bring back the SQLite databases and DM files from
+    # object storage before anything opens them (no-op when not configured).
+    from app.infrastructure import media_sync
+    await asyncio.to_thread(media_sync.restore_state, settings)
     container = await build_container(settings)
     app.state.container = container
 
@@ -54,6 +65,8 @@ async def lifespan(app: FastAPI):
     )
     from app.infrastructure.outbox import run as deliver_outbox
     worker = asyncio.create_task(deliver_outbox(container))
+    # Backs up state and new uploads to object storage (no-op when not configured).
+    state_sync = asyncio.create_task(media_sync.run(settings, settings.state_sync_interval))
     from app.domains.graph.news import run as refresh_news
     news_worker = asyncio.create_task(refresh_news(container)) if settings.news_ingestion_enabled else None
     try:
@@ -66,12 +79,39 @@ async def lifespan(app: FastAPI):
         worker.cancel()
         with suppress(asyncio.CancelledError):
             await worker
+        # Cancelling makes the sync do one final backup before shutdown.
+        state_sync.cancel()
+        with suppress(asyncio.CancelledError):
+            await state_sync
     await container.cache.close()
     if container.graph.store.db:
         await container.graph.store.db.close()
     container.messaging_service.db.close()
     container.social_video_service.db.close()
     logger.info("Phlio API shutting down.")
+
+
+class MediaFiles(StaticFiles):
+    """StaticFiles for /media that redirects missing files to object storage.
+
+    On a disk-less deployment the photos, videos and recordings live in a
+    public bucket (``MEDIA_PUBLIC_URL``); the app keeps using origin-relative
+    ``/media/...`` URLs and players follow the redirect.
+    """
+
+    def __init__(self, *args: Any, fallback: str = "", **kwargs: Any) -> None:
+        """``fallback`` is the public base URL for missing files ('' disables it)."""
+        super().__init__(*args, **kwargs)
+        self.fallback = fallback.rstrip("/")
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        """Serves the file from disk, or redirects to the bucket when it's not there."""
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or not self.fallback:
+                raise
+            return RedirectResponse(f"{self.fallback}/{quote(path.replace(os.sep, '/'))}", status_code=307)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -109,8 +149,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Room uploads land in settings.media_root (streamed to disk by
     # MediaStorage) and are served back origin-relative under /media so
     # attachment urls stay deploy-host agnostic.
-    from fastapi.staticfiles import StaticFiles
-
     from app.core.container import media_root_path
 
     @app.middleware("http")
@@ -120,7 +158,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.headers['Cache-Control'] = 'public, max-age=86400'
         return response
 
-    app.mount("/media", StaticFiles(directory=media_root_path(settings)), name="media")
+    app.mount("/media", MediaFiles(directory=media_root_path(settings), fallback=settings.media_public_url),
+              name="media")
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

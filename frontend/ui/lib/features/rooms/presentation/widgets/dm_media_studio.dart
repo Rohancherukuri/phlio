@@ -43,6 +43,7 @@ import '../../../../shared/music/song_picker.dart';
 import '../../data/datasources/messaging_api.dart';
 import 'chat_composer.dart';
 import 'studio/studio_model.dart';
+import '../../../../shared/media/phlio_look_view.dart';
 import 'studio/studio_layers.dart';
 import 'studio/studio_overlay.dart';
 import 'studio/studio_panels.dart';
@@ -2016,7 +2017,6 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
   }
 
   Widget _clipView(StudioClip c, double local, Size size) {
-    final matrix = c.colorMatrix;
     Widget fg = FittedBox(fit: c.fit == 'fill' ? BoxFit.cover : BoxFit.contain, clipBehavior: Clip.hardEdge, child: _media(c));
     final (zoom, panX, panY) = c.transformAt(local);
     fg = Transform.translate(
@@ -2055,11 +2055,13 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
     }
     layers.add(Positioned.fill(child: fg));
     Widget out = Stack(fit: StackFit.expand, children: layers);
-    if (!isIdentityColor(matrix)) {
-      out = ColorFiltered(colorFilter: ColorFilter.matrix(flutterColorMatrix(matrix)), child: out);
-    }
-    out = _effectPreview(c.effect, out, size);
-    final vignette = c.effect == 'vignette' ? .7 : (c.adjust['vignette'] ?? 0);
+    // GPU shader: filter/look grade (tone curve, vignette, grain) plus the
+    // effect when the shader can draw it — same maths as the export.
+    final shaderFx = _shaderEffect(c.effect);
+    out = PhlioLook(grade: c.grade, effect: shaderFx ?? 'none', child: out);
+    if (shaderFx == null) out = _effectPreview(c.effect, out, size);
+    final shaded = PhlioLookShader.supported;
+    final vignette = c.effect == 'vignette' ? .7 : (shaded ? 0.0 : (c.adjust['vignette'] ?? 0));
     final extras = <Widget>[Positioned.fill(child: out)];
     if (vignette > 0) {
       extras.add(Positioned.fill(
@@ -2165,9 +2167,11 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
       if (t < s.start || t >= s.end) continue;
       if (s.kind == 'effect') {
         final e = s.effect ?? 'none';
-        out = _effectPreview(switch (e) { 'dream' => 'soft', 'neon' => 'vivid', 'sepia_flicker' => 'vhs', _ => e },
-            out, size);
-        if (e == 'vignette' || e == 'film') out = _vignette(out, .7);
+        final shaderFx = _shaderEffect(e);
+        out = shaderFx != null
+            ? PhlioLook(effect: shaderFx, child: out)
+            : _effectPreview(switch (e) { 'dream' => 'soft', 'neon' => 'vivid', 'sepia_flicker' => 'vhs', _ => e }, out, size);
+        if (e == 'vignette' || (e == 'film' && shaderFx == null)) out = _vignette(out, .7);
         if (e == 'flash') {
           final f = math.pow(math.max(0, math.sin(t * 5)), 8).toDouble() * .45;
           out = Stack(fit: StackFit.expand, children: [
@@ -2176,12 +2180,9 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
           ]);
         }
       } else {
-        final m = s.colorMatrix;
-        if (!isIdentityColor(m)) {
-          out = ColorFiltered(colorFilter: ColorFilter.matrix(flutterColorMatrix(m)), child: out);
-        }
+        out = PhlioLook(grade: s.grade, child: out);
         final v = s.adjust['vignette'] ?? 0;
-        if (v > 0) out = _vignette(out, v);
+        if (v > 0 && !PhlioLookShader.supported) out = _vignette(out, v);
       }
     }
     return out;
@@ -2201,6 +2202,21 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
           ),
         ),
       ]);
+
+  /// Studio effects the GPU shader previews (the server renders them on export).
+  String? _shaderEffect(String effect) {
+    if (!PhlioLookShader.supported) return null;
+    return switch (effect) {
+      'glitch' => 'glitch',
+      'rgb_split' => 'chromatic',
+      'vhs' => 'vhs',
+      'film' || 'sepia_flicker' => 'film',
+      'dream' || 'soft' => 'dreamy',
+      'blur' => 'blur',
+      'grain' => 'grain',
+      _ => null,
+    };
+  }
 
   Widget _effectPreview(String effect, Widget child, Size size) {
     switch (effect) {

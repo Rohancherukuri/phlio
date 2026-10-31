@@ -14,10 +14,13 @@ import 'app/app.dart';
 import 'core/di/service_locator.dart';
 import 'core/network/api_client.dart';
 import 'features/authentication/presentation/controllers/auth_controller.dart';
+import 'features/stream/music/music_player.dart' show initMusicBackground;
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   setupServiceLocator();
+  // Phlio Stream music: lock-screen / notification / headset controls.
+  await initMusicBackground();
 
   final container = ProviderContainer();
 

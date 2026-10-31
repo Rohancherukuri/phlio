@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../../design_system/colors.dart';
 import '../../../../../design_system/widgets/foxy_pack.dart';
+import '../../../../../shared/media/phlio_look_view.dart';
 import 'studio_model.dart';
 
 const studioViolet = PhlioColors.brandViolet;
@@ -219,10 +220,7 @@ class StudioFilterPanel extends StatelessWidget {
             onPick: onFilter,
             icon: (id, _) => id == 'none'
                 ? const Icon(Icons.block_rounded, color: Colors.white60)
-                : ColorFiltered(
-                    colorFilter: ColorFilter.matrix(
-                        flutterColorMatrix(studioColorMatrix(id, 1, const {}))),
-                    child: thumb),
+                : PhlioLook(grade: studioGrade(id, 1, const {}), child: thumb),
           ),
         ),
         if (filter != 'none')

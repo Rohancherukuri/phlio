@@ -12,6 +12,8 @@ backend/.ruff_cache/
 backend/.mypy_cache/
 .env
 backend/.env
+# Cloud credentials for scripts/publish_local_data.py
+backend/.env.publish
 
 # -- Flutter / Dart --------------------------------------------------------
 frontend/ui/.dart_tool/
@@ -46,6 +48,7 @@ backend/media/post_uploads/
 backend/media/rooms/
 backend/media/social/
 backend/media/social_comments/
+backend/media/social_moments/
 *.pid
 *.log
 

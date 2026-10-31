@@ -33,7 +33,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Any, Callable, Literal, Sequence
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
@@ -68,16 +68,31 @@ LEGACY_FILTERS = {
 }
 
 
-def _finite(values, limit):
+Matrix = list[float]  # 3x4 affine colour matrix, row-major (R, G, B rows + offset column)
+Reporter = Callable[[float], None]  # progress callback for one stage, 0-1
+
+
+def _finite(values: Sequence[float], limit: float) -> bool:
+    """True if every value is a real number within ±limit."""
     return all(math.isfinite(v) and abs(v) <= limit for v in values)
 
 
-def _valid_color(m):
+def _valid_color(m: Sequence[float] | None) -> None:
+    """Rejects colour matrices with non-finite or extreme coefficients."""
     if m is not None and not _finite(m, 2):
         raise ValueError('Invalid colour adjustment.')
 
 
-def _valid_keys(keys, width):
+def _valid_tone(tone: Sequence[float] | None) -> None:
+    """Rejects tone curves that aren't 9 finite values or have near-zero gamma."""
+    # [liftR, liftG, liftB, gammaR, gammaG, gammaB, gainR, gainG, gainB]
+    if tone is not None and (len(tone) != 9 or not _finite(tone, 4)
+                             or any(g <= 0.05 for g in tone[3:6])):
+        raise ValueError('Invalid tone curve.')
+
+
+def _valid_keys(keys: list[list[float]] | None, width: int) -> None:
+    """Checks every keyframe has `width` finite values."""
     for k in keys or []:
         if len(k) != width or not _finite(k, 4000):
             raise ValueError('Invalid keyframes.')
@@ -100,6 +115,7 @@ class StudioClip(BaseModel):
     hold: float | None = Field(default=None, ge=.3, le=30, allow_inf_nan=False)  # freeze frame
     crop: list[float] | None = Field(default=None, min_length=4, max_length=4)  # x, y, w, h (0-1)
     color: list[float] | None = Field(default=None, min_length=12, max_length=12)
+    tone: list[float] | None = Field(default=None, min_length=9, max_length=9)  # look curve
     vignette: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
     sharpen: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
     grain: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
@@ -118,7 +134,8 @@ class StudioClip(BaseModel):
     transition_duration: float = Field(default=.5, ge=.1, le=2, allow_inf_nan=False)
 
     @model_validator(mode='after')
-    def valid(self):
+    def valid(self) -> 'StudioClip':
+        """Cross-field checks: minimum length, crop box, colour, keyframes and speed curve."""
         if self.hold is None and self.end - self.start < .3:
             raise ValueError('Each clip must be at least 0.3 seconds.')
         if self.crop:
@@ -126,6 +143,7 @@ class StudioClip(BaseModel):
             if not (0 <= x < 1 and 0 <= y < 1 and .05 <= w <= 1 and .05 <= h <= 1 and x + w <= 1.001 and y + h <= 1.001):
                 raise ValueError('Invalid crop.')
         _valid_color(self.color)
+        _valid_tone(self.tone)
         _valid_keys(self.keys, 4)
         if self.curve:
             last = 0.0
@@ -143,6 +161,7 @@ class StudioClip(BaseModel):
 
     @property
     def length(self) -> float:
+        """Seconds this clip lasts on the timeline (after speed / curve / freeze)."""
         if self.hold is not None:
             return self.hold
         span = self.end - self.start
@@ -169,12 +188,14 @@ class StudioOverlay(BaseModel):
     keys: list[list[float]] | None = Field(default=None, max_length=40)  # [t, cx, cy, scale, rot, opacity]
 
     @model_validator(mode='after')
-    def valid(self):
+    def valid(self) -> 'StudioOverlay':
+        """Checks the keyframes ([t, cx, cy, scale, rot, opacity])."""
         _valid_keys(self.keys, 6)
         return self
 
     @property
     def dynamic(self) -> bool:
+        """True when the overlay moves or animates (so it can't be baked into a still)."""
         return self.cx is not None and (bool(self.keys) or self.loop != 'none'
                                         or self.anim_in in ('pop', 'drop') or self.anim_out == 'shrink')
 
@@ -198,13 +219,16 @@ class StudioPip(BaseModel):
     chroma: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
     chroma_strength: float = Field(default=.3, ge=.01, le=1, allow_inf_nan=False)
     color: list[float] | None = Field(default=None, min_length=12, max_length=12)
+    tone: list[float] | None = Field(default=None, min_length=9, max_length=9)
     keys: list[list[float]] | None = Field(default=None, max_length=40)  # [t, cx, cy, scale, rot, opacity]
     anim_in: Literal['none', 'fade'] = 'none'
     anim_out: Literal['none', 'fade'] = 'none'
 
     @model_validator(mode='after')
-    def valid(self):
+    def valid(self) -> 'StudioPip':
+        """Checks colour, tone, keyframes and minimum length."""
         _valid_color(self.color)
+        _valid_tone(self.tone)
         _valid_keys(self.keys, 6)
         if self.end - self.start < .2:
             raise ValueError('Overlay clips must be at least 0.2 seconds.')
@@ -212,6 +236,7 @@ class StudioPip(BaseModel):
 
     @property
     def length(self) -> float:
+        """Seconds the overlay clip is on screen."""
         return max(.2, (self.end - self.start) / self.speed)
 
 
@@ -220,6 +245,7 @@ class StudioSegment(BaseModel):
     kind: Literal['effect', 'color']
     effect: SegmentEffect | None = None
     color: list[float] | None = Field(default=None, min_length=12, max_length=12)
+    tone: list[float] | None = Field(default=None, min_length=9, max_length=9)
     vignette: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
     sharpen: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
     grain: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
@@ -227,8 +253,10 @@ class StudioSegment(BaseModel):
     end: float = Field(gt=0, le=3600, allow_inf_nan=False)
 
     @model_validator(mode='after')
-    def valid(self):
+    def valid(self) -> 'StudioSegment':
+        """Checks colour and tone, and that effect segments name an effect."""
         _valid_color(self.color)
+        _valid_tone(self.tone)
         if self.kind == 'effect' and not self.effect:
             raise ValueError('Choose an effect.')
         return self
@@ -248,7 +276,8 @@ class StudioAudio(BaseModel):
     loop: bool = False
 
     @model_validator(mode='after')
-    def one_source(self):
+    def one_source(self) -> 'StudioAudio':
+        """Exactly one of an upload or a Phlio library sound, never a path outside the library."""
         if bool(self.file_id) == bool(self.library_url):
             raise ValueError('Each audio item needs exactly one source.')
         if self.library_url and (not self.library_url.startswith(LIBRARY_PREFIXES)
@@ -289,13 +318,15 @@ class StudioPlan(BaseModel):
     text: str = Field(default='', max_length=180)
 
     @model_validator(mode='after')
-    def bounded(self):
+    def bounded(self) -> 'StudioPlan':
+        """Caps projects at five minutes of clips."""
         if sum(c.length for c in self.clips) > 300:
             raise ValueError('Keep projects within five minutes.')
         return self
 
     @property
     def total(self) -> float:
+        """Project length in seconds (clip lengths minus transition overlaps)."""
         total = 0.0
         for i, clip in enumerate(self.clips):
             total += clip.length
@@ -305,6 +336,7 @@ class StudioPlan(BaseModel):
 
     @property
     def image_only(self) -> bool:
+        """True when the project is one still photo with nothing that moves or plays (exports a JPEG)."""
         c = self.clips[0]
         return (len(self.clips) == 1 and c.motion == 'none' and not c.keys and not self.audios
                 and not self.music_id and not self.pips and not self.segments
@@ -313,6 +345,7 @@ class StudioPlan(BaseModel):
 
 
 def overlap(a: StudioClip, b: StudioClip) -> float:
+    """Seconds two neighbouring clips overlap during `a`'s transition."""
     return min(a.transition_duration, a.length / 3, b.length / 3)
 
 
@@ -330,7 +363,7 @@ def legacy_matrix(plan: StudioPlan) -> list[float] | None:
     return mul(con, mul(sat, m))
 
 
-def mul(a, b):
+def mul(a: Sequence[float], b: Sequence[float]) -> Matrix:
     """3x4 affine colour matrices: a ∘ b."""
     out = []
     for r in range(3):
@@ -342,6 +375,7 @@ def mul(a, b):
 
 
 def atempo(speed: float) -> str:
+    """FFmpeg atempo chain for any speed (each atempo stage only covers 0.5-2x)."""
     parts = []
     while speed > 2:
         parts.append('atempo=2')
@@ -354,6 +388,7 @@ def atempo(speed: float) -> str:
 
 
 def voice_filters(voice: str, denoise: bool) -> list[str]:
+    """Audio filters for a voice-changer preset, plus noise reduction."""
     out = ['afftdn=nf=-25'] if denoise else []
     pitch = {'chipmunk': 1.4, 'deep': .74}.get(voice)
     if pitch:
@@ -374,7 +409,9 @@ RATIOS = {'9:16': 9 / 16, '16:9': 16 / 9, '1:1': 1, '4:5': 4 / 5, '3:4': 3 / 4, 
           '2.35:1': 2.35, '5.8in': 1125 / 2436}
 
 
-def canvas(plan: StudioPlan, first: dict) -> tuple[int, int]:
+def canvas(plan: StudioPlan, first: dict[str, Any]) -> tuple[int, int]:
+    """Output size (even numbers) from the chosen ratio and resolution; `first` is
+    the first clip's ffprobe video stream, used for the "original" ratio."""
     clip = plan.clips[0]
     w, h = first['width'], first['height']
     if clip.turns % 2:
@@ -389,17 +426,57 @@ def canvas(plan: StudioPlan, first: dict) -> tuple[int, int]:
     return int(width * scale) // 4 * 4, int(height * scale) // 4 * 4
 
 
-def color_chain(m, vignette=0.0, sharpen=0.0, grain=0.0, enable='') -> list[str]:
+import threading
+
+_LUT = threading.local()  # .dir: the current render's temp dir for generated LUTs
+
+
+def grade_lut(m: Matrix | None, tone: Sequence[float] | None, size: int = 33) -> Path | None:
+    """Bake matrix + tone curve into a .cube 3D LUT: exactly the app's GPU
+    shader maths (clip(M*c + offset), then lift + (gain-lift)*pow(c, gamma)).
+
+    Written into the current render's temp folder (`_LUT.dir`) and reused for
+    identical grades; returns None outside a render."""
+    import hashlib
+    import numpy as np
+    folder = getattr(_LUT, 'dir', None)
+    if folder is None:
+        return None
+    key = hashlib.sha1(json.dumps([m, tone]).encode()).hexdigest()[:16]
+    path = folder / f'look_{key}.cube'
+    if path.exists():
+        return path
+    axis = np.linspace(0, 1, size)
+    b, g, r = np.meshgrid(axis, axis, axis, indexing='ij')  # .cube: red varies fastest
+    rgb = np.stack([r.ravel(), g.ravel(), b.ravel()], axis=1)
+    M = np.array(m or IDENTITY, dtype=np.float64).reshape(3, 4)
+    out = np.clip(rgb @ M[:, :3].T + M[:, 3], 0, 1)
+    if tone:
+        lift, gamma, gain = (np.array(tone[i:i + 3]) for i in (0, 3, 6))
+        out = np.clip(lift + (gain - lift) * np.power(out, gamma), 0, 1)
+    lines = [f'LUT_3D_SIZE {size}'] + [f'{x:.5f} {y:.5f} {z:.5f}' for x, y, z in out]
+    path.write_text('\n'.join(lines) + '\n', encoding='ascii')
+    return path
+
+
+def color_chain(m: Matrix | None, vignette: float = 0.0, sharpen: float = 0.0, grain: float = 0.0,
+                enable: str = '', tone: Sequence[float] | None = None) -> list[str]:
+    """Colour grade as a generated 3D LUT (matrix + the look's tone curve),
+    then sharpen / grain / vignette."""
     out = []
-    if m and [round(v, 4) for v in m] != IDENTITY:
-        out.append('colorchannelmixer=' + ':'.join(
-            f'{n}={v:.4f}' for n, v in zip(
-                ['rr', 'rg', 'rb', 'gr', 'gg', 'gb', 'br', 'bg', 'bb'],
-                [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]])) + enable)
-        offsets = [m[3], m[7], m[11]]
-        if any(abs(o) > .002 for o in offsets):
-            out.append("lutrgb=" + ':'.join(
-                f"{c}='clip(val+{round(o * 255)},0,255)'" for c, o in zip('rgb', offsets)) + enable)
+    m = m if m and [round(v, 4) for v in m] != IDENTITY else None
+    curve = tone if tone and (any(abs(v) > 1e-4 for v in tone[:3])
+                              or any(abs(v - 1) > 1e-4 for v in tone[3:])) else None
+    if m or curve:
+        lut = grade_lut(m, curve)
+        if lut is not None:
+            escaped = str(lut).replace('\\', '/').replace(':', r'\:')
+            out.append(f"lut3d=file='{escaped}':interp=tetrahedral" + enable)
+        elif m:  # no temp dir (shouldn't happen): matrix only
+            out.append('colorchannelmixer=' + ':'.join(
+                f'{n}={v:.4f}' for n, v in zip(
+                    ['rr', 'rg', 'rb', 'gr', 'gg', 'gb', 'br', 'bg', 'bb'],
+                    [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]])) + enable)
     if sharpen > 0:
         out.append(f'unsharp=5:5:{sharpen * 1.6:.2f}' + enable)
     if grain > 0:
@@ -426,6 +503,7 @@ SEGMENT_FILTERS = {
 
 
 def effect_graph(effect: str, src: str, dst: str, W: int, H: int) -> str:
+    """Filter-graph fragment applying a clip effect from label `src` to `dst`."""
     if effect in SEGMENT_FILTERS:
         return f"[{src}]{','.join(SEGMENT_FILTERS[effect])}[{dst}]"
     simple = {
@@ -446,6 +524,7 @@ def effect_graph(effect: str, src: str, dst: str, W: int, H: int) -> str:
 
 
 def motion_filter(clip: StudioClip, W: int, H: int, fps: int) -> str | None:
+    """Ken Burns zoom / pan for photos, or None when the clip doesn't move."""
     if clip.motion == 'none':
         return None
     frames = max(1, round(clip.length * fps))
@@ -459,6 +538,7 @@ def motion_filter(clip: StudioClip, W: int, H: int, fps: int) -> str | None:
 
 
 def _n(v: float) -> str:
+    """Compact number for filter expressions (no trailing zeros)."""
     return f'{v:.5f}'.rstrip('0').rstrip('.') if v != int(v) else str(int(v))
 
 
@@ -482,19 +562,23 @@ def lerp(points: list[tuple[float, float]], var: str = 't') -> str:
 class Progress:
     """Maps each FFmpeg stage onto a slice of 0-1."""
 
-    def __init__(self, report: Callable[[float, str], None] | None):
+    def __init__(self, report: Callable[[float, str], None] | None) -> None:
+        """`report(fraction, label)` receives overall progress; None ignores it."""
         self.report = report or (lambda p, s: None)
         self.done = 0.0
 
-    def stage(self, weight: float, label: str):
+    def stage(self, weight: float, label: str) -> Reporter:
+        """Starts a stage worth `weight` of the total; returns its 0-1 reporter."""
         start = self.done
         self.done += weight
         self.report(start, label)
         return lambda f: self.report(start + weight * max(0.0, min(1.0, f)), label)
 
 
-def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=None, audios=None,
-                  progress: Callable[[float, str], None] | None = None, pips=None, extras=None) -> str:
+def render_studio(sources: list[dict[str, Any]], music: dict[str, Any] | None, plan: StudioPlan, destination: Path,
+                  overlays: list[dict[str, Any]] | None = None, audios: list[dict[str, Any]] | None = None,
+                  progress: Callable[[float, str], None] | None = None, pips: list[dict[str, Any]] | None = None,
+                  extras: dict[str, Any] | None = None) -> str:
     """sources: per clip {path, mime}; overlays: per overlay {path};
     audios: [{path, spec}]; pips: per pip {path, mime, mask_path?};
     extras: {'cover_path'?, 'cover_overlay'?}."""
@@ -507,7 +591,10 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
     extras = extras or {}
     track = Progress(progress)
 
-    def run(args, timeout=300, seconds=None, report=None):
+    def run(args: list[str], timeout: float = 300, seconds: float | None = None,
+            report: Reporter | None = None) -> Any:
+        """Runs FFmpeg / ffprobe. With `seconds` and `report`, parses -progress
+        output to report 0-1 for the stage. Raises CalledProcessError on failure."""
         if not report or not seconds:
             return subprocess.run(args, capture_output=True, check=True, timeout=timeout)
         args = args[:1] + ['-progress', 'pipe:1', '-nostats'] + args[1:]
@@ -533,7 +620,8 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
     crf = QUALITY[plan.quality]
     enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', str(crf), '-pix_fmt', 'yuv420p']
 
-    def probe(path):
+    def probe(path: str | Path) -> dict[str, Any]:
+        """ffprobe streams + format as JSON."""
         return json.loads(run([ffprobe, '-v', 'error', '-show_streams', '-show_format', '-of', 'json',
                                str(path)], 15).stdout)
 
@@ -542,6 +630,7 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
     try:
         with tempfile.TemporaryDirectory(prefix='phlio-studio-') as temp:
             work = Path(temp)
+            _LUT.dir = work
             first = next(s for s in probe(sources[0]['path'])['streams'] if s['codec_type'] == 'video')
             W, H = canvas(plan, first)
             image_mode = plan.image_only and sources[0]['mime'].startswith('image/')
@@ -624,7 +713,7 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
                         pre.append(f'setpts=(PTS-STARTPTS)/{clip.speed}')
                     graph += f"[0:v]{','.join(pre) or 'null'}[raw];"
                     pre2 = []
-                pre2 += color_chain(clip.color or legacy, clip.vignette, clip.sharpen, clip.grain)
+                pre2 += color_chain(clip.color or legacy, clip.vignette, clip.sharpen, clip.grain, tone=clip.tone)
                 pre2.append('setsar=1')
                 graph += f"[raw]{','.join(pre2)}[src];"
                 graph += frame_stage(clip)
@@ -785,7 +874,7 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
                         filters = [f + enable if 'eval=frame' not in f else f + enable
                                    for f in SEGMENT_FILTERS[seg.effect]]
                     else:
-                        filters = color_chain(seg.color, seg.vignette, seg.sharpen, seg.grain, enable)
+                        filters = color_chain(seg.color, seg.vignette, seg.sharpen, seg.grain, enable, seg.tone)
                     if filters:
                         graph.append(f"[{cur}]{','.join(filters)}[s{k}]")
                         cur = f's{k}'
@@ -806,7 +895,7 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
                         chain.append('hflip')
                     if spec.chroma:
                         chain.append(f'chromakey=0x{spec.chroma[1:]}:{0.05 + spec.chroma_strength * 0.35:.3f}:0.08')
-                    chain += color_chain(spec.color)
+                    chain += color_chain(spec.color, tone=spec.tone)
                     pw = max(2, int(spec.w * W) // 2 * 2)
                     chain += ['format=rgba', f'scale={pw}:-2', f'setpts=PTS+{spec.at:.3f}/TB']
                     graph.append(f"[{src}:v]{','.join(chain)}[p{k}raw]")
@@ -935,6 +1024,7 @@ def render_studio(sources, music, plan: StudioPlan, destination: Path, overlays=
     except HTTPException:
         raise
     except subprocess.CalledProcessError as exc:
+        _LUT.dir = None
         detail = (exc.stderr or b'')
         if isinstance(detail, bytes):
             detail = detail.decode(errors='replace')
@@ -955,8 +1045,9 @@ LOOP = {
 }
 
 
-def _animate_layer(graph, src, name, keys, cx, cy, rotation, opacity, loop, s, e, anim_in, anim_out,
-                   width, rgba=True) -> str:
+def _animate_layer(graph: list[str], src: str, name: str, keys: list[list[float]] | None,
+                   cx: float | None, cy: float | None, rotation: float, opacity: float, loop: str,
+                   s: float, e: float, anim_in: str, anim_out: str, width: int, rgba: bool = True) -> str:
     """Scale / rotate / fade a layer over time. Returns the output label."""
     keys = sorted(keys or [])
     chain = [] if rgba else ['format=rgba']
@@ -996,7 +1087,9 @@ def _animate_layer(graph, src, name, keys, cx, cy, rotation, opacity, loop, s, e
     return f'{name}a'
 
 
-def _position(keys, cx, cy, W, H, anim_in, s, anim_out='none', e=0.0, loop='none'):
+def _position(keys: list[list[float]] | None, cx: float | None, cy: float | None, W: int, H: int,
+              anim_in: str, s: float, anim_out: str = 'none', e: float = 0.0,
+              loop: str = 'none') -> tuple[str, str]:
     """overlay x/y expressions centring the layer on (cx, cy)."""
     keys = sorted(keys or [])
     px = lerp([(k[0], k[1]) for k in keys]) if keys else _n(cx if cx is not None else .5)
@@ -1020,10 +1113,10 @@ def _position(keys, cx, cy, W, H, anim_in, s, anim_out='none', e=0.0, loop='none
 
 # -- previews for the timeline ------------------------------------------------------
 
-def filmstrip(path: str, mime: str, destination: Path, frames: int = 12, height: int = 96):
-    """Horizontal JPEG strip of evenly spaced frames (one per tile)."""
+def filmstrip(path: str, mime: str, destination: Path, frames: int = 12, height: int = 96) -> int:
+    """Horizontal JPEG strip of evenly spaced frames (one per tile). Returns the tile count."""
     ffmpeg, ffprobe = shutil.which('ffmpeg'), shutil.which('ffprobe')
-    if not ffmpeg:
+    if not ffmpeg or not ffprobe:
         raise HTTPException(503, 'Media previews are unavailable.')
     if mime.startswith('image/'):
         subprocess.run([ffmpeg, '-v', 'error', '-y', '-i', path, '-vf',
@@ -1042,7 +1135,8 @@ def filmstrip(path: str, mime: str, destination: Path, frames: int = 12, height:
     return frames
 
 
-def waveform(path: str, points: int = 200) -> dict:
+def waveform(path: str, points: int = 200) -> dict[str, Any]:
+    """`{duration, peaks}`: up to `points` peak levels (0-1, 99th-percentile normalised)."""
     import numpy as np
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
@@ -1059,7 +1153,7 @@ def waveform(path: str, points: int = 200) -> dict:
     return dict(duration=round(duration, 3), peaks=[round(float(min(1, v / top)), 3) for v in peaks])
 
 
-def extract_speech(path: str, start: float, end: float, speed: float, destination: Path):
+def extract_speech(path: str, start: float, end: float, speed: float, destination: Path) -> None:
     """16 kHz mono WAV of a trimmed clip at its edited speed (for captions)."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:

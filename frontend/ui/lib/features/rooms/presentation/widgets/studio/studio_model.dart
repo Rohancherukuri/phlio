@@ -10,6 +10,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import '../../../../../shared/media/phlio_look_data.dart';
+
 int _seq = 0;
 String studioId() =>
     '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${(_seq++).toRadixString(36)}';
@@ -126,6 +128,9 @@ class StudioClip {
   List<double> get colorMatrix =>
       studioColorMatrix(filter, filterAmount, adjust);
 
+  /// Matrix + look tone curve + vignette/grain (what the GPU shader draws).
+  LookGrade get grade => studioGrade(filter, filterAmount, adjust);
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'path': path,
@@ -226,9 +231,7 @@ class StudioClip {
       if (hold != null) 'hold': hold,
       if (crop != null) 'crop': crop,
       if (!identity) 'color': m,
-      'vignette': (adjust['vignette'] ?? 0).clamp(0.0, 1.0),
-      'sharpen': (adjust['sharpen'] ?? 0).clamp(0.0, 1.0),
-      'grain': (adjust['grain'] ?? 0).clamp(0.0, 1.0),
+      ..._gradePlan(grade, adjust),
       'effect': effect,
       'fit': fit,
       'zoom': zoom,
@@ -524,6 +527,7 @@ class StudioPip {
   double get length => math.max(.2, (end - start) / speed);
   double sourceAt(double local) => start + (local * speed).clamp(0.0, end - start);
   List<double> get colorMatrix => studioColorMatrix(filter, filterAmount, adjust);
+  LookGrade get grade => studioGrade(filter, filterAmount, adjust);
 
   ({double x, double y, double scale, double rotation, double opacity}) placeAt(double t) {
     if (keys.isEmpty) return (x: x, y: y, scale: 1, rotation: rotation, opacity: opacity);
@@ -610,6 +614,7 @@ class StudioPip {
         'chroma': '#${(chroma! & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}',
       'chroma_strength': chromaStrength,
       if (!_isIdentity(m)) 'color': m,
+      if (!grade.toneIsIdentity) 'tone': [for (final v in grade.tone) _r(v)],
       if (keys.isNotEmpty)
         'keys': [
           for (final k in keys) [_r(k[0] + at), _r(k[1]), _r(k[2]), _r(k[3]), _r(k[4]), _r(k[5])]
@@ -648,6 +653,7 @@ class StudioSegment {
 
   List<double> get colorMatrix =>
       studioColorMatrix(kind == 'filter' ? filter : 'none', filterAmount, adjust);
+  LookGrade get grade => studioGrade(kind == 'filter' ? filter : 'none', filterAmount, adjust);
 
   Map<String, dynamic> toJson() => {
         'id': id, 'kind': kind, 'effect': effect, 'filter': filter,
@@ -674,9 +680,7 @@ class StudioSegment {
       : {
           'kind': 'color',
           'color': colorMatrix,
-          'vignette': (adjust['vignette'] ?? 0).clamp(0.0, 1.0),
-          'sharpen': (adjust['sharpen'] ?? 0).clamp(0.0, 1.0),
-          'grain': (adjust['grain'] ?? 0).clamp(0.0, 1.0),
+          ..._gradePlan(grade, adjust),
           'start': _r(start),
           'end': _r(end),
         };
@@ -913,8 +917,11 @@ final Map<String, List<double>> studioFilters = {
   'teal': _chain([_scale(.9, 1.02, 1.08), _offset(-.02, .02, .03), _contrast(1.06)]),
 };
 
-const studioFilterNames = {
+final studioFilterNames = {
   'none': 'None',
+  // Instagram-style looks (GPU shader preview, exact export).
+  for (final e in phlioLookNames.entries)
+    if (e.key != 'normal') e.key: e.value,
   'vivid': 'Vivid',
   'warm': 'Warm',
   'cool': 'Cool',
@@ -950,7 +957,7 @@ const studioUnipolar = {'fade', 'vignette', 'sharpen', 'grain'};
 
 List<double> studioColorMatrix(
     String filter, double amount, Map<String, double> adjust) {
-  final f = studioFilters[filter] ?? _identity;
+  final f = studioFilters[filter] ?? phlioLooks[filter]?.matrix ?? _identity;
   final blended = [
     for (var i = 0; i < 12; i++) _identity[i] + (f[i] - _identity[i]) * amount
   ];
@@ -979,6 +986,27 @@ List<double> studioColorMatrix(
   final m = _chain(steps);
   return [for (final v in m) v.clamp(-2.0, 2.0)];
 }
+
+/// Full grade: filter/adjust matrix, the look's tone curve (Instagram-style
+/// looks from shared/media/phlio_look_data.dart) and vignette/grain.
+LookGrade studioGrade(String filter, double amount, Map<String, double> adjust) {
+  final look = phlioLooks[filter]?.scaled(amount.clamp(0.0, 1.0));
+  return LookGrade(
+    matrix: studioColorMatrix(filter, amount, adjust),
+    lift: look?.lift ?? const [0, 0, 0],
+    gamma: look?.gamma ?? const [1, 1, 1],
+    gain: look?.gain ?? const [1, 1, 1],
+    vignette: math.max(adjust['vignette'] ?? 0, look?.vignette ?? 0).clamp(0.0, 1.0),
+    grain: math.max(adjust['grain'] ?? 0, look?.grain ?? 0).clamp(0.0, 1.0),
+  );
+}
+
+Map<String, dynamic> _gradePlan(LookGrade g, Map<String, double> adjust) => {
+      'vignette': _r(g.vignette),
+      'sharpen': (adjust['sharpen'] ?? 0).clamp(0.0, 1.0),
+      'grain': _r(g.grain),
+      if (!g.toneIsIdentity) 'tone': [for (final v in g.tone) _r(v)],
+    };
 
 /// 4x5 matrix for [ColorFilter.matrix] (offsets in 0-255).
 List<double> flutterColorMatrix(List<double> m) => [
