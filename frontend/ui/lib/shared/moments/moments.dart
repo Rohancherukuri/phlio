@@ -34,6 +34,9 @@ import '../../design_system/widgets/phlio_fox.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/rooms/data/datasources/messaging_api.dart';
 import '../giphy/giphy_picker.dart';
+import '../media/phlio_look_data.dart';
+import '../media/phlio_look_view.dart';
+import '../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 
 // -- Data -------------------------------------------------------------------
 
@@ -54,12 +57,33 @@ final momentRingsProvider = FutureProvider<Map<String, Map>>((ref) async {
   }
 });
 
+/// Moments deleted in this session. Hidden everywhere straight away, even
+/// before the rail / rings refetch (and from any list fetched just before).
+final deletedMomentIds = <String>{};
+
 final momentFeedProvider = FutureProvider.autoDispose<List<Map>>((ref) async {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
-  return ((await getIt<ApiClient>().dio.get('/social/moments/feed')).data
+  final groups = ((await getIt<ApiClient>().dio.get('/social/moments/feed')).data
           as List)
       .cast<Map>();
+  return _withoutDeleted(groups);
 });
+
+List<Map> _withoutDeleted(List<Map> groups) {
+  if (deletedMomentIds.isEmpty) return groups;
+  return [
+    for (final g in groups)
+      if ((g['items'] as List? ?? const [])
+          .any((m) => !deletedMomentIds.contains('${(m as Map)['id']}')))
+        {
+          ...g,
+          'items': [
+            for (final m in g['items'] as List)
+              if (!deletedMomentIds.contains('${(m as Map)['id']}')) m
+          ],
+        }
+  ];
+}
 
 final momentHighlightsProvider =
     FutureProvider.autoDispose.family<Map, String>((ref, user) async {
@@ -422,7 +446,8 @@ class _AuthorMoments extends ConsumerStatefulWidget {
 class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     with SingleTickerProviderStateMixin {
   late final List<Map> items = [
-    for (final raw in widget.group['items'] as List) Map.from(raw as Map)
+    for (final raw in widget.group['items'] as List)
+      if (!deletedMomentIds.contains('${(raw as Map)['id']}')) Map.from(raw)
   ];
   late int index = math.max(
       0,
@@ -912,9 +937,17 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           ),
         );
       } else if (action == 'delete') {
+        final id = '${item['id']}';
         await dio.delete('/social/moments/${_mid(item)}');
+        deletedMomentIds.add(id);
+        // The viewer's own copy of this author's moments (swiping back to
+        // them rebuilds from it).
+        try {
+          (widget.group['items'] as List).removeWhere((m) => '${(m as Map)['id']}' == id);
+        } catch (_) {}
         refreshMoments(ref);
         ref.invalidate(momentHighlightsProvider);
+        _say('Moment deleted');
         setState(() => items.removeAt(index));
         if (items.isEmpty) {
           widget.onDone();
@@ -1043,11 +1076,26 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                         router.push(
                             '/creator/${Uri.encodeComponent(author['username'] as String? ?? author['id'] as String)}');
                       },
-                      child: PhlioAvatar(
-                          name: author['display_name'] as String? ?? '',
-                          imageUrl: author['avatar_url'] as String?,
-                          size: 38,
-                          showMomentRing: false),
+                      // Your own moments use your current profile photo
+                      // (it may be newer than the copy stored with the
+                      // moment); others use theirs. Instagram-style: a
+                      // small round photo with a hairline ring.
+                      child: Container(
+                        padding: const EdgeInsets.all(1.5),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white24, width: .8),
+                        ),
+                        child: mine
+                            ? MeAvatar(
+                                name: author['display_name'] as String? ?? '',
+                                size: 34)
+                            : PhlioAvatar(
+                                name: author['display_name'] as String? ?? '',
+                                imageUrl: author['avatar_url'] as String?,
+                                size: 34,
+                                showMomentRing: false),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1404,7 +1452,7 @@ class _MomentMedia extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filter = _filterFor(item['filter'] as String?);
+    final (look, effect) = splitMomentFilter(item['filter'] as String?);
     Widget child;
     if (item['media_kind'] == 'video') {
       final controller = video;
@@ -1434,9 +1482,7 @@ class _MomentMedia extends StatelessWidget {
                 color: Colors.white38, size: 48)),
       );
     }
-    return filter == null
-        ? child
-        : ColorFiltered(colorFilter: filter, child: child);
+    return PhlioLook(look: look, effect: effect, child: child);
   }
 }
 
@@ -1501,10 +1547,10 @@ Color? _hex(String? value) {
   return parsed == null ? null : Color(0xFF000000 | parsed);
 }
 
-/// Colour presets shared by the composer (Restyle / Effects) and the viewer.
-const momentFilters = ['normal', 'warm', 'cool', 'mono', 'vivid', 'fade'];
-
-ColorFilter? _filterFor(String? name) => momentFilter(name);
+/// Looks shared by the composer (Restyle / Effects) and the viewer: GPU
+/// shader grades (see shared/media/phlio_look_data.dart). The matrices
+/// below are kept for old moments' names and non-shader fallbacks.
+final momentFilters = phlioLookNames.keys.toList();
 
 ColorFilter? momentFilter(String? name) => switch (name) {
       'warm' => const ColorFilter.matrix([

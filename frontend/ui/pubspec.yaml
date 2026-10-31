@@ -44,6 +44,13 @@ dependencies:
   file_picker: ^11.0.3
   record: ^6.2.1
   audioplayers: ^6.7.1
+  # Phlio Stream music player: gapless queue + lock-screen / headset controls.
+  just_audio: ^0.10.5
+  just_audio_background: ^0.0.1-beta.17
+  # Music audio session (keeps iOS playing with the screen locked).
+  audio_session: ">=0.1.24 <0.3.0"
+  # Android 13+ notification permission for the playback controls.
+  permission_handler: ^12.0.1
   image_picker: ^1.2.3
   image_cropper: ^12.2.1
   path_provider: ^2.1.6
@@ -81,6 +88,8 @@ dev_dependencies:
 flutter:
   shaders:
     - assets/shaders/dm_album_sheen.frag
+    - assets/shaders/phlio_look.frag
+    - assets/shaders/retro_glow.frag
   uses-material-design: true
 
   # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker

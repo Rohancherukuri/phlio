@@ -68,6 +68,20 @@ class Settings(BaseSettings):
     # and are served back under /media by StaticFiles in main.py.
     media_root: str = "media"
 
+    # --- Object storage (optional; Cloudflare R2 or any S3-compatible bucket) ---
+    # Set these on disk-less hosts (Render free): SQLite databases and DM
+    # files are restored from / backed up to the bucket, new uploads are
+    # pushed to it, and /media files that aren't on disk redirect to
+    # media_public_url (the bucket's public URL, e.g. https://pub-….r2.dev).
+    # See app/infrastructure/media_sync.py.
+    object_store_endpoint: str = ""  # R2: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+    object_store_bucket: str = ""
+    object_store_access_key: str = Field(default="", repr=False)
+    object_store_secret_key: str = Field(default="", repr=False)
+    object_store_region: str = "auto"
+    media_public_url: str = ""
+    state_sync_interval: float = 60  # seconds between backups to the bucket
+
     social_video_database: str = 'data/social_videos.sqlite3'
     messaging_database: str = 'data/messages.sqlite3'
     livekit_url: str = ''

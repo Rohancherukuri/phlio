@@ -34,6 +34,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from livekit import api, rtc
@@ -54,14 +55,23 @@ REACTIONS = ['❤️', '😂', '👏', '🔥', '💯', '🙌', '😮', '👍']
 ROOT = Path(__file__).resolve().parent.parent
 
 
+Person = Any  # identity-repository user (id, username, full_name, avatar_url, is_test_user)
+Spec = dict[str, Any]  # one entry of media/spaces_seed/spaces.json
+
+
 def decode(path: Path) -> np.ndarray:
+    """Decodes an audio file to mono 16-bit PCM at the seed sample rate (SR)."""
     raw = subprocess.run(['ffmpeg', '-loglevel', 'error', '-i', str(path), '-f', 's16le', '-ac', '1',
                           '-ar', str(SR), '-'], check=True, capture_output=True).stdout
     return np.frombuffer(raw, dtype=np.int16)
 
 
 class SeededSpace:
-    def __init__(self, c, lk, spec, folder, people, listeners_n, rnd):
+    """One seeded Space: a LiveKit room with bot speakers, listeners and a host."""
+
+    def __init__(self, c: Any, lk: api.LiveKitAPI, spec: Spec, folder: Path, people: dict[str, Person],
+                 listeners_n: int, rnd: random.Random) -> None:
+        """`c` is the app container, `folder` holds the spec's voice tracks."""
         self.c, self.lk, self.spec, self.folder = c, lk, spec, folder
         self.people, self.listeners_n, self.rnd = people, listeners_n, rnd
         self.room = PREFIX + spec['key'] + '-' + uuid.uuid4().hex[:6]
@@ -69,7 +79,9 @@ class SeededSpace:
         self.tasks: list[asyncio.Task] = []
         self.host_id = spec['cast']['H'][0]
 
-    async def open(self):
+    async def open(self) -> None:
+        """Creates the room and session row, connects the cast in sync, starts
+        recording when the spec asks for it, and adds listeners."""
         host = self.people[self.host_id]
         self.meta = dict(host_id=self.host_id, name=host.full_name, title=self.spec['title'],
                          audio_only=True, topics=self.spec['topics'], record=self.spec['record'],
@@ -96,11 +108,13 @@ class SeededSpace:
         self.tasks += [asyncio.create_task(self._requests()), asyncio.create_task(self._life(pool))]
         log.info('Live: %s (%s)', self.spec['title'], self.room)
 
-    async def _profile(self, ident):
+    async def _profile(self, ident: str) -> dict[str, Any] | None:
+        """Public profile for the recorder's speaker list."""
         p = self.people.get(ident) or await self.c.identity_repository.get_by_id(ident)
         return p and dict(id=p.id, username=p.username, display_name=p.full_name, avatar_url=p.avatar_url)
 
-    async def _connect(self, ident, role, publish):
+    async def _connect(self, ident: str, role: str, publish: bool) -> rtc.Room:
+        """Connects one demo account to the room with a 24-hour token."""
         person = self.people[ident]
         room = rtc.Room()
         jwt = token(self.c.settings, identity=ident, name=person.full_name, room=self.room,
@@ -109,7 +123,8 @@ class SeededSpace:
         self.rooms[ident] = room
         return room
 
-    async def _speaker(self, ident, role, pcm, t0, offset):
+    async def _speaker(self, ident: str, role: str, pcm: np.ndarray, t0: float, offset: int) -> None:
+        """Connects a speaker and loops `pcm` from `offset`, starting at monotonic time `t0`."""
         room = await self._connect(ident, role, True)
         # A deep queue paced by the native audio clock: event-loop hiccups
         # (Windows' ~16 ms timer, a dozen bots, the recorder) no longer
@@ -119,7 +134,8 @@ class SeededSpace:
         await room.local_participant.publish_track(
             track, rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE, dtx=True))
 
-        async def pump():
+        async def pump() -> None:
+            """Feeds the voice track forever, 100 ms at a time."""
             # Every speaker starts on the same clock; after that
             # capture_frame() blocks while the queue is full, so the native
             # 48 kHz playout clock paces the stream (no asyncio.sleep jitter)
@@ -137,11 +153,12 @@ class SeededSpace:
                 pos = (pos + CHUNK) % n
         self.tasks.append(asyncio.create_task(pump()))
 
-    async def _listener(self, ident):
+    async def _listener(self, ident: str) -> None:
+        """Connects a listen-only account (failures are ignored)."""
         with contextlib.suppress(Exception):
             await self._connect(ident, ROLE_LISTENER, False)
 
-    async def _requests(self):
+    async def _requests(self) -> None:
         """The host approves requests to speak after a short beat."""
         while True:
             await asyncio.sleep(2)
@@ -157,14 +174,15 @@ class SeededSpace:
                                to=[row['user_id']])
                     await self._react(self.host_id, '👋')
 
-    async def _react(self, ident, emoji):
+    async def _react(self, ident: str, emoji: str) -> None:
+        """Sends an emoji reaction from a connected participant."""
         room = self.rooms.get(ident)
         if room:
             with contextlib.suppress(Exception):
                 await room.local_participant.publish_data(
                     json.dumps(dict(type='reaction', emoji=emoji)), topic=DATA_TOPIC)
 
-    async def _life(self, pool):
+    async def _life(self, pool: list[str]) -> None:
         """Listeners drift in and out; someone reacts now and then."""
         while True:
             await asyncio.sleep(self.rnd.uniform(5, 14))
@@ -182,7 +200,8 @@ class SeededSpace:
                 with contextlib.suppress(Exception):
                     await room.disconnect()
 
-    async def close(self):
+    async def close(self) -> None:
+        """Stops the bots and recorder, deletes the room and marks the session ended."""
         for task in self.tasks:
             task.cancel()
         await recorder.stop(self.room)
@@ -198,7 +217,7 @@ class SeededSpace:
         log.info('Ended: %s', self.spec['title'])
 
 
-async def seed_recordings(c, specs, seed_dir, people):
+async def seed_recordings(c: Any, specs: list[Spec], seed_dir: Path, people: dict[str, Person]) -> None:
     """First run: three finished Spaces you can play straight away."""
     out = media_root_path(c.settings) / 'space_recordings'
     out.mkdir(parents=True, exist_ok=True)
@@ -231,7 +250,8 @@ async def seed_recordings(c, specs, seed_dir, people):
         log.info('Seeded recording: %s', spec['title'])
 
 
-async def main(args):
+async def main(args: argparse.Namespace) -> None:
+    """Keeps `--live` seeded Spaces running, rotating one every few minutes."""
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     c = await build_container(settings)
     s = c.settings

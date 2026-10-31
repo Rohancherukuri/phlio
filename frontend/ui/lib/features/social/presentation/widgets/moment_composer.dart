@@ -26,6 +26,8 @@ import '../../../../design_system/colors.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/foxy_stickers.dart';
 import '../../../../design_system/widgets/phlio_fox.dart';
+import '../../../../shared/media/phlio_look_data.dart';
+import '../../../../shared/media/phlio_look_view.dart';
 import '../../../../shared/moments/moments.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
@@ -98,7 +100,10 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   String? mediaPath;
   bool isVideo = false, createMode = false;
   int gradient = 0;
-  String filter = 'normal';
+  String filter = 'normal'; // look id (shared/media/phlio_look_data.dart)
+  String effect = 'none'; // GPU effect id
+  bool _capturing = false; // flattening a photo: bake the look, keep the effect live
+  double lookStrength = 1;
   bool commentsOff = false, saveToHighlights = false, aiLabel = false;
   bool busy = false;
   double volume = .8;
@@ -286,62 +291,76 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   void _setFilter(String next) {
     setState(() {
       filter = next;
-      flash = next[0].toUpperCase() + next.substring(1);
+      lookStrength = 1;
+      flash = phlioLookNames[next] ?? next;
     });
     Future<void>.delayed(const Duration(milliseconds: 900), () {
       if (mounted) setState(() => flash = null);
     });
   }
 
+  /// Instagram-style sheet: Filters (looks with a strength slider) and
+  /// Effects, both previewed live on your photo/video with the GPU shader.
   Future<void> effects() async {
-    final picked = await showModalBottomSheet<String>(
+    final thumb = SizedBox.expand(
+      child: mediaPath != null && !isVideo
+          ? Image.file(File(mediaPath!), fit: BoxFit.cover, cacheWidth: 200)
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: _gradients[gradient]))),
+    );
+    var tab = 0;
+    await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (sheet) => SafeArea(
-        child: SizedBox(
-          height: 120,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: [
-              for (final name in momentFilters)
-                GestureDetector(
-                  onTap: () => Navigator.pop(sheet, name),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Column(children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: _filtered(
-                          name,
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                    colors: _gradients[gradient])),
-                            child: mediaPath != null && !isVideo
-                                ? Image.file(File(mediaPath!),
-                                    fit: BoxFit.cover)
-                                : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(name[0].toUpperCase() + name.substring(1),
-                          style: TextStyle(
-                              color: name == filter
-                                  ? PhlioColors.brandPeach
-                                  : Colors.white)),
-                    ]),
+      backgroundColor: const Color(0xF0101722),
+      barrierColor: Colors.black12,
+      builder: (sheet) => StatefulBuilder(
+        builder: (sheet, setSheet) => SafeArea(
+          child: SizedBox(
+            height: 210,
+            child: Column(children: [
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                for (final (i, label) in [(0, 'Filters'), (1, 'Effects')])
+                  TextButton(
+                    onPressed: () => setSheet(() => tab = i),
+                    child: Text(label,
+                        style: TextStyle(
+                            color: tab == i ? Colors.white : Colors.white54,
+                            fontWeight: tab == i ? FontWeight.w800 : FontWeight.w500)),
+                  ),
+              ]),
+              if (tab == 0 && filter != 'normal' && !isVideo)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Slider(
+                    value: lookStrength,
+                    onChanged: (v) {
+                      setState(() => lookStrength = v);
+                      setSheet(() {});
+                    },
                   ),
                 ),
-            ],
+              Expanded(
+                child: PhlioLookStrip(
+                  effect: tab == 1,
+                  selected: tab == 1 ? effect : filter,
+                  thumb: thumb,
+                  onPick: (id) {
+                    if (tab == 1) {
+                      setState(() => effect = id);
+                    } else {
+                      _setFilter(id);
+                    }
+                    setSheet(() {});
+                  },
+                ),
+              ),
+            ]),
           ),
         ),
       ),
     );
-    if (picked != null) _setFilter(picked);
   }
 
   Future<void> saveToDevice() async {
@@ -412,6 +431,8 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                     createMode = false;
                     layers.clear();
                     filter = 'normal';
+                    effect = 'none';
+                    lookStrength = 1;
                   });
                 },
               ),
@@ -427,6 +448,20 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   // -- Publishing -------------------------------------------------------------
 
   Future<File> _flatten() async {
+    // Animated effects (glitch, VHS, light leaks…) stay live in the viewer,
+    // so they're left out of the flattened PNG and sent as data instead.
+    if (effect != 'none') {
+      setState(() => _capturing = true);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    try {
+      return await _capture();
+    } finally {
+      if (mounted && _capturing) setState(() => _capturing = false);
+    }
+  }
+
+  Future<File> _capture() async {
     final boundary =
         _canvasKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
     final ratio = 1080 / boundary.size.width;
@@ -474,7 +509,8 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               'allow_comments': (!commentsOff).toString(),
               'overlays': jsonEncode(
                   isVideo ? [for (final l in layers) l.toJson()] : const []),
-              'filter': isVideo ? filter : 'normal',
+              // Photos: the look is baked into the PNG; the effect plays live.
+              'filter': isVideo ? joinMomentFilter(filter, effect) : joinMomentFilter('normal', effect),
               'highlight': saveToHighlights ? 'Highlights' : '',
               'ai_label': aiLabel.toString(),
             }),
@@ -500,12 +536,11 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
 
   // -- UI -----------------------------------------------------------------------
 
-  Widget _filtered(String name, Widget child) {
-    final matrix = momentFilter(name);
-    return matrix == null
-        ? child
-        : ColorFiltered(colorFilter: matrix, child: child);
-  }
+  Widget _filtered(String name, Widget child) => PhlioLook(
+      look: name,
+      strength: lookStrength,
+      effect: _capturing ? 'none' : effect,
+      child: child);
 
   Widget _background() {
     if (createMode) {

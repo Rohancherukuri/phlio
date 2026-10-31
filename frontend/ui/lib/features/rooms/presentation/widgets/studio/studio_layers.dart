@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../../../../shared/media/phlio_look_view.dart';
 import 'studio_model.dart';
 
 /// Paints [pip]'s mask into [size]. [matte]: white-on-black for the server;
@@ -134,10 +135,7 @@ class PipView extends StatelessWidget {
       layer = Transform(
           alignment: Alignment.center, transform: Matrix4.diagonal3Values(-1, 1, 1), child: layer);
     }
-    final matrix = pip.colorMatrix;
-    if (!isIdentityColor(matrix)) {
-      layer = ColorFiltered(colorFilter: ColorFilter.matrix(flutterColorMatrix(matrix)), child: layer);
-    }
+    layer = PhlioLook(grade: pip.grade, child: layer);
     if (pip.mask != 'none') {
       layer = ShaderMask(
         blendMode: BlendMode.dstIn,
