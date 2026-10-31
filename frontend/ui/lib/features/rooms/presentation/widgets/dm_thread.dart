@@ -4,6 +4,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:go_router/go_router.dart';
 import 'package:phlio/shared/content/content_surface.dart';
+import 'package:phlio/shared/location/location_message.dart';
 import 'package:flutter/material.dart';
 import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -470,6 +471,9 @@ class _DmThreadState extends ConsumerState<DmThread> {
   /// One-line description of a message, for reply bars and quotes.
   String _snippet(Map message) {
     final text = (message['text'] as String? ?? '').trim();
+    if (parseLocationMessage(text) case final location?) {
+      return location.isLive ? 'Live location' : 'Location';
+    }
     if (sharedContentPath(text) != null) {
       final caption = sharedContentCaption(text);
       return caption.isNotEmpty ? caption : 'Shared a post';
@@ -593,7 +597,11 @@ class _DmThreadState extends ConsumerState<DmThread> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if ((message['text'] as String).isNotEmpty)
+            // Locations (📍 place / 📡 live) get a map card instead of text.
+            if (parseLocationMessage(message['text'] as String)
+                case final location?)
+              locationCard(location, mine: mine)
+            else if ((message['text'] as String).isNotEmpty)
               SharedContentText(message['text'] as String,
                   style: PhlioTypography.body),
             if (_improvingAudio.contains(message['id']))

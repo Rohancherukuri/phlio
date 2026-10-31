@@ -36,6 +36,8 @@ TABLES = {
     "moment_view",
     "moment_highlight",
     "moment_mute",
+    "moment_response",
+    "live_location",
     "platform_content",
     "graph_group",
     "graph_group_message",

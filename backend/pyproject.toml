@@ -38,7 +38,7 @@ dependencies = [
 # Compatibility extra retained for existing deployment commands; the pinned
 # SDK is now a core dependency used by the graph adapter.
 surreal = [
-    "surrealdb>=0.3.2",
+    "surrealdb>=2.0.0",  # 2.x SDK works with SurrealDB 2.x and 3.x
 ]
 dev = [
     "pytest>=8.3.0",

@@ -1,3 +1,13 @@
+import java.util.Properties
+
+// Google Maps key for location sharing: MAPS_API_KEY in android/local.properties
+// (git-ignored) or the environment. Empty is fine for builds; the map stays grey.
+val mapsApiKey: String = Properties().run {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+    getProperty("MAPS_API_KEY") ?: System.getenv("MAPS_API_KEY") ?: ""
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -28,6 +38,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

@@ -382,3 +382,138 @@ async def mute_author(identifier: str, body: MuteIn, user=Depends(get_current_us
     elif await c.graph.store.get(rid):
         await c.graph.store.delete(rid)
     return dict(muted=body.muted)
+
+
+# -- interactive stickers ---------------------------------------------------------------
+#
+# Moments can carry interactive stickers in `overlays` (poll, emoji slider,
+# question, countdown, like, add yours). Each has an `id`; viewers respond
+# once per sticker (answering again replaces the answer). Authors see every
+# response; everyone sees the totals.
+
+INTERACTIVE = {"poll", "slider", "question", "countdown", "like", "addyours"}
+
+
+class RespondIn(BaseModel):
+    """One viewer's answer to one sticker."""
+
+    sticker: str = Field(min_length=1, max_length=40)
+    value: str | float | int | bool = Field(description="poll: option index; slider: 0-1; question: text")
+
+
+def _sticker(row: dict, sticker_id: str) -> dict:
+    """The interactive overlay `sticker_id` on a moment, or 404."""
+    for layer in row.get("overlays") or []:
+        if isinstance(layer, dict) and layer.get("id") == sticker_id and layer.get("type") in INTERACTIVE:
+            return layer
+    raise HTTPException(404, "Sticker unavailable.")
+
+
+def _clean(layer: dict, value: str | float | int | bool) -> str | float | int | bool:
+    """Validates a response for the sticker's type."""
+    kind = layer["type"]
+    if kind == "poll":
+        options = (layer.get("data") or {}).get("options") or []
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value < len(options):
+            raise HTTPException(422, "Choose one of the options.")
+        return value
+    if kind == "slider":
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise HTTPException(422, "Invalid slider value.")
+        return max(0.0, min(1.0, float(value)))
+    if kind == "question":
+        text = str(value).strip()
+        if not text or len(text) > 300:
+            raise HTTPException(422, "Write an answer up to 300 characters.")
+        return text
+    return True  # countdown reminder, like, add yours: just "I did"
+
+
+@router.post("/{moment_id}/respond")
+async def respond(moment_id: str, body: RespondIn, user=Depends(get_current_user), c=Depends(get_container)):
+    """Vote in a poll, slide the emoji slider, answer a question, set a countdown reminder…"""
+    row = await _moment(c, moment_id)
+    if row["author"] != user.id and not await can_view(c, user.id, row):
+        raise HTTPException(404, "Moment unavailable.")
+    layer = _sticker(row, body.sticker)
+    value = _clean(layer, body.value)
+    await c.cache.rate_limit(user.id, "moment_respond", 120)
+    await c.graph.store.put(key("moment_response", user.id, row["id"], body.sticker), dict(
+        user_id=user.id, moment_id=row["id"], author=row["author"], sticker=body.sticker,
+        kind=layer["type"], value=value, created_at=now()))
+    return await _totals(c, row, user.id)
+
+
+@router.get("/{moment_id}/responses")
+async def responses(moment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    """Per-sticker totals (and, for the author, who answered what)."""
+    row = await _moment(c, moment_id)
+    if row["author"] != user.id and not await can_view(c, user.id, row):
+        raise HTTPException(404, "Moment unavailable.")
+    return await _totals(c, row, user.id)
+
+
+async def _totals(c, row: dict, viewer: str) -> dict:
+    """`{sticker_id: {kind, count, counts?, average?, mine, people?}}`."""
+    mine_author = row["author"] == viewer
+    out: dict[str, dict] = {}
+    for layer in row.get("overlays") or []:
+        if isinstance(layer, dict) and layer.get("type") in INTERACTIVE and layer.get("id"):
+            entry: dict = dict(kind=layer["type"], count=0, mine=None)
+            if layer["type"] == "poll":
+                entry["counts"] = [0] * len((layer.get("data") or {}).get("options") or [])
+            if mine_author:
+                entry["people"] = []
+            out[layer["id"]] = entry
+    slider_sums: dict[str, float] = {}
+    profiles: dict = {}
+    for r in await c.graph.store.rows("moment_response", {"moment_id": row["id"]}):
+        entry = out.get(r["sticker"])
+        if entry is None:
+            continue
+        entry["count"] += 1
+        if r["user_id"] == viewer:
+            entry["mine"] = r["value"]
+        if entry["kind"] == "poll" and isinstance(r["value"], int) and r["value"] < len(entry["counts"]):
+            entry["counts"][r["value"]] += 1
+        if entry["kind"] == "slider":
+            slider_sums[r["sticker"]] = slider_sums.get(r["sticker"], 0.0) + float(r["value"])
+        if mine_author:
+            try:
+                person = await _profile(c, r["user_id"], profiles)
+            except HTTPException:
+                continue
+            entry["people"].append(dict(user=person, value=r["value"], at=r["created_at"]))
+    for sticker, total in slider_sums.items():
+        out[sticker]["average"] = total / max(1, out[sticker]["count"])
+    return out
+
+
+@router.get("/prompts")
+async def trending_prompts(user=Depends(get_current_user), c=Depends(get_container)):
+    """Trending "Add yours" prompts from live moments you can see.
+
+    Groups the add-yours stickers by prompt text: how many moments use it,
+    up to three people who joined (avatars) and the newest moment's cover,
+    most used first. Feeds Templates → Trending prompts.
+    """
+    groups: dict[str, dict] = {}
+    profiles: dict = {}
+    rows = sorted(await _visible_rows(c, user.id), key=lambda r: r["created_at"], reverse=True)
+    for row in rows:
+        for layer in row.get("overlays") or []:
+            if not isinstance(layer, dict) or layer.get("type") != "addyours":
+                continue
+            prompt = str((layer.get("data") or {}).get("prompt") or "").strip()
+            if not prompt:
+                continue
+            group = groups.setdefault(prompt.lower(), dict(
+                prompt=prompt, count=0, people=[], cover_url=row.get("cover_url") or row["media_url"],
+                moment_id=row["id"], author=row["author"]))
+            group["count"] += 1
+            if len(group["people"]) < 3 and all(p["id"] != row["author"] for p in group["people"]):
+                try:
+                    group["people"].append(await _profile(c, row["author"], profiles))
+                except HTTPException:
+                    pass
+    return sorted(groups.values(), key=lambda g: -g["count"])[:20]

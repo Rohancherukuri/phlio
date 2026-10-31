@@ -30,6 +30,11 @@ if ((Test-Path -LiteralPath 'data/translation/madlad400/model.bin') -and -not (G
 if (-not (Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue)) {
     $surrealExe = (Get-Command surreal -ErrorAction Stop).Source
     $databasePath = (Join-Path $backendRoot 'data/surreal/graph.db').Replace('\', '/')
+    # SurrealDB 3 can't open a 2.x data folder; Upgrade-SurrealDB3.ps1 converts it (and leaves data/surreal/.v3).
+    $surrealVersion = ((& $surrealExe version) -join ' ')
+    if ($surrealVersion -match '^3\.' -and (Test-Path -LiteralPath $databasePath) -and -not (Test-Path -LiteralPath (Join-Path $backendRoot 'data/surreal/.v3'))) {
+        throw "surreal is now $surrealVersion but data/surreal/graph.db is from SurrealDB 2. Run .\scripts\Upgrade-SurrealDB3.ps1 first."
+    }
     Start-Process -FilePath $surrealExe -ArgumentList @('start', '--bind', '127.0.0.1:8001', '--user', 'root', '--pass', 'root', "surrealkv:$databasePath") -WindowStyle Hidden -RedirectStandardOutput (Join-Path $backendRoot 'data/surreal/server.log') -RedirectStandardError (Join-Path $backendRoot 'data/surreal/server-error.log')
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         if (Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue) { break }

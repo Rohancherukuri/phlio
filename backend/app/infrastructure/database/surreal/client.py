@@ -47,6 +47,11 @@ def encode(value, key=""):
 
 def decode(value):
     if isinstance(value, RecordID):
+        # "table:key" with the raw key, so record() turns it back into the same
+        # RecordID. (str() would give "table:⟨key⟩" for keys with "-", and each
+        # read → write round trip would wrap the key in another pair of ⟨⟩.)
+        if isinstance(value.id, (str, int)):
+            return f"{value.table_name}:{value.id}"
         return str(value)
     if isinstance(value, dict):
         return {k: decode(v) for k, v in value.items()}
@@ -57,11 +62,29 @@ def decode(value):
     return value
 
 
+_MISSING_TABLE = re.compile(r"The table '([A-Za-z_][A-Za-z0-9_]*)' does not exist")
+
+
 class SurrealConnection:
     def __init__(self, client):
         self.client = client
 
     async def query(self, query, params=None):
+        # SurrealDB 3 reports an error when a SELECT reads a table nobody has
+        # written to yet (2.x returned no rows). Tables here are created on
+        # first write, so define the missing one (schemaless, as 2.x would)
+        # and run the query again. Bounded, in case several are missing.
+        for _ in range(8):
+            try:
+                return await self._query(query, params)
+            except RuntimeError as error:
+                missing = _MISSING_TABLE.search(str(error))
+                if not missing:
+                    raise
+                await self._query(f"DEFINE TABLE IF NOT EXISTS {missing.group(1)} SCHEMALESS;")
+        return await self._query(query, params)
+
+    async def _query(self, query, params=None):
         response = await self.client.query_raw(query, encode(params or {}))
         if "error" in response:
             raise RuntimeError(response["error"].get("message", "Database query failed"))
