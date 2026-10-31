@@ -25,6 +25,8 @@ to the cloud too.
     SURREAL_CLOUD_ENDPOINT=wss://<instance>.surreal.cloud
     SURREAL_CLOUD_USER=...            (a root/system user created in Surreal Cloud)
     SURREAL_CLOUD_PASSWORD=...
+    SURREAL_CLOUD_NAMESPACE=...       (optional; default: the local namespace, phlio)
+    SURREAL_CLOUD_DATABASE=...        (optional; default: the local database, phlio_graph_dev)
 
 Run from ``backend/`` with the local stack started (Start-GraphDemo.ps1):
 
@@ -241,10 +243,13 @@ def publish_database(settings: Settings, slim: bool) -> None:
     print(f"Checking {endpoint} …")
     major = check_cloud(cli, endpoint, auth)
     dump = export_database(settings, surreal, slim, v3=major >= 3)
-    print(f"Importing into {endpoint} …")
-    subprocess.run([surreal, "import", "--endpoint", endpoint, *auth, "--namespace", settings.surreal_namespace,
-                    "--database", settings.surreal_database, str(dump)], check=True)
-    print("  database imported")
+    # The local names are read from the local database; the cloud ones may differ.
+    namespace = os.environ.get("SURREAL_CLOUD_NAMESPACE", "").strip() or settings.surreal_namespace
+    database = os.environ.get("SURREAL_CLOUD_DATABASE", "").strip() or settings.surreal_database
+    print(f"Importing into {endpoint} as {namespace}/{database} …")
+    subprocess.run([surreal, "import", "--endpoint", endpoint, *auth, "--namespace", namespace,
+                    "--database", database, str(dump)], check=True)
+    print(f"  database imported. On Render set SURREAL_NAMESPACE={namespace} and SURREAL_DATABASE={database}.")
 
 
 # -- 2. media -----------------------------------------------------------------------
