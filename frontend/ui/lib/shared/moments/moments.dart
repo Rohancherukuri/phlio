@@ -36,6 +36,8 @@ import '../../features/rooms/data/datasources/messaging_api.dart';
 import '../giphy/giphy_picker.dart';
 import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
+import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
+import 'stickers/sticker_responses.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 
 // -- Data -------------------------------------------------------------------
@@ -1037,6 +1039,22 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                         onLongPressStart: (_) => _pause(),
                         onLongPressEnd: (_) => _resume())),
               ]),
+              // Live stickers (poll, slider, question, countdown, like, add
+              // yours, link…) sit above the tap zones so they can be used.
+              Positioned.fill(
+                child: MomentStickersOverlay(
+                  key: ValueKey('stickers-${current['id']}'),
+                  item: current,
+                  isAuthor: mine,
+                  onPause: _pause,
+                  onResume: _resume,
+                  onAnswer: (prompt, answer) => _send('Answered “$prompt”: $answer'),
+                  onAddYours: (prompt) {
+                    _pause();
+                    openMomentComposer(context, addYoursPrompt: prompt).then((_) => _resume());
+                  },
+                ),
+              ),
               Positioned(
                 left: 8,
                 right: 4,

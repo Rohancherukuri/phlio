@@ -990,7 +990,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
     { name = "sentencepiece", specifier = ">=0.2.2" },
     { name = "surrealdb", specifier = "==2.0.0" },
-    { name = "surrealdb", marker = "extra == 'surreal'", specifier = ">=0.3.2" },
+    { name = "surrealdb", marker = "extra == 'surreal'", specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
 provides-extras = ["surreal", "dev"]

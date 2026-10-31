@@ -890,3 +890,98 @@ async def studio_captions(peer: str, body: StudioCaptions, user=Depends(get_curr
         await run_in_threadpool(run)
     lines.sort(key=lambda l: l['start'])
     return {'lines': lines}
+
+
+# -- live location ------------------------------------------------------------------------
+#
+# "Share live location" in a DM: the sender opens a session for a while (15
+# minutes to 8 hours), the app pushes positions while it runs, and both
+# people read the latest one. The chat message carries the session id
+# (`phlio-live:<id>`); the session row keeps a short trail for the map.
+
+LIVE_MINUTES = (15, 60, 480)
+
+
+class LivePosition(BaseModel):
+    """A position fix from the sharer's phone."""
+
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracy: float = Field(default=0, ge=0, le=100000)
+
+
+class LiveStartIn(LivePosition):
+    peer: str = Field(min_length=1, max_length=80)
+    minutes: int = Field(default=60)
+
+
+def _live_public(row: dict) -> dict:
+    """What either participant sees: position, trail, until and whether it's still live."""
+    import datetime as dt
+    until = dt.datetime.fromisoformat(row["until"])
+    active = row.get("stopped_at") is None and until > dt.datetime.now(dt.UTC)
+    return dict(id=row["id"].split(":", 1)[1], owner=row["owner"], peer=row["peer"], lat=row["lat"], lng=row["lng"],
+                accuracy=row.get("accuracy", 0), updated_at=row["updated_at"], until=row["until"], active=active,
+                trail=row.get("trail", [])[-50:])
+
+
+async def _live_row(c: Container, session_id: str, user: User) -> dict:
+    """The session if `user` is one of its two participants, else 404."""
+    row = await c.graph.store.get("live_location:" + session_id)
+    if not row or user.id not in (row["owner"], row["peer"]):
+        raise HTTPException(404, "Live location unavailable.")
+    return row
+
+
+@router.post("/live", status_code=201)
+async def start_live(body: LiveStartIn, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    """Starts sharing live location with one person for `minutes`."""
+    import datetime as dt
+    from app.domains.graph.store import now
+    if body.minutes not in LIVE_MINUTES:
+        raise HTTPException(422, "Share for 15 minutes, 1 hour or 8 hours.")
+    target = await resolve_peer(body.peer, c)
+    if await c.graph.blocked(user.id, target.id):
+        raise HTTPException(403, "This conversation is unavailable.")
+    await c.cache.rate_limit(user.id, "live_location_start", 20)
+    session = uuid.uuid4().hex[:20]
+    stamp = now()
+    until = (dt.datetime.now(dt.UTC) + dt.timedelta(minutes=body.minutes)).isoformat()
+    row = await c.graph.store.put("live_location:" + session, dict(
+        owner=user.id, peer=target.id, lat=body.lat, lng=body.lng, accuracy=body.accuracy,
+        started_at=stamp, updated_at=stamp, until=until, stopped_at=None,
+        trail=[dict(lat=body.lat, lng=body.lng, at=stamp)]))
+    return _live_public(row)
+
+
+@router.put("/live/{session_id}")
+async def update_live(session_id: str, body: LivePosition, user: User = Depends(get_current_user),
+                      c: Container = Depends(get_container)):
+    """A new position from the sharer (ignored once the session has ended)."""
+    from app.domains.graph.store import now
+    row = await _live_row(c, session_id, user)
+    if row["owner"] != user.id:
+        raise HTTPException(403, "Only the sharer can move this location.")
+    if not _live_public(row)["active"]:
+        return _live_public(row)
+    stamp = now()
+    trail = [*row.get("trail", []), dict(lat=body.lat, lng=body.lng, at=stamp)][-50:]
+    row = await c.graph.store.put(row["id"], dict(row, lat=body.lat, lng=body.lng, accuracy=body.accuracy,
+                                                  updated_at=stamp, trail=trail))
+    return _live_public(row)
+
+
+@router.get("/live/{session_id}")
+async def get_live(session_id: str, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    """Latest position for either participant."""
+    return _live_public(await _live_row(c, session_id, user))
+
+
+@router.delete("/live/{session_id}")
+async def stop_live(session_id: str, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    """Stops sharing (the sharer, or the other person hiding it for both)."""
+    from app.domains.graph.store import now
+    row = await _live_row(c, session_id, user)
+    if row.get("stopped_at") is None:
+        row = await c.graph.store.put(row["id"], dict(row, stopped_at=now()))
+    return _live_public(row)

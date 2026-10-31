@@ -6,6 +6,10 @@
 //
 // Photos are flattened with their text/stickers/filter into one PNG before
 // upload; videos upload as-is with their layers and filter as data.
+// Interactive stickers (poll, question, slider, countdown, add yours, like,
+// link, music) are never flattened: they go up as overlays so viewers can
+// use them. Templates (also behind Create in the camera) design a photo
+// moment from a layout; see shared/moments/templates/.
 
 import 'dart:convert';
 import 'dart:io';
@@ -29,30 +33,57 @@ import '../../../../design_system/widgets/phlio_fox.dart';
 import '../../../../shared/media/phlio_look_data.dart';
 import '../../../../shared/media/phlio_look_view.dart';
 import '../../../../shared/moments/moments.dart';
+import '../../../../shared/moments/stickers/sticker_model.dart';
+import '../../../../shared/moments/stickers/sticker_tray.dart';
+import '../../../../shared/moments/stickers/sticker_views.dart';
+import '../../../../shared/moments/templates/template_editor.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../../profile/presentation/widgets/snap_audience.dart';
 import 'moment_camera.dart';
 
-Future<void> openMomentComposer(BuildContext context) =>
+/// Opens the composer. [addYoursPrompt] starts it with that "Add yours"
+/// sticker already placed (answering someone else's prompt).
+Future<void> openMomentComposer(BuildContext context, {String? addYoursPrompt}) =>
     Navigator.of(context, rootNavigator: true).push<void>(MaterialPageRoute(
-        fullscreenDialog: true, builder: (_) => const MomentComposerScreen()));
+        fullscreenDialog: true, builder: (_) => MomentComposerScreen(addYoursPrompt: addYoursPrompt)));
 
 class _Layer {
-  _Layer.text(this.text, this.color, {this.type = 'text'}) : sticker = null;
+  _Layer.text(this.text, this.color, {this.type = 'text'})
+      : sticker = null,
+        item = null;
   _Layer.sticker(this.sticker)
       : type = 'sticker',
         text = '',
-        color = Colors.white;
+        color = Colors.white,
+        item = null;
+
+  /// A tray sticker (poll, location, music…); position / scale live on the layer.
+  _Layer.item(MomentSticker this.item)
+      : type = 'item',
+        text = '',
+        color = Colors.white,
+        sticker = null;
 
   final String type; // text | mention | sticker
   String text;
   Color color;
   final String? sticker;
+  final MomentSticker? item;
   Offset position = const Offset(.5, .42);
   double scale = 1;
+  double rotation = 0;
 
-  Map<String, dynamic> toJson() => {
+  bool get interactive => item?.interactive ?? false;
+
+  Map<String, dynamic> toJson() => item != null
+      ? (item!
+            ..x = position.dx
+            ..y = position.dy
+            ..scale = scale
+            ..rotation = rotation)
+          .toJson()
+      : {
         'type': type,
         'text': text,
         if (sticker != null) 'sticker': sticker,
@@ -67,9 +98,12 @@ class _Layer {
 
 class MomentComposerScreen extends ConsumerStatefulWidget {
   const MomentComposerScreen(
-      {super.key, this.initialPath, this.initialVideo = false});
+      {super.key, this.initialPath, this.initialVideo = false, this.addYoursPrompt});
   final String? initialPath;
   final bool initialVideo;
+
+  /// Answering someone's "Add yours": the prompt sticker starts on the canvas.
+  final String? addYoursPrompt;
   @override
   ConsumerState<MomentComposerScreen> createState() =>
       _MomentComposerScreenState();
@@ -111,13 +145,26 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   VideoPlayerController? video;
   Offset _scaleStartPosition = Offset.zero;
   double _scaleStartValue = 1;
+  double _rotationStart = 0;
+
+  /// Song for the moment ({title, artist, url, cover_url}); played in the viewer.
+  Map<String, dynamic>? _music;
 
   @override
   void initState() {
     super.initState();
+    if (widget.addYoursPrompt != null) {
+      layers.add(_Layer.item(MomentSticker(StickerType.addyours, {'prompt': widget.addYoursPrompt}))
+        ..position = const Offset(.5, .72));
+    }
     if (widget.initialPath != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _setMedia(widget.initialPath!, widget.initialVideo);
+      });
+    } else {
+      // New moment: go straight to the gallery (Camera is in the tools).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) pickGallery();
       });
     }
   }
@@ -176,6 +223,21 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     final result = await openMomentCamera(context);
     if (result == null || !mounted) return;
     if (result.create) {
+      await templates();
+      return;
+    }
+    if (result.path != null) await _setMedia(result.path!, result.video);
+  }
+
+  // -- Tools ----------------------------------------------------------------
+
+  /// Templates (portraits, collages, creator, trending, quotes): the
+  /// finished design comes back as a photo; "Start blank" is the classic
+  /// text-on-gradient moment.
+  Future<void> templates() async {
+    final out = await openMomentTemplates(context);
+    if (out == null || !mounted) return;
+    if (out.blank) {
       await video?.dispose();
       setState(() {
         video = null;
@@ -186,10 +248,41 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       await addText();
       return;
     }
-    if (result.path != null) await _setMedia(result.path!, result.video);
+    if (out.prompt != null) {
+      // Joining a trending "Add yours": the prompt sticker, then a photo.
+      setState(() => layers.add(_Layer.item(MomentSticker(StickerType.addyours, {'prompt': out.prompt}))
+        ..position = const Offset(.5, .72)));
+      if (mediaPath == null && !createMode) await pickGallery();
+      return;
+    }
+    await _setMedia(out.path!, false);
+    final extra = [...out.tags, ...out.mentions].where((t) => !caption.text.contains(t)).join(' ');
+    if (extra.isNotEmpty) {
+      caption.text = caption.text.trim().isEmpty ? extra : '${caption.text.trim()} $extra';
+    }
   }
 
-  // -- Tools ----------------------------------------------------------------
+  /// The sticker tray (Location, Mention, Music, Poll, Questions…).
+  Future<void> stickers() async {
+    final me = ref.read(authControllerProvider).valueOrNull;
+    final pick = await showStickerTray(context, userName: me?.fullName ?? 'You');
+    if (pick == null || !mounted) return;
+    if (pick.templates) return templates();
+    final s = pick.sticker!;
+    if (s.type == StickerType.music) _music = Map<String, dynamic>.from(s.data);
+    setState(() => layers.add(_Layer.item(s)..position = Offset(s.x, s.y)));
+  }
+
+  /// Music: pick a song (Phlio Stream or Audius); adds its sticker.
+  Future<void> music() async {
+    final song = await pickMomentSong(context);
+    if (song == null || !mounted) return;
+    setState(() {
+      layers.removeWhere((l) => l.item?.type == StickerType.music);
+      _music = song;
+      layers.add(_Layer.item(MomentSticker(StickerType.music, song))..position = const Offset(.5, .2));
+    });
+  }
 
   Future<({String text, Color color})?> _textDialog(
       {String initial = '',
@@ -401,14 +494,6 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Camera'),
-              onTap: () {
-                Navigator.pop(sheet);
-                openCamera();
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Choose from gallery'),
               onTap: () {
@@ -450,7 +535,8 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   Future<File> _flatten() async {
     // Animated effects (glitch, VHS, light leaks…) stay live in the viewer,
     // so they're left out of the flattened PNG and sent as data instead.
-    if (effect != 'none') {
+    // Interactive stickers are left out too (they stay live as overlays).
+    if (effect != 'none' || layers.any((l) => l.interactive)) {
       setState(() => _capturing = true);
       await WidgetsBinding.instance.endOfFrame;
     }
@@ -507,8 +593,11 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               'audience': audience.mode,
               'recipients': jsonEncode(audience.recipients),
               'allow_comments': (!commentsOff).toString(),
-              'overlays': jsonEncode(
-                  isVideo ? [for (final l in layers) l.toJson()] : const []),
+              'overlays': jsonEncode([
+                for (final l in layers)
+                  if (isVideo || l.interactive) l.toJson()
+              ]),
+              if (_music != null) 'music': jsonEncode(_music),
               // Photos: the look is baked into the PNG; the effect plays live.
               'filter': isVideo ? joinMomentFilter(filter, effect) : joinMomentFilter('normal', effect),
               'highlight': saveToHighlights ? 'Highlights' : '',
@@ -558,27 +647,23 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       );
     }
     if (mediaPath == null) {
-      return Container(
-        color: const Color(0xFF15181E),
-        alignment: Alignment.center,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.auto_awesome_motion_rounded,
-              color: Colors.white38, size: 56),
-          const SizedBox(height: 14),
-          Text('Share a moment for 24 hours',
-              style: PhlioTypography.bodyLarge.copyWith(color: Colors.white70)),
-          const SizedBox(height: 18),
-          Wrap(spacing: 12, children: [
-            OutlinedButton.icon(
-                onPressed: pickGallery,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Gallery')),
-            FilledButton.icon(
-                onPressed: openCamera,
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: const Text('Camera')),
+      // Nothing picked yet: everything lives in the right-hand tools; a tap
+      // on the empty canvas reopens the gallery.
+      return GestureDetector(
+        onTap: pickGallery,
+        child: Container(
+          color: const Color(0xFF15181E),
+          padding: const EdgeInsets.only(right: 120),
+          alignment: Alignment.center,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.auto_awesome_motion_rounded,
+                color: Colors.white38, size: 48),
+            const SizedBox(height: 12),
+            Text('Share a moment\nfor 24 hours',
+                textAlign: TextAlign.center,
+                style: PhlioTypography.bodyLarge.copyWith(color: Colors.white70)),
           ]),
-        ]),
+        ),
       );
     }
     if (isVideo) {
@@ -603,8 +688,24 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     return _filtered(filter, Image.file(File(mediaPath!), fit: BoxFit.cover));
   }
 
+  /// Tapping a tray sticker in the composer cycles its look (pills, music,
+  /// Phlio type stickers), like Instagram.
+  void _restyleItem(MomentSticker item) {
+    const styled = {StickerType.location, StickerType.mention, StickerType.hashtag, StickerType.link, StickerType.music};
+    if (styled.contains(item.type)) {
+      setState(() => item.data['style'] = ((item.data['style'] as num? ?? 0).toInt() + 1) % 3);
+    } else if (item.type == StickerType.word) {
+      const styles = ['bubble', 'chrome', 'burst', 'tv', 'holo', 'neon', 'tag'];
+      setState(() => item.data['style'] = styles[(styles.indexOf('${item.data['style']}') + 1) % styles.length]);
+    }
+  }
+
   Widget _layer(_Layer layer, Size canvas) {
-    final content = layer.type == 'sticker'
+    if (_capturing && layer.interactive) return const SizedBox.shrink();
+    final item = layer.item;
+    final content = item != null
+        ? Transform.scale(scale: canvas.width / 360 * layer.scale, child: MomentStickerView(item))
+        : layer.type == 'sticker'
         ? PhlioStickerView(
             stickerId: layer.sticker!,
             size: 110 * layer.scale,
@@ -632,11 +733,19 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       alignment:
           Alignment(layer.position.dx * 2 - 1, layer.position.dy * 2 - 1),
       child: GestureDetector(
-        onTap: layer.type == 'sticker' ? null : () => editText(layer),
-        onLongPress: () => setState(() => layers.remove(layer)),
+        onTap: item != null
+            ? () => _restyleItem(item)
+            : layer.type == 'sticker'
+                ? null
+                : () => editText(layer),
+        onLongPress: () => setState(() {
+          layers.remove(layer);
+          if (item?.type == StickerType.music) _music = null;
+        }),
         onScaleStart: (_) {
           _scaleStartPosition = layer.position;
           _scaleStartValue = layer.scale;
+          _rotationStart = layer.rotation;
         },
         onScaleUpdate: (details) => setState(() {
           _scaleStartPosition += Offset(
@@ -644,9 +753,10 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               details.focalPointDelta.dy / canvas.height);
           layer.position = Offset(_scaleStartPosition.dx.clamp(.05, .95),
               _scaleStartPosition.dy.clamp(.05, .95));
-          layer.scale = (_scaleStartValue * details.scale).clamp(.5, 3.0);
+          layer.scale = (_scaleStartValue * details.scale).clamp(item != null ? .3 : .5, 3.0);
+          if (details.pointerCount > 1) layer.rotation = _rotationStart + details.rotation;
         }),
-        child: content,
+        child: Transform.rotate(angle: layer.rotation, child: content),
       ),
     );
   }
@@ -655,6 +765,12 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   Widget build(BuildContext context) {
     final me = ref.watch(authControllerProvider).valueOrNull;
     final tools = <({String label, Widget icon, VoidCallback onTap, bool on})>[
+      (
+        label: 'Templates',
+        icon: const Icon(Icons.dashboard_customize_outlined),
+        onTap: templates,
+        on: false
+      ),
       (
         label: 'Text',
         icon: const Text('Aa',
@@ -668,14 +784,14 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       (
         label: 'Stickers',
         icon: const Icon(Icons.sticky_note_2_outlined),
-        onTap: addSticker,
+        onTap: stickers,
         on: false
       ),
       (
         label: 'Music',
         icon: const Icon(Icons.music_note_outlined),
-        onTap: () => comingSoon('Music'),
-        on: false
+        onTap: music,
+        on: _music != null
       ),
       (
         label: 'Restyle',
@@ -721,6 +837,12 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         label: 'Draw',
         icon: const Icon(Icons.gesture_rounded),
         onTap: () => comingSoon('Drawing'),
+        on: false
+      ),
+      (
+        label: 'Camera',
+        icon: const Icon(Icons.photo_camera_outlined),
+        onTap: openCamera,
         on: false
       ),
       (

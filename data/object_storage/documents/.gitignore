@@ -1,0 +1,3 @@
+# Keep this directory; local runtime data and secrets stay untracked.
+*
+!.gitignore

@@ -15,6 +15,9 @@ import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:phlio/shared/location/location_message.dart';
+import 'package:phlio/shared/location/location_service.dart';
+import 'package:phlio/shared/location/location_share_screen.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/platform/phlio_platform.dart';
@@ -1072,35 +1075,18 @@ class _ChatComposerState extends State<ChatComposer> {
     }
   }
 
+  /// Opens "Send location": a place once, or (in DMs) live location.
   Future<void> _shareLocation() async {
-    final place = TextEditingController();
-    final value = await showDialog<String>(
-        context: context,
-        builder: (dialog) => AlertDialog(
-              title: const Text('Share a location'),
-              content: TextField(
-                  controller: place,
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (v) => Navigator.pop(dialog, v.trim()),
-                  decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                      hintText: 'Place, address or landmark')),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(dialog),
-                    child: const Text('Cancel')),
-                FilledButton(
-                    onPressed: () => Navigator.pop(dialog, place.text.trim()),
-                    child: const Text('Share')),
-              ],
-            ));
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    place.dispose();
-    if (value == null || value.isEmpty || !mounted) return;
+    final pick = await openLocationShare(context, allowLive: widget.dmPeer != null);
+    if (pick == null || !mounted) return;
     try {
-      await widget.onSendText(
-          '📍 $value\nhttps://maps.google.com/?q=${Uri.encodeComponent(value)}');
+      switch (pick) {
+        case PlacePick(:final place):
+          await widget.onSendText(placeMessage(place));
+        case LivePick(:final minutes, :final from):
+          final id = await LiveLocationSharer.instance.start(widget.dmPeer!, minutes, from);
+          await widget.onSendText(liveMessage(id, from.latitude, from.longitude));
+      }
     } catch (error) {
       _showSendError(error);
     }
