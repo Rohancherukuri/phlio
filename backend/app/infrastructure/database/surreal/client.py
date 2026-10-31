@@ -77,7 +77,7 @@ class SurrealConnection:
         for _ in range(8):
             try:
                 return await self._query(query, params)
-            except RuntimeError as error:
+            except Exception as error:
                 missing = _MISSING_TABLE.search(str(error))
                 if not missing:
                     raise
@@ -97,22 +97,60 @@ class SurrealConnection:
         result = await self.query(query, params)
         return result[-1]["result"] if result else []
 
+    async def _with_table(self, call):
+        """Runs an SDK call, defining its table first if SurrealDB 3 says it's missing."""
+        try:
+            return await call()
+        except Exception as error:  # the SDK raises its own NotFoundError types
+            missing = _MISSING_TABLE.search(str(error))
+            if not missing:
+                raise
+            await self._query(f"DEFINE TABLE IF NOT EXISTS {missing.group(1)} SCHEMALESS;")
+            return await call()
+
     async def create(self, key, data):
-        return decode(await self.client.create(record(key), encode(data)))
+        return decode(await self._with_table(lambda: self.client.create(record(key), encode(data))))
 
     async def select(self, key):
-        return decode(await self.client.select(record(key)))
+        # A record in a table that doesn't exist yet simply isn't there.
+        try:
+            return decode(await self.client.select(record(key)))
+        except Exception as error:
+            if _MISSING_TABLE.search(str(error)):
+                return None
+            raise
 
     async def merge(self, key, data):
-        return decode(await self.client.merge(record(key), encode(data)))
+        return decode(await self._with_table(lambda: self.client.merge(record(key), encode(data))))
 
     async def close(self):
         await self.client.close()
 
 
+def surreal_rpc_url(url: str) -> str:
+    """The WebSocket RPC address for SURREAL_URL, accepting the forms people paste.
+
+    Surreal Cloud's Connect dialog shows ``wss://<instance>.surreal.cloud``;
+    ``https://`` and a missing ``/rpc`` are fixed up too.
+    """
+    url = url.strip().rstrip("/")
+    for plain, socket in (("https://", "wss://"), ("http://", "ws://")):
+        if url.startswith(plain):
+            url = socket + url[len(plain):]
+    return url if url.endswith("/rpc") else url + "/rpc"
+
+
 async def create_surreal_connection(settings: Settings):
-    client = AsyncSurreal(settings.surreal_url)
-    await client.connect()
+    url = surreal_rpc_url(settings.surreal_url)
+    client = AsyncSurreal(url)
+    try:
+        await client.connect()
+    except OSError as error:
+        hint = (" SURREAL_URL isn't set, so the default local address was used; set it to your"
+                " Surreal Cloud address (wss://<instance>.surreal.cloud/rpc)."
+                if "localhost" in url or "127.0.0.1" in url else
+                " Check SURREAL_URL and that the instance isn't paused.")
+        raise RuntimeError(f"Can't connect to SurrealDB at {url}: {error}.{hint}") from error
     await client.signin({"username": settings.surreal_user, "password": settings.surreal_password})
     await client.use(settings.surreal_namespace, settings.surreal_database)
     db = SurrealConnection(client)
