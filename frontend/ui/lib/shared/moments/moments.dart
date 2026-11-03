@@ -38,6 +38,7 @@ import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
 import 'stickers/sticker_responses.dart';
+import 'templates/template_media.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 
 // -- Data -------------------------------------------------------------------
@@ -1007,7 +1008,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: Stack(fit: StackFit.expand, children: [
-              _MomentMedia(item: current, video: video),
+              _framedMediaFor(current, video),
               for (final layer in (current['overlays'] as List? ?? const []))
                 if (current['media_kind'] == 'video')
                   _OverlayView(layer: Map.from(layer as Map)),
@@ -1461,6 +1462,20 @@ class _EqualizerBarsState extends State<_EqualizerBars>
           ],
         ),
       );
+}
+
+/// The moment's photo / video; a video made with a template plays inside
+/// the template's frame, under its overlay (templates/template_media.dart).
+Widget _framedMediaFor(Map item, VideoPlayerController? video) {
+  final media = _MomentMedia(item: item, video: video);
+  final frame = item['media_kind'] == 'video' ? templateFrameOf(item['overlays'] as List?) : null;
+  if (frame == null) return media;
+  final (url, slot) = frame;
+  return TemplateVideoFrame(
+    slot: slot,
+    overlay: CachedNetworkImageProvider(AppConfig.mediaUrl(url)),
+    media: SizedBox(width: slot.size.width * 3, height: slot.size.height * 3, child: media),
+  );
 }
 
 class _MomentMedia extends StatelessWidget {

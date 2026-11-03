@@ -111,6 +111,8 @@ flutter:
     - assets/images/placeholders/book/
     - assets/images/book_categories/
     - assets/images/chat_icons/
+    - assets/images/rooms_icons/
+    - assets/images/book_icons/
     - assets/agent/
     - assets/stickers/
     - assets/stickers/moves/

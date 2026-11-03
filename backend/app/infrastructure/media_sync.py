@@ -5,7 +5,8 @@ deploy. With ``OBJECT_STORE_*`` configured, this module makes the bucket the
 durable copy of everything Phlio keeps on disk outside SurrealDB:
 
 * **State** (``_state/`` in the bucket): the SQLite databases (DM messages,
-  social videos, music links, payments) and DM attachments. Restored on boot
+  social videos, music links, payments), DM attachments and snap photos
+  (``media_private_memories``, never public). Restored on boot
   before the container opens them, then backed up every ``interval`` seconds
   and on shutdown (SQLite's online backup API, so writes in flight are safe).
 * **Media** (bucket root, same paths as ``media/``): photos, videos and
@@ -65,6 +66,18 @@ def dm_root(settings: Settings) -> Path:
     return _local(settings.messaging_media_root)
 
 
+def private_memories_root(settings: Settings) -> Path:
+    """Snap photos/videos: private, served only through the API (next to media/)."""
+    root = media_root(settings)
+    return root.parent / (root.name + "_private_memories")
+
+
+def state_folders(settings: Settings) -> list[tuple[Path, str]]:
+    """Private folders kept in the bucket under _state/: (local folder, bucket prefix)."""
+    return [(dm_root(settings), STATE_PREFIX + "dm_files/"),
+            (private_memories_root(settings), STATE_PREFIX + "private_memories/")]
+
+
 def restore_state(settings: Settings) -> None:
     """Downloads missing SQLite databases and DM attachments from the bucket.
 
@@ -78,14 +91,14 @@ def restore_state(settings: Settings) -> None:
         for db in state_databases(settings):
             if not db.exists() and store.get_file(STATE_PREFIX + db.name, db):
                 log.info("Restored %s from object storage", db.name)
-        root = dm_root(settings)
-        restored = 0
-        for obj in store.list(STATE_PREFIX + "dm_files/"):
-            target = root / obj.key.removeprefix(STATE_PREFIX + "dm_files/")
-            if not target.exists() and store.get_file(obj.key, target):
-                restored += 1
-        if restored:
-            log.info("Restored %d DM attachments from object storage", restored)
+        for root, prefix in state_folders(settings):
+            restored = 0
+            for obj in store.list(prefix):
+                target = root / obj.key.removeprefix(prefix)
+                if not target.exists() and store.get_file(obj.key, target):
+                    restored += 1
+            if restored:
+                log.info("Restored %d files under %s from object storage", restored, prefix)
     finally:
         store.close()
 
@@ -98,7 +111,7 @@ class StateSync:
         self.settings = settings
         self.started = time.time()
         self._seen: dict[Path, tuple[int, float]] = {}  # path -> (size, mtime) last uploaded
-        for root in (media_root(settings), dm_root(settings)):
+        for root in (media_root(settings), *(folder for folder, _ in state_folders(settings))):
             for path in _files(root):
                 st = path.stat()
                 self._seen[path] = (st.st_size, st.st_mtime)  # already in the bucket (or local-only)
@@ -126,7 +139,7 @@ class StateSync:
                     store.put_file(STATE_PREFIX + db.name, copy, "application/vnd.sqlite3")
                 self._db_marks[db] = mark
                 uploads += 1
-            for root, prefix in ((media_root(self.settings), ""), (dm_root(self.settings), STATE_PREFIX + "dm_files/")):
+            for root, prefix in ((media_root(self.settings), ""), *state_folders(self.settings)):
                 for path in _files(root):
                     st = path.stat()
                     if self._seen.get(path) == (st.st_size, st.st_mtime) or time.time() - st.st_mtime < 3:

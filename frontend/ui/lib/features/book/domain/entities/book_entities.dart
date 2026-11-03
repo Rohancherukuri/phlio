@@ -20,7 +20,18 @@ class BookListingEntity {
     this.imageUrl,
     this.sourceUrl,
     this.sourceName,
+    this.vertical = 'events',
+    this.kind = 'ticket',
+    this.imageCredit,
+    this.meta = const {},
+    this.goingCount = 0,
+    this.going = const [],
   });
+
+  /// People going / booked (meetups, sports, events, concerts, festivals)
+  /// and up to three of their profiles (id, display_name, avatar_url).
+  final int goingCount;
+  final List<Map<String, dynamic>> going;
 
   final String id;
   final String title;
@@ -37,6 +48,29 @@ class BookListingEntity {
   final bool isFree;
   final List<String> tags;
   final String? imageUrl, sourceUrl, sourceName;
+
+  /// sports · doctor · flight · train · bus · bike · auto · cab · movies ·
+  /// events · concerts · festive · meetups
+  final String vertical;
+
+  /// How it books: slot · ride · trip · ticket · rsvp · external.
+  final String kind;
+  final String? imageCredit;
+
+  /// Vertical-specific facts (sports list, speciality, route, tiers, group…).
+  final Map<String, dynamic> meta;
+
+  String metaString(String key, [String fallback = '']) =>
+      meta[key]?.toString() ?? fallback;
+
+  List<String> metaList(String key) =>
+      (meta[key] as List<dynamic>? ?? const []).map((e) => '$e').toList();
+
+  List<Map<String, dynamic>> metaMaps(String key) =>
+      (meta[key] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
 
   String get displayPrice {
     if (sourceUrl != null && priceMinMinorUnits == 0 && !isFree)
@@ -103,7 +137,14 @@ class BookingEntity {
     required this.currency,
     required this.status,
     required this.createdAt,
+    this.details = const {},
+    this.vertical,
+    this.imageUrl,
   });
+
+  final Map<String, String> details;
+  final String? vertical;
+  final String? imageUrl;
 
   final String id;
   final String listingId;

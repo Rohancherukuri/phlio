@@ -53,6 +53,8 @@ class BookService:
         date: dt.date,
         time: dt.time | None,
         participants: int,
+        details: dict[str, str] | None = None,
+        unit_multiplier: int = 1,
     ) -> Booking:
         if participants < 1 or participants > MAX_PARTICIPANTS:
             raise ValidationAppError(f"Participants must be between 1 and {MAX_PARTICIPANTS}.")
@@ -62,10 +64,14 @@ class BookService:
         listing = await self.get_listing_or_raise(listing_id)
         if listing.source_url:
             raise ValidationAppError('This listing is booked through its original provider. Open the source link to confirm availability.')
+        # Timed bookings (court slots, appointments, rides) only clash with
+        # the same slot; untimed ones with the same day.
         if await self._repository.listing_has_booking_on(
-            listing_id=listing_id, user_id=user_id, date=date
+            listing_id=listing_id, user_id=user_id, date=date, time=time
         ):
-            raise ConflictError("You already have a booking for this listing on that date.")
+            raise ConflictError(
+                "You already have this slot booked." if time else
+                "You already have a booking for this listing on that date.")
 
         booking = Booking(
             id="",  # assigned by the repository/core engine
@@ -76,10 +82,11 @@ class BookService:
             date=date,
             time=time,
             participants=participants,
-            estimated_total_min_minor_units=listing.price_min_minor_units,
-            estimated_total_max_minor_units=listing.price_max_minor_units,
+            estimated_total_min_minor_units=listing.price_min_minor_units * max(1, unit_multiplier),
+            estimated_total_max_minor_units=listing.price_max_minor_units * max(1, unit_multiplier),
             currency=listing.currency,
             status=BookingStatus.CONFIRMED,
+            details=dict(details or {}),
         )
         created = await self._repository.create_booking(booking)
         logger.info(

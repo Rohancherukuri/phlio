@@ -1,4 +1,3 @@
-import 'package:phlio/shared/widgets/notifications_button.dart';
 import '../../../../shared/realtime/realtime_screen.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Rooms Home hosts friends and search; conversations use the responsive room drawer.
@@ -6,11 +5,9 @@ import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:timeago/timeago.dart' as timeago;
 
 import '../../../../core/result/result.dart';
 import '../../../../design_system/colors.dart';
-import '../../../../design_system/radii.dart';
 import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
@@ -27,6 +24,8 @@ import '../widgets/message_attachments.dart';
 import '../widgets/rooms_layout.dart';
 import '../widgets/direct_messages_panel.dart';
 import '../widgets/rooms_home.dart';
+import '../widgets/rooms_discord.dart';
+import '../widgets/rooms_hub_panels.dart';
 
 class RoomsScreen extends ConsumerStatefulWidget {
   const RoomsScreen({super.key});
@@ -54,11 +53,43 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                     setState(() => _sidebarWidth = width),
               )));
     }
+    // Discord layout: the rail runs to the top, no app bar.
     return Scaffold(
-        appBar: AppBar(title: const Text('Phlio Rooms'), actions: const [PhlioNotificationsButton()]),
+        backgroundColor: PhlioColors.roomsRail,
         body: RoomsHome(
             onSelectRoom: (room) => setState(() => _activeRoomId = room.id)));
   }
+}
+
+/// One room's channel view on its own page (opened from Explore): members
+/// chat, visitors preview with a Join bar.
+class RoomChannelScreen extends StatefulWidget {
+  const RoomChannelScreen({required this.roomId, super.key});
+  final String roomId;
+
+  @override
+  State<RoomChannelScreen> createState() => _RoomChannelScreenState();
+}
+
+class _RoomChannelScreenState extends State<RoomChannelScreen> {
+  double _sidebarWidth = 320;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: PhlioColors.roomsChat,
+        body: SafeArea(
+          bottom: false,
+          child: _RoomsTwoPane(
+            mine: false,
+            initialRoomId: widget.roomId,
+            onGoHome: () => Navigator.of(context).maybePop(),
+            onExplore: () => Navigator.of(context).maybePop(),
+            sidebarWidth: _sidebarWidth,
+            onSidebarWidthChanged: (width) =>
+                setState(() => _sidebarWidth = width),
+          ),
+        ),
+      );
 }
 
 class _RoomsTwoPane extends ConsumerStatefulWidget {
@@ -66,6 +97,7 @@ class _RoomsTwoPane extends ConsumerStatefulWidget {
     required this.mine,
     this.initialRoomId,
     this.onGoHome,
+    this.onExplore,
     required this.sidebarWidth,
     required this.onSidebarWidthChanged,
   });
@@ -73,6 +105,7 @@ class _RoomsTwoPane extends ConsumerStatefulWidget {
   final bool mine;
   final String? initialRoomId;
   final VoidCallback? onGoHome;
+  final VoidCallback? onExplore;
   final double sidebarWidth;
   final ValueChanged<double> onSidebarWidthChanged;
 
@@ -90,40 +123,55 @@ class _RoomsTwoPaneState extends ConsumerState<_RoomsTwoPane> {
 
   @override
   Widget build(BuildContext context) {
-    final roomsAsync =
-        ref.watch(widget.mine ? myRoomsProvider : discoverRoomsProvider);
+    // The rail lists the rooms you're in (Discord's server list), plus the
+    // room you're previewing when you aren't a member yet.
+    final mineAsync = ref.watch(myRoomsProvider);
+    final previewing = _selectedRoomId != null &&
+        !(mineAsync.valueOrNull ?? const <RoomEntity>[])
+            .any((r) => r.id == _selectedRoomId);
+    final directory = previewing ? ref.watch(roomsDirectoryProvider) : null;
 
-    return roomsAsync.when(
-      loading: () => const PhlioLoadingIndicator(),
-      error: (error, _) => PhlioErrorView(
+    if (mineAsync.isLoading && !mineAsync.hasValue ||
+        (directory?.isLoading ?? false) && !(directory?.hasValue ?? false)) {
+      return const PhlioLoadingIndicator();
+    }
+    if (mineAsync.hasError && !mineAsync.hasValue) {
+      final error = mineAsync.error;
+      return PhlioErrorView(
         failure: error is Failure ? error : const Failure.unknown(),
-        onRetry: () => ref
-            .invalidate(widget.mine ? myRoomsProvider : discoverRoomsProvider),
-      ),
-      data: (rooms) {
-        if (rooms.isEmpty) {
-          return _emptyState();
+        onRetry: () => ref.invalidate(myRoomsProvider),
+      );
+    }
+    final rooms = [...?mineAsync.valueOrNull];
+    if (previewing) {
+      for (final room in directory?.valueOrNull ?? const <RoomEntity>[]) {
+        if (room.id == _selectedRoomId) {
+          rooms.add(room);
+          break;
         }
-        final selectedId = (_selectedRoomId != null &&
-                rooms.any((r) => r.id == _selectedRoomId))
-            ? _selectedRoomId!
-            : rooms.first.id;
-        final selectedRoom = rooms.firstWhere((r) => r.id == selectedId);
+      }
+    }
+    if (rooms.isEmpty) {
+      return _emptyState();
+    }
+    final selectedId = (_selectedRoomId != null &&
+            rooms.any((r) => r.id == _selectedRoomId))
+        ? _selectedRoomId!
+        : rooms.first.id;
+    final selectedRoom = rooms.firstWhere((r) => r.id == selectedId);
 
-        return RoomsLayout(
-          composer:
-              _RoomComposer(key: ValueKey(selectedRoom.id), room: selectedRoom),
-          sidebarWidth: widget.sidebarWidth,
-          onSidebarWidthChanged: widget.onSidebarWidthChanged,
-          sidebarBuilder: (close) => _sidebar(rooms, selectedRoom.id, close),
-          chatBuilder: (open) => _RoomChatPane(
-            key: ValueKey(selectedRoom.id),
-            room: selectedRoom,
-            onOpenRooms: open,
-            onGoHome: widget.onGoHome,
-          ),
-        );
-      },
+    return RoomsLayout(
+      composer:
+          _RoomComposer(key: ValueKey(selectedRoom.id), room: selectedRoom),
+      sidebarWidth: widget.sidebarWidth,
+      onSidebarWidthChanged: widget.onSidebarWidthChanged,
+      sidebarBuilder: (close) => _sidebar(rooms, selectedRoom.id, close),
+      chatBuilder: (open) => _RoomChatPane(
+        key: ValueKey(selectedRoom.id),
+        room: selectedRoom,
+        onOpenRooms: open,
+        onGoHome: widget.onGoHome,
+      ),
     );
   }
 
@@ -152,144 +200,37 @@ class _RoomsTwoPaneState extends ConsumerState<_RoomsTwoPane> {
 
   Widget _sidebar(
       List<RoomEntity> rooms, String selectedId, VoidCallback close) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-          width: 60,
-          child: ColoredBox(
-            color: PhlioColors.roomsRail,
-            child: ListView(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                children: [
-                  IconButton.filled(
-                      tooltip: 'Messages',
-                      style: IconButton.styleFrom(
-                          backgroundColor: PhlioColors.brandViolet),
-                      onPressed: widget.onGoHome ??
-                          () => showDirectMessagesPanel(context),
-                      icon: const Icon(Icons.chat_bubble_rounded, size: 22)),
-                  const Divider(height: 28),
-                  for (final room in rooms)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Tooltip(
-                          message: room.name,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(
-                                room.id == selectedId ? 14 : 22),
-                            onTap: () {
-                              setState(() => _selectedRoomId = room.id);
-                              close();
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              height: 44,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                  color: room.id == selectedId
-                                      ? PhlioColors.brandViolet
-                                      : PhlioColors.roomsInput,
-                                  borderRadius: BorderRadius.circular(
-                                      room.id == selectedId ? 14 : 22)),
-                              child: Text(room.icon,
-                                  style: const TextStyle(fontSize: 20)),
-                            ),
-                          )),
-                    ),
-                ]),
-          )),
-      Expanded(
-          child: Container(
-        decoration: const BoxDecoration(
-          color: PhlioColors.roomsSidebar,
-          border: Border(right: BorderSide(color: PhlioColors.borderSubtle)),
-        ),
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: PhlioSpacing.sm),
-          children: [
-            Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                child: Text('Your hangouts', style: PhlioTypography.title)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.md),
-              child: Text(
-                'CHANNELS',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PhlioTypography.caption
-                    .copyWith(fontSize: 10, letterSpacing: 1.4),
-              ),
-            ),
-            const SizedBox(height: PhlioSpacing.xs),
-            for (final room in rooms)
-              _sidebarRow(
-                emoji: room.icon,
-                label: room.name,
-                selected: room.id == selectedId,
-                onTap: () {
-                  setState(() => _selectedRoomId = room.id);
-                  close();
-                },
-              ),
-            const Divider(height: 32),
-            ListTile(
-                leading: const Icon(Icons.chat_bubble_outline_rounded),
-                title: const Text('Messages'),
-                onTap:
-                    widget.onGoHome ?? () => showDirectMessagesPanel(context)),
-          ],
-        ),
-      )),
-    ]);
-  }
+    final room = rooms.firstWhere((r) => r.id == selectedId);
+    void call({required bool video}) {
+      close();
+      openRealtime(context,
+          endpoint: '/realtime/rooms/${room.id}/join',
+          title: room.name,
+          rooms: true,
+          video: video);
+    }
 
-  Widget _sidebarRow({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-    IconData? icon,
-    Color? iconColor,
-    String? emoji,
-  }) {
-    return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: PhlioSpacing.xs, vertical: 2),
-      child: InkWell(
-        borderRadius: PhlioRadii.mdRadius,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: PhlioSpacing.sm, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? PhlioColors.surfaceElevated : Colors.transparent,
-            borderRadius: PhlioRadii.mdRadius,
-          ),
-          child: Row(
-            children: [
-              if (icon != null)
-                Icon(icon,
-                    size: 16, color: iconColor ?? PhlioColors.textSecondary)
-              else
-                Text(emoji ?? '💬', style: const TextStyle(fontSize: 14)),
-              const SizedBox(width: PhlioSpacing.sm),
-              Expanded(
-                child: Text(
-                  label,
-                  style: PhlioTypography.label.copyWith(
-                    color: selected
-                        ? PhlioColors.textPrimary
-                        : PhlioColors.textSecondary,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+    // Discord layout: the server rail, then the selected room's channels.
+    // Picking another room keeps the drawer open on its channel list.
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ServerRail(
+        rooms: rooms,
+        selectedId: selectedId,
+        onSelect: (next) => setState(() => _selectedRoomId = next.id),
+        onMessages: widget.onGoHome ?? () => showDirectMessagesPanel(context),
+        onExplore: widget.onExplore,
+      ),
+      Expanded(
+        child: ChannelPanel(
+          room: room,
+          onOpenChat: close,
+          onVoice: () => call(video: false),
+          onVideo: () => call(video: true),
+          onSearch: () => showRoomsSearch(context),
+          onInvite: () => showRoomsFriends(context),
         ),
       ),
-    );
+    ]);
   }
 }
 
@@ -308,18 +249,59 @@ class _RoomChatPane extends ConsumerStatefulWidget {
 }
 
 class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
+  void _call({required bool video}) => openRealtime(context,
+      endpoint: '/realtime/rooms/${widget.room.id}/join',
+      title: widget.room.name,
+      rooms: true,
+      video: video);
+
+  void _showPinned() => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: PhlioColors.roomsSidebar,
+        builder: (sheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const RoomGlyph('pin',
+                      size: 18, color: PhlioColors.brandLavender),
+                  const SizedBox(width: 8),
+                  Text('Pinned messages', style: PhlioTypography.title),
+                ]),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: PhlioColors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(widget.room.description,
+                      style: PhlioTypography.body),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(roomChatControllerProvider(widget.room.id));
+    final narrow = MediaQuery.sizeOf(context).width < 360;
 
     return ColoredBox(
       color: PhlioColors.roomsChat,
       child: Column(
         children: [
-          // Channel header.
+          // Channel header: ☰  # channel ›        🎧  📹  📌
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: PhlioSpacing.md, vertical: 10),
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: const BoxDecoration(
               color: PhlioColors.roomsChat,
               border:
@@ -327,62 +309,54 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
             ),
             child: Row(
               children: [
-                if (widget.onGoHome != null && widget.onOpenRooms == null)
-                  IconButton(
-                      tooltip: 'Back to messages',
-                      onPressed: widget.onGoHome,
-                      icon: const Icon(Icons.arrow_back_rounded)),
                 if (widget.onOpenRooms != null)
-                  IconButton(
-                    tooltip: 'Browse rooms',
-                    onPressed: widget.onOpenRooms,
-                    icon: const Icon(Icons.menu_rounded),
-                  ),
-                Text(widget.room.icon, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: PhlioSpacing.xs),
+                  RoomIconButton('menu',
+                      tooltip: 'Channels',
+                      color: PhlioColors.textPrimary,
+                      onTap: widget.onOpenRooms)
+                else if (widget.onGoHome != null)
+                  RoomIconButton('back',
+                      tooltip: 'Back',
+                      color: PhlioColors.textPrimary,
+                      onTap: widget.onGoHome)
+                else
+                  const SizedBox(width: 8),
+                const SizedBox(width: 2),
+                const RoomGlyph('hash', size: 20, color: PhlioColors.textMuted),
+                const SizedBox(width: 6),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.room.name,
-                          style: PhlioTypography.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      Text('${widget.room.memberCount} members',
-                          style: PhlioTypography.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ],
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onOpenRooms,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.room.slug,
+                            style: PhlioTypography.title.copyWith(
+                                fontWeight: FontWeight.w800, fontSize: 17),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        Text(
+                            '${widget.room.name} · ${widget.room.memberCount} members',
+                            style: PhlioTypography.caption.copyWith(fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: PhlioSpacing.sm),
-                _JoinPill(
-                    roomId: widget.room.id,
-                    compact: MediaQuery.sizeOf(context).width < 360),
+                _JoinPill(roomId: widget.room.id, compact: narrow),
+                RoomIconButton('headphones',
+                    tooltip: 'Join voice', onTap: () => _call(video: false)),
+                RoomIconButton('video',
+                    tooltip: 'Join video', onTap: () => _call(video: true)),
+                if (!narrow)
+                  RoomIconButton('pin',
+                      tooltip: 'Pinned messages', onTap: _showPinned),
               ],
             ),
           ),
-          Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(children: [
-                Expanded(
-                    child: TextButton.icon(
-                        icon: const Icon(Icons.headphones),
-                        label: const Text('Join voice'),
-                        onPressed: () => openRealtime(context,
-                            endpoint: '/realtime/rooms/${widget.room.id}/join',
-                            title: widget.room.name,
-                            rooms: true,
-                            video: false))),
-                Expanded(
-                    child: TextButton.icon(
-                        icon: const Icon(Icons.videocam_outlined),
-                        label: const Text('Join video'),
-                        onPressed: () => openRealtime(context,
-                            endpoint: '/realtime/rooms/${widget.room.id}/join',
-                            title: widget.room.name,
-                            rooms: true))),
-              ])),
           // Thread.
           Expanded(
             child: messagesAsync.when(
@@ -393,45 +367,25 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                     ref.invalidate(roomChatControllerProvider(widget.room.id)),
               ),
               data: (messages) => ListView.builder(
-                padding: const EdgeInsets.all(PhlioSpacing.md),
+                padding: const EdgeInsets.only(bottom: 12),
                 itemCount: messages.length + 1,
                 itemBuilder: (context, index) {
-                  // Pinned description card on top, like the reference.
-                  if (index == 0) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
-                      child: Container(
-                        padding: const EdgeInsets.all(PhlioSpacing.md),
-                        decoration: BoxDecoration(
-                          color:
-                              PhlioColors.brandViolet.withValues(alpha: 0.12),
-                          borderRadius: PhlioRadii.mdRadius,
-                          border: Border.all(
-                              color: PhlioColors.brandViolet
-                                  .withValues(alpha: 0.3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.push_pin_rounded,
-                                    size: 13, color: PhlioColors.brandLavender),
-                                const SizedBox(width: 4),
-                                Text('Pinned',
-                                    style: PhlioTypography.caption.copyWith(
-                                        color: PhlioColors.brandLavender)),
-                              ],
-                            ),
-                            const SizedBox(height: PhlioSpacing.xxs),
-                            Text(widget.room.description,
-                                style: PhlioTypography.body),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
+                  // "Welcome to #channel!" opens the history.
+                  if (index == 0) return ChannelWelcome(room: widget.room);
                   final message = messages[index - 1];
+                  final previous = index > 1 ? messages[index - 2] : null;
+                  final newDay = previous == null ||
+                      !sameDay(previous.createdAt, message.createdAt);
+                  // Discord groups consecutive messages from one person
+                  // within a few minutes under a single name.
+                  final grouped = previous != null &&
+                      !newDay &&
+                      previous.authorId == message.authorId &&
+                      message.createdAt
+                              .difference(previous.createdAt)
+                              .inMinutes
+                              .abs() <
+                          7;
                   // Tap the avatar/name to open a direct message with the
                   // author — Discord-style.
                   void openDm() => context.push('/dm/${message.authorId}');
@@ -451,76 +405,95 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                     }
                   }
 
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GestureDetector(
-                          onTap: openDm,
-                          child: PhlioAvatar(
-                              profileId: message.authorId,
-                              name: message.displayName,
-                              size: 28),
-                        ),
-                        const SizedBox(width: PhlioSpacing.sm),
-                        Expanded(
-                          child: GestureDetector(
-                            // Long-press any message to react with Foxy.
-                            onLongPress: () => showReactionPickerAndReact(
-                                context,
-                                onReact: react),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Wrap(
-                                  spacing: PhlioSpacing.xs,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: openDm,
-                                      child: Text(message.displayName,
-                                          style: PhlioTypography.label.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            color: PhlioColors.brandLavender,
-                                          )),
-                                    ),
-                                    Text(timeago.format(message.createdAt),
-                                        style: PhlioTypography.caption
-                                            .copyWith(fontSize: 10)),
-                                  ],
+                  final body = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!grouped)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Flexible(
+                                child: GestureDetector(
+                                  onTap: openDm,
+                                  child: Text(message.displayName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: PhlioTypography.label.copyWith(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: authorColor(message.authorId),
+                                      )),
                                 ),
-                                const SizedBox(height: 2),
-                                if (message.text.isNotEmpty)
-                                  SharedContentText(message.text,
-                                      style: PhlioTypography.body),
-                                // Document/image/sticker previews with the
-                                // Foxy reaction overlay riding on top.
-                                if (message.attachments.isNotEmpty) ...[
-                                  const SizedBox(height: PhlioSpacing.xs),
-                                  MessageAttachmentView(
-                                    attachments: message.attachments,
-                                    reactions: message.reactions,
-                                    onReact: react,
-                                  ),
-                                ],
-                                // Text-only messages show reactions inline
-                                // under the text; document cards carry the
-                                // overlay themselves.
-                                if (message.attachments.isEmpty &&
-                                    message.reactions.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  ReactionChipsRow(
-                                    reactions: message.reactions,
-                                    onReact: react,
-                                  ),
-                                ],
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(discordTime(message.createdAt),
+                                  style: PhlioTypography.caption.copyWith(
+                                      fontSize: 11,
+                                      color: PhlioColors.textMuted)),
+                            ],
                           ),
                         ),
+                      if (message.text.isNotEmpty)
+                        SharedContentText(message.text,
+                            style: PhlioTypography.body.copyWith(
+                                color: PhlioColors.textPrimary, height: 1.4)),
+                      // Document/image/sticker previews with the
+                      // Foxy reaction overlay riding on top.
+                      if (message.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        MessageAttachmentView(
+                          attachments: message.attachments,
+                          reactions: message.reactions,
+                          onReact: react,
+                        ),
                       ],
+                      // Text-only messages show reactions under the text;
+                      // document cards carry the overlay themselves.
+                      if (message.attachments.isEmpty &&
+                          message.reactions.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        ReactionChipsRow(
+                          reactions: message.reactions,
+                          onReact: react,
+                        ),
+                      ],
+                    ],
+                  );
+
+                  final row = InkWell(
+                    // Long-press any message to react with Foxy.
+                    onLongPress: () =>
+                        showReactionPickerAndReact(context, onReact: react),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, grouped ? 2 : 14, 16, 2),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 40,
+                            child: grouped
+                                ? null
+                                : GestureDetector(
+                                    onTap: openDm,
+                                    child: PhlioAvatar(
+                                        profileId: message.authorId,
+                                        name: message.displayName,
+                                        size: 40),
+                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(child: body),
+                        ],
+                      ),
                     ),
+                  );
+                  if (!newDay) return row;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [DayDivider(message.createdAt.toLocal()), row],
                   );
                 },
               ),
@@ -540,8 +513,83 @@ class _RoomComposer extends ConsumerStatefulWidget {
 }
 
 class _RoomComposerState extends ConsumerState<_RoomComposer> {
+  bool _joining = false;
+
+  Future<void> _join() async {
+    setState(() => _joining = true);
+    final result = await ref.read(joinRoomProvider)(widget.room.id);
+    if (!mounted) return;
+    setState(() => _joining = false);
+    result.when(
+      success: (_) => ref.invalidate(myRoomsProvider),
+      failure: (failure) => showErrorSnackBar(context, failure),
+    );
+  }
+
+  /// Visitors preview the channel (as on Discord) with a Join bar in place
+  /// of the composer.
+  Widget _previewBar() => ColoredBox(
+        color: PhlioColors.roomsSidebar,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(children: [
+              RoomAvatar(room: widget.room, size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: "You're previewing "),
+                    TextSpan(
+                        text: widget.room.name,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ]),
+                  maxLines: 2,
+                  style: PhlioTypography.body
+                      .copyWith(color: PhlioColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                    gradient: PhlioColors.sunsetGradient,
+                    borderRadius: BorderRadius.circular(999)),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: _joining ? null : _join,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                      child: _joining
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: PhlioColors.textOnBrand))
+                          : Text('Join',
+                              style: PhlioTypography.label.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: PhlioColors.textOnBrand)),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final mine = ref.watch(myRoomsProvider);
+    final rooms = mine.valueOrNull;
+    if (rooms != null && !rooms.any((room) => room.id == widget.room.id)) {
+      return _previewBar();
+    }
     return ColoredBox(
       color: PhlioColors.roomsChat,
       child: SafeArea(
@@ -608,6 +656,10 @@ class _JoinPill extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final myRooms = ref.watch(myRoomsProvider).valueOrNull ?? const [];
     final joined = myRooms.any((room) => room.id == roomId);
+    // Members don't need a badge (as on Discord); visitors get a Join pill.
+    if (joined || ref.watch(myRoomsProvider).isLoading) {
+      return const SizedBox.shrink();
+    }
 
     return GestureDetector(
       onTap: joined

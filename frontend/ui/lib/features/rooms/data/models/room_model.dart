@@ -11,6 +11,10 @@ class RoomModel {
     required this.isPrivate,
     required this.memberCount,
     required this.createdAt,
+    this.iconUrl,
+    this.bannerUrl,
+    this.credit,
+    this.activeCount = 0,
   });
 
   factory RoomModel.fromJson(Map<String, dynamic> json) {
@@ -24,6 +28,10 @@ class RoomModel {
       isPrivate: json['is_private'] as bool? ?? false,
       memberCount: json['member_count'] as int? ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
+      iconUrl: json['icon_url'] as String?,
+      bannerUrl: json['banner_url'] as String?,
+      credit: json['credit'] as String?,
+      activeCount: json['active_count'] as int? ?? 0,
     );
   }
 
@@ -36,6 +44,10 @@ class RoomModel {
   final bool isPrivate;
   final int memberCount;
   final DateTime createdAt;
+  final String? iconUrl;
+  final String? bannerUrl;
+  final String? credit;
+  final int activeCount;
 
   RoomEntity toEntity() => RoomEntity(
         id: id,
@@ -47,5 +59,9 @@ class RoomModel {
         isPrivate: isPrivate,
         memberCount: memberCount,
         createdAt: createdAt,
+        iconUrl: iconUrl,
+        bannerUrl: bannerUrl,
+        credit: credit,
+        activeCount: activeCount,
       );
 }

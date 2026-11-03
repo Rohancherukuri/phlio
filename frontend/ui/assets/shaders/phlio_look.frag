@@ -6,7 +6,8 @@
 //   c  = lift + (gain - lift) * pow(c, gamma) (per channel)
 //   vignette, grain
 // Effects (uEffect): 0 none, 1 grain, 2 light leak, 3 chromatic, 4 glitch,
-// 5 VHS, 6 dreamy, 7 prism, 8 old film, 9 sparkle, 10 3D, 11 blur.
+// 5 VHS, 6 dreamy, 7 prism, 8 old film, 9 sparkle, 10 3D, 11 blur,
+// 12 pixelate, 13 fish eye, 14 drift.
 #include <flutter/runtime_effect.glsl>
 
 precision highp float;
@@ -36,6 +37,11 @@ float hash(vec2 p) {
 
 vec4 tap(vec2 uv) {
   return texture(uTexture, clamp(uv, vec2(0.0), vec2(1.0)));
+}
+
+// Straight (un-premultiplied) colour of a sample.
+vec3 straight(vec4 s) {
+  return s.a > 0.0 ? s.rgb / s.a : vec3(0.0);
 }
 
 vec3 grade(vec3 c) {
@@ -98,6 +104,18 @@ void main() {
     c = vec3(tap(uv + vec2(0.008 * k, 0.0)).r, c.g, tap(uv - vec2(0.008 * k, 0.0)).b);
   } else if (fx == 11) { // blur
     c = mix(c, blur9(uv, 5.0 * k), k);
+  } else if (fx == 12) { // pixelate: big square blocks
+    vec2 cell = vec2(max(3.0, 26.0 * k)) / uSize;
+    c = straight(tap((floor(uv / cell) + 0.5) * cell));
+  } else if (fx == 13) { // fish eye: bulge from the centre, dark lens edge
+    vec2 p = uv - 0.5;
+    float r2 = dot(p, p);
+    vec2 q = 0.5 + p * mix(1.0, 0.55 + 1.8 * r2, k);
+    c = straight(tap(q));
+    c *= 1.0 - k * smoothstep(0.42, 0.62, sqrt(r2 * 2.0));
+  } else if (fx == 14) { // drift: slow wavy float with colour trails
+    vec2 w = vec2(sin(uv.y * 7.0 + t * 1.4), cos(uv.x * 6.0 + t * 1.1)) * 0.007 * k;
+    c = vec3(straight(tap(uv + w * 1.8)).r, straight(tap(uv + w)).g, straight(tap(uv + w * 0.3)).b);
   }
 
   c = grade(c);

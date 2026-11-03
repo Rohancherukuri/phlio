@@ -31,8 +31,23 @@ class ListingsController extends AsyncNotifier<List<BookListingEntity>> {
 
     // Re-run automatically whenever the category filter changes.
     final category = ref.watch(selectedBookCategoryProvider);
-    final result = await useCase(category: category);
-    return result.when(success: (page) => page.items, failure: (failure) => throw failure);
+    // The catalogue spans many verticals: load every page (100 per page).
+    final items = <BookListingEntity>[];
+    final seen = <String>{};
+    String? cursor;
+    for (var page = 0; page < 10; page++) {
+      final result = await useCase(category: category, cursor: cursor);
+      final data = result.when(
+          success: (value) => value, failure: (failure) => throw failure);
+      for (final item in data.items) {
+        if (seen.add(item.id)) items.add(item);
+      }
+      if (!data.hasMore || data.nextCursor == null || data.nextCursor == cursor) {
+        break;
+      }
+      cursor = data.nextCursor;
+    }
+    return items;
   }
 }
 

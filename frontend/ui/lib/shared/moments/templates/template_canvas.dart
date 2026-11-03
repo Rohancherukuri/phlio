@@ -16,6 +16,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../media/phlio_look_view.dart';
+import 'template_media.dart' show TemplateSlotMedia;
 import 'template_model.dart';
 
 // -- backdrop -------------------------------------------------------------------------
@@ -232,7 +233,16 @@ class _Slot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final polaroid = e.shape == SlotShape.polaroid;
-    Widget photo = e.photo == null ? _placeholder() : _image();
+    // A video frame shows the playing video (or nothing while exporting:
+    // the hole is punched out afterwards, see template_media.dart).
+    final video = e.video ? TemplateSlotMedia.of(context) : null;
+    Widget photo = e.video
+        ? (video == null
+            ? const SizedBox.expand()
+            : SizedBox.expand(child: FittedBox(fit: BoxFit.cover, clipBehavior: Clip.hardEdge, child: video)))
+        : e.photo == null
+            ? _placeholder()
+            : _image();
     photo = ClipPath(clipper: _SlotClipper(polaroid ? SlotShape.rect : e.shape, e.radius), child: photo);
     if (polaroid) {
       // White card with a deeper bottom margin, like an instant photo.

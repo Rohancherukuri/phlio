@@ -31,12 +31,14 @@ class CreateBookingUseCase {
     required DateTime date,
     DateTime? time,
     int participants = 1,
+    Map<String, String> details = const {},
   }) {
     return _repository.createBooking(
       listingId: listingId,
       date: date,
       time: time,
       participants: participants,
+      details: details,
     );
   }
 }

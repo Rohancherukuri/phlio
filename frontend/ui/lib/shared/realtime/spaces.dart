@@ -23,6 +23,7 @@ import '../../design_system/typography.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'space_room_screen.dart';
+import 'spaces_hub_screen.dart';
 
 // -- Data ---------------------------------------------------------------------
 
@@ -78,10 +79,13 @@ const _rec = Color(0xFFFF4F79);
 // -- Feed bar -------------------------------------------------------------------
 
 class SpacesBar extends ConsumerWidget {
-  const SpacesBar({this.header, super.key});
+  const SpacesBar({this.header, this.seeAll = false, super.key});
 
   /// Optional heading shown only when there are live Spaces.
   final String? header;
+
+  /// Show "See all Spaces" (opens the hub) under the pills.
+  final bool seeAll;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -102,6 +106,20 @@ class SpacesBar extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: _SpacePill(space: space),
+          ),
+        if (seeAll)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const SpacesHubScreen())),
+              icon: const Icon(Icons.graphic_eq_rounded, size: 18),
+              label: Text(spaces.length > 3
+                  ? 'See all ${spaces.length} live Spaces'
+                  : 'See all Spaces'),
+              style: TextButton.styleFrom(
+                  foregroundColor: PhlioColors.brandPeach),
+            ),
           ),
       ]),
     );

@@ -80,7 +80,7 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
           ),
           children: [
             // Live Spaces float above the feed (X-style pill).
-            const SpacesBar(),
+            const SpacesBar(seeAll: true),
             for (final post in state.posts) ...[
               PostCard(
                 post: post,

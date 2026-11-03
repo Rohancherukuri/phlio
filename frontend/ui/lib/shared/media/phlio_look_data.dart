@@ -152,6 +152,8 @@ final Map<String, LookGrade> phlioLooks = {
   'amaro': _look(saturation: 1.2, contrast: 1.05, warmth: -.2, lift: [.05, .05, .07], gain: [1.08, 1.08, 1.06]),
   'rise': _look(saturation: .9, contrast: .95, warmth: .45, lift: [.07, .05, .03], gain: [1.05, 1.03, .98]),
   'sierra': _look(saturation: .85, contrast: .88, lift: [.07, .06, .06], vignette: .3),
+  // Faded, warm, grainy print with dark corners.
+  'vintage': _look(saturation: .7, contrast: .88, warmth: .55, lift: [.09, .07, .04], gain: [1.0, .95, .84], vignette: .45, grain: .35),
   'phlio': _look(saturation: 1.15, contrast: 1.05, tint: .35, lift: [.04, .01, .07], gain: [1.03, .99, 1.02]),
 };
 
@@ -178,6 +180,7 @@ const phlioLookNames = {
   'amaro': 'Amaro',
   'rise': 'Rise',
   'sierra': 'Sierra',
+  'vintage': 'Vintage',
   'phlio': 'Phlio',
 };
 
@@ -195,6 +198,10 @@ const phlioEffects = <(String, String, int)>[
   ('sparkle', 'Sparkle', 9),
   ('retro3d', '3D', 10),
   ('blur', 'Blur', 11),
+  // Client-only (shader): snaps and moments preview / play them live.
+  ('pixelate', 'Pixelate', 12),
+  ('fisheye', 'Fish eye', 13),
+  ('drift', 'Drift', 14),
 ];
 
 int phlioEffectId(String? name) {

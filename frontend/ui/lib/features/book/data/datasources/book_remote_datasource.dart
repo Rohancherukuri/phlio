@@ -27,6 +27,7 @@ class BookRemoteDataSource {
     required DateTime date,
     DateTime? time,
     required int participants,
+    Map<String, String> details = const {},
   }) async {
     final response = await _apiClient.dio.post(
       '/book/bookings',
@@ -36,6 +37,7 @@ class BookRemoteDataSource {
         if (time != null)
           'time': '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
         'participants': participants,
+        if (details.isNotEmpty) 'details': details,
       },
     );
     return response.data as Map<String, dynamic>;

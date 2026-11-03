@@ -37,6 +37,7 @@ import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart';
 import '../../../../shared/moments/stickers/sticker_views.dart';
 import '../../../../shared/moments/templates/template_editor.dart';
+import '../../../../shared/moments/templates/template_media.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../../profile/presentation/widgets/snap_audience.dart';
@@ -150,6 +151,21 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   /// Song for the moment ({title, artist, url, cover_url}); played in the viewer.
   Map<String, dynamic>? _music;
 
+  /// The photo / video as picked (before any template), so another template
+  /// can be tried on the original.
+  TemplateMedia? _source;
+
+  /// A template on a video: the overlay PNG (with a hole) and where the
+  /// video plays (shared/moments/templates/template_media.dart).
+  ({String overlay, TemplateVideoSlot slot})? _frame;
+
+  /// The template design behind the current media, for "Edit template".
+  TemplateDesign? _design;
+
+  /// Pinch-to-crop on the photo: zoom (1-5x) and pan, baked when sharing.
+  double _mediaScale = 1, _mediaScaleStart = 1;
+  Offset _mediaOffset = Offset.zero;
+
   @override
   void initState() {
     super.initState();
@@ -181,7 +197,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
 
   bool get hasContent => mediaPath != null || createMode;
 
-  Future<void> _setMedia(String path, bool asVideo) async {
+  Future<void> _setMedia(String path, bool asVideo, {bool fromTemplate = false}) async {
     final old = video;
     video = null;
     await old?.dispose();
@@ -189,6 +205,13 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       mediaPath = path;
       isVideo = asVideo;
       createMode = false;
+      _frame = null;
+      _mediaScale = 1;
+      _mediaOffset = Offset.zero;
+      if (!fromTemplate) {
+        _source = TemplateMedia(path, video: asVideo);
+        _design = null;
+      }
     });
     if (asVideo) {
       final controller = VideoPlayerController.file(File(path));
@@ -235,8 +258,35 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   /// finished design comes back as a photo; "Start blank" is the classic
   /// text-on-gradient moment.
   Future<void> templates() async {
-    final out = await openMomentTemplates(context);
+    // Like Instagram's "Use template": with a photo / video already picked,
+    // every design shows it and the editor starts with it in place.
+    final out = await openMomentTemplates(context, media: hasContent && !createMode ? _source : null);
     if (out == null || !mounted) return;
+    await _applyTemplate(out);
+  }
+
+  /// "Edit template": reopens the design with every frame, crop and text.
+  Future<void> editTemplate() async {
+    final design = _design;
+    if (design == null) return;
+    final out = await editMomentTemplate(context, design, media: _source);
+    if (out == null || !mounted) return;
+    await _applyTemplate(out);
+  }
+
+  Future<void> _applyTemplate(TemplateOutcome out) async {
+    if (out.videoSlot != null) {
+      // The video stays as it is; the design goes over it with a hole.
+      final source = _source!;
+      if (mediaPath != source.path || !isVideo) await _setMedia(source.path, true);
+      setState(() {
+        _frame = (overlay: out.path!, slot: out.videoSlot!);
+        _design = out.design;
+      });
+      _addToCaption([...out.tags, ...out.mentions]);
+      _say('Template applied · add effects, stickers or music, then share');
+      return;
+    }
     if (out.blank) {
       await video?.dispose();
       setState(() {
@@ -255,8 +305,14 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       if (mediaPath == null && !createMode) await pickGallery();
       return;
     }
-    await _setMedia(out.path!, false);
-    final extra = [...out.tags, ...out.mentions].where((t) => !caption.text.contains(t)).join(' ');
+    await _setMedia(out.path!, false, fromTemplate: true);
+    setState(() => _design = out.design);
+    _addToCaption([...out.tags, ...out.mentions]);
+    _say('Template applied · add effects, stickers or music, then share');
+  }
+
+  void _addToCaption(List<String> words) {
+    final extra = words.where((t) => t.isNotEmpty && !caption.text.contains(t)).join(' ');
     if (extra.isNotEmpty) {
       caption.text = caption.text.trim().isEmpty ? extra : '${caption.text.trim()} $extra';
     }
@@ -576,6 +632,20 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     setState(() => busy = true);
     try {
       final MultipartFile upload;
+      Map<String, dynamic>? templateOverlay;
+      final frame = _frame;
+      if (isVideo && frame != null) {
+        // Upload the design overlay first; the viewer draws it over the video.
+        final res = await getIt<ApiClient>().dio.post('/social/composer/upload',
+            data: FormData.fromMap({
+              'file': await MultipartFile.fromFile(frame.overlay,
+                  filename: 'template.png', contentType: DioMediaType('image', 'png')),
+            }));
+        templateOverlay = {
+          'type': 'template',
+          'data': {'url': (res.data as Map)['url'], 'slot': frame.slot.toJson()},
+        };
+      }
       if (isVideo) {
         upload = await MultipartFile.fromFile(mediaPath!,
             filename: mediaPath!.split(Platform.pathSeparator).last,
@@ -594,6 +664,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               'recipients': jsonEncode(audience.recipients),
               'allow_comments': (!commentsOff).toString(),
               'overlays': jsonEncode([
+                if (templateOverlay != null) templateOverlay,
                 for (final l in layers)
                   if (isVideo || l.interactive) l.toJson()
               ]),
@@ -673,19 +744,52 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
             color: Colors.black,
             child: Center(child: CircularProgressIndicator()));
       }
-      return _filtered(
-        filter,
-        FittedBox(
-          fit: BoxFit.cover,
-          clipBehavior: Clip.hardEdge,
-          child: SizedBox(
+      final player = FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+            width: controller.value.size.width,
+            height: controller.value.size.height,
+            child: VideoPlayer(controller)),
+      );
+      final frame = _frame;
+      if (frame != null) {
+        // Template on a video: the video plays inside its frame.
+        return TemplateVideoFrame(
+          slot: frame.slot,
+          overlay: FileImage(File(frame.overlay)),
+          media: SizedBox(
               width: controller.value.size.width,
               height: controller.value.size.height,
-              child: VideoPlayer(controller)),
-        ),
-      );
+              child: _filtered(filter, player)),
+        );
+      }
+      return _filtered(filter, player);
     }
-    return _filtered(filter, Image.file(File(mediaPath!), fit: BoxFit.cover));
+    // Photo: pinch and drag with your fingers to crop; double-tap resets.
+    return LayoutBuilder(builder: (_, constraints) => GestureDetector(
+      onScaleStart: (_) => _mediaScaleStart = _mediaScale,
+      onScaleUpdate: (d) => setState(() {
+        _mediaScale = (_mediaScaleStart * d.scale).clamp(1.0, 5.0);
+        final box = constraints.biggest;
+        final maxX = (_mediaScale - 1) * box.width / 2, maxY = (_mediaScale - 1) * box.height / 2;
+        final o = _mediaOffset + d.focalPointDelta;
+        _mediaOffset = Offset(o.dx.clamp(-maxX, maxX), o.dy.clamp(-maxY, maxY));
+      }),
+      onDoubleTap: () => setState(() {
+        _mediaScale = 1;
+        _mediaOffset = Offset.zero;
+      }),
+      child: ClipRect(
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..translate(_mediaOffset.dx, _mediaOffset.dy)
+            ..scale(_mediaScale),
+          child: _filtered(filter, Image.file(File(mediaPath!), fit: BoxFit.cover)),
+        ),
+      ),
+    ));
   }
 
   /// Tapping a tray sticker in the composer cycles its look (pills, music,
@@ -924,6 +1028,28 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                             ),
                           ),
                         ),
+                        if (_design != null)
+                          Positioned(
+                            left: 62,
+                            top: 14,
+                            child: Material(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(20),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: busy ? null : editTemplate,
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Icon(Icons.dashboard_customize_outlined, color: Colors.white, size: 18),
+                                    SizedBox(width: 6),
+                                    Text('Edit template',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                          ),
                         // Right tool column.
                         Positioned(
                           right: 8,

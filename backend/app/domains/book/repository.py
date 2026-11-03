@@ -27,5 +27,5 @@ class BookRepository(Protocol):
     ) -> tuple[list[Booking], str | None]: ...
 
     async def listing_has_booking_on(
-        self, *, listing_id: str, user_id: str, date: dt.date
+        self, *, listing_id: str, user_id: str, date: dt.date, time: dt.time | None = None
     ) -> bool: ...
