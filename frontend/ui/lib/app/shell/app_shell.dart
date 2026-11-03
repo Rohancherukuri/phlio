@@ -1,4 +1,5 @@
 import '../../features/profile/presentation/widgets/memories_screen.dart';
+import '../../features/profile/presentation/widgets/experience_screen.dart';
 import '../../shared/content/stream_screen.dart';
 import '../../shared/music/song_picker.dart';
 import '../../shared/realtime/realtime_screen.dart';
@@ -301,9 +302,12 @@ class AppShell extends ConsumerWidget {
             icon: Icons.auto_stories_rounded,
             color: PhlioColors.domainArt,
             title: 'New experience',
-            subtitle: 'Start a collaborative story',
-            // On hold for now: show a coming-soon message only.
-            onTap: comingSoon('Experiences'),
+            subtitle: 'Weekly photo dumps with your best friends',
+            onTap: () {
+              final navigator = Navigator.of(context, rootNavigator: true);
+              Navigator.pop(context);
+              openExperience(navigator.context);
+            },
           ),
           _CreateOption(
             icon: Icons.photo_camera_rounded,

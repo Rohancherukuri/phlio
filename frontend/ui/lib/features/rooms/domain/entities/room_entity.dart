@@ -33,6 +33,10 @@ class RoomEntity extends Equatable {
     required this.isPrivate,
     required this.memberCount,
     required this.createdAt,
+    this.iconUrl,
+    this.bannerUrl,
+    this.credit,
+    this.activeCount = 0,
   });
 
   final String id;
@@ -45,6 +49,17 @@ class RoomEntity extends Equatable {
   final int memberCount;
   final DateTime createdAt;
 
+  /// Community artwork (origin-relative `/media/...`), when the room has it.
+  final String? iconUrl;
+  final String? bannerUrl;
+
+  /// Attribution for openly licensed artwork.
+  final String? credit;
+
+  /// People who posted in the last 7 days.
+  final int activeCount;
+
   @override
-  List<Object?> get props => [id, name, memberCount];
+  List<Object?> get props =>
+      [id, name, memberCount, description, iconUrl, bannerUrl, activeCount];
 }

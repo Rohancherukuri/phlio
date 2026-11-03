@@ -75,3 +75,6 @@ class Booking:
     currency: str = "INR"
     status: BookingStatus = BookingStatus.CONFIRMED
     created_at: dt.datetime = field(default_factory=lambda: dt.datetime.now(dt.UTC))
+    # Vertical-specific choices: pickup/drop for rides, from/to/class for
+    # trips, the court or doctor slot, ticket tier... (all strings).
+    details: dict[str, str] = field(default_factory=dict)

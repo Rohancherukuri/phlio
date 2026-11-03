@@ -50,7 +50,7 @@ from pathlib import Path
 import httpx
 
 from app.config import Settings
-from app.infrastructure.media_sync import STATE_PREFIX, dm_root, media_root, state_databases
+from app.infrastructure.media_sync import STATE_PREFIX, media_root, state_databases, state_folders
 from app.infrastructure.object_store import ObjectStore
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -295,7 +295,7 @@ def publish_media(settings: Settings, workers: int) -> None:
 
 
 def publish_state(settings: Settings) -> None:
-    """Uploads SQLite snapshots and DM attachments to _state/ in the bucket."""
+    """Uploads SQLite snapshots, DM attachments and snap photos to _state/ in the bucket."""
     store = bucket()
     try:
         with tempfile.TemporaryDirectory() as tmp:
@@ -312,11 +312,11 @@ def publish_state(settings: Settings) -> None:
                     src.close()
                 store.put_file(STATE_PREFIX + db.name, copy, "application/vnd.sqlite3")
                 print(f"  {db.name}: {human(copy.stat().st_size)}")
-        root = dm_root(settings)
-        files = [p for p in root.rglob("*") if p.is_file()] if root.exists() else []
-        for path in files:
-            store.put_file(STATE_PREFIX + "dm_files/" + path.relative_to(root).as_posix(), path)
-        print(f"  DM attachments: {len(files)}")
+        for (root, prefix), label in zip(state_folders(settings), ("DM attachments", "Snap photos")):
+            files = [p for p in root.rglob("*") if p.is_file()] if root.exists() else []
+            for path in files:
+                store.put_file(prefix + path.relative_to(root).as_posix(), path)
+            print(f"  {label}: {len(files)}")
     finally:
         store.close()
 

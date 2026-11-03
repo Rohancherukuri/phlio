@@ -129,6 +129,10 @@ class TElement {
 
   /// Picked photo (file path), and how it's panned / zoomed inside the frame.
   String? photo;
+
+  /// This frame plays the video the template is being used with
+  /// (template_media.dart). Not saved with designs.
+  bool video = false;
   Offset photoOffset = Offset.zero;
   double photoScale = 1;
 
@@ -172,6 +176,7 @@ class TElement {
       ..hint = hint
       ..shadow = shadow
       ..photo = photo
+      ..video = video
       ..photoOffset = photoOffset
       ..photoScale = photoScale
       ..text = text

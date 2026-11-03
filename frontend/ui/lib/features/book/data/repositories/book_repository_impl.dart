@@ -45,6 +45,7 @@ class BookRepositoryImpl implements BookRepository {
     required DateTime date,
     DateTime? time,
     int participants = 1,
+    Map<String, String> details = const {},
   }) async {
     try {
       final json = await _remoteDataSource.createBooking(
@@ -52,6 +53,7 @@ class BookRepositoryImpl implements BookRepository {
         date: date,
         time: time,
         participants: participants,
+        details: details,
       );
       return Result.success(BookingModel.fromJson(json).toEntity());
     } on DioException catch (e) {

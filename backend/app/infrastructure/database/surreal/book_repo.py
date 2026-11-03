@@ -64,13 +64,16 @@ class SurrealBookRepository:
             row["date"] = dt.date.fromisoformat(row["date"])
             row["time"] = dt.time.fromisoformat(row["time"]) if row.get("time") else None
             row["status"] = BookingStatus(row["status"])
+            row["details"] = row.get("details") or {}
             items.append(Booking(**row))
         return _paginate(items, cursor=cursor, limit=limit)
 
-    async def listing_has_booking_on(self, *, listing_id, user_id, date):
-        rows = await self._db.rows(
-            "SELECT id FROM booking WHERE user_id=$user AND listing_id=$listing "
-            'AND date=$date AND status="confirmed" LIMIT 1',
-            {"user": user_id, "listing": listing_id, "date": date.isoformat()},
-        )
+    async def listing_has_booking_on(self, *, listing_id, user_id, date, time=None):
+        query = ("SELECT id FROM booking WHERE user_id=$user AND listing_id=$listing "
+                 'AND date=$date AND status="confirmed"')
+        params = {"user": user_id, "listing": listing_id, "date": date.isoformat()}
+        if time is not None:
+            query += " AND time=$time"
+            params["time"] = time.isoformat()
+        rows = await self._db.rows(query + " LIMIT 1", params)
         return bool(rows)

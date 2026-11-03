@@ -117,6 +117,8 @@ if ($Seed) {
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Retailer refresh failed; continuing with the saved catalog. Retry python -m scripts.import_shop_catalog later.' }
     uv run python -m scripts.import_book_catalog
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Book refresh failed; continuing with saved listings. Retry python -m scripts.import_book_catalog later.' }
+    uv run python -m scripts.import_book_services
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Phlio Book services import failed; rerun python -m scripts.import_book_services later.' }
     uv run python -m scripts.import_stream_music
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Music refresh failed; saved tracks remain available.' }
     uv run python -m scripts.import_live_recordings
@@ -125,6 +127,10 @@ if ($Seed) {
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Shared catalog reconciliation failed. See the error above.' }
     uv run python -m scripts.seed_catalog_engagement
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Catalog demo engagement seed failed. See the error above.' }
+    uv run python -m scripts.import_open_movie_clips
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Open-movie clip import failed; rerun python -m scripts.import_open_movie_clips later.' }
+    uv run python -m scripts.import_open_communities
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Community rooms import failed; rerun python -m scripts.import_open_communities later.' }
     uv run python -m scripts.seed_community_comments
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Community comment seed failed. See the error above.' }
 }

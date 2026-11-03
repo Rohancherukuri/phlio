@@ -11,7 +11,9 @@ import '../../domain/entities/room_entity.dart';
 import '../controllers/messaging_controller.dart';
 import '../controllers/rooms_controller.dart';
 import 'direct_messages_panel.dart';
+import 'rooms_discord.dart';
 import 'rooms_hub_panels.dart';
+import 'package:phlio/shared/widgets/notifications_button.dart';
 
 /// Discord-inspired mobile home: a persistent room rail and rounded inbox.
 class RoomsHome extends ConsumerStatefulWidget {
@@ -31,180 +33,128 @@ class _RoomsHomeState extends ConsumerState<RoomsHome> {
   Widget build(BuildContext context) {
     final rooms = ref.watch(myRoomsProvider);
     final conversations = ref.watch(dmConversationsProvider);
-    final railWidth = MediaQuery.sizeOf(context).width < 360 ? 60.0 : 68.0;
     return ColoredBox(
         color: PhlioColors.roomsRail,
         child: SafeArea(
             bottom: false,
             child:
                 Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              SizedBox(
-                  width: railWidth,
-                  child: ListView(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 8),
-                      children: [
-                        _railButton(
-                            icon: const Icon(Icons.chat_bubble_rounded,
-                                color: Colors.white),
-                            label: 'Messages',
-                            selected: true,
-                            onTap: () =>
-                                ref.invalidate(dmConversationsProvider)),
-                        const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Divider(height: 24)),
-                        ...rooms.when(
-                            loading: () => [
-                                  const Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2))
-                                ],
-                            error: (_, __) => [
-                                  _railButton(
-                                      icon: const Icon(Icons.refresh),
-                                      label: 'Reload rooms',
-                                      onTap: () =>
-                                          ref.invalidate(myRoomsProvider))
-                                ],
-                            data: (items) => [
-                                  for (final room in items)
-                                    _railButton(
-                                        icon: Text(room.icon,
-                                            style:
-                                                const TextStyle(fontSize: 23)),
-                                        label: room.name,
-                                        onTap: () => widget.onSelectRoom(room))
-                                ]),
-                        _railButton(
-                            icon: const Icon(Icons.explore_outlined,
-                                color: PhlioColors.domainRooms),
-                            label: 'Explore rooms',
-                            onTap: () => context.go('/explore')),
-                      ])),
+              // Same rail as Explore and the channel drawer.
+              ServerRail(
+                rooms: rooms.valueOrNull ?? const [],
+                loading: rooms.isLoading && !rooms.hasValue,
+                section: RailSection.messages,
+                onSelect: widget.onSelectRoom,
+                onMessages: () => ref.invalidate(dmConversationsProvider),
+              ),
               Expanded(
-                  child: ClipRRect(
-                      borderRadius:
-                          const BorderRadius.only(topLeft: Radius.circular(28)),
-                      child: ColoredBox(
-                          color: PhlioColors.roomsSidebar,
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Padding(
-                                    padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
-                                    child: Text('PHLIO ROOMS',
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            letterSpacing: 1.8,
-                                            color: PhlioColors.textSecondary))),
-                                const Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 16),
-                                    child: Text('Messages',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.white))),
-                                Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: TextButton.icon(
-                                        icon: const Icon(Icons.group_outlined),
-                                        label: const Text('Group messages'),
-                                        onPressed: () => Navigator.of(context)
-                                            .push(MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const GroupInboxScreen())))),
-                                Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        10, 12, 10, 16),
-                                    child: Row(children: [
-                                      IconButton.filledTonal(
-                                          tooltip: 'Search Rooms',
-                                          onPressed: () =>
-                                              showRoomsSearch(context),
-                                          icon: const Icon(Icons.search)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                          child: FilledButton.tonal(
-                                              onPressed: () =>
-                                                  showRoomsFriends(context),
-                                              style: FilledButton.styleFrom(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 12)),
-                                              child: const Text('Add Friends',
-                                                  textAlign:
-                                                      TextAlign.center))),
-                                      const SizedBox(width: 6),
-                                      IconButton.filled(
-                                          tooltip: 'New message',
-                                          onPressed: () =>
-                                              showDirectMessagesPanel(context),
-                                          style: IconButton.styleFrom(
-                                              backgroundColor:
-                                                  PhlioColors.brandViolet),
-                                          icon: const Icon(Icons.edit_square)),
-                                    ])),
-                                Expanded(
-                                    child: conversations.when(
-                                        loading: () => const Center(
-                                            child: CircularProgressIndicator()),
-                                        error: (_, __) => SingleChildScrollView(
-                                            child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(20),
-                                                child: Column(children: [
-                                                  const Icon(
-                                                      Icons
-                                                          .chat_bubble_outline_rounded,
-                                                      size: 40,
-                                                      color: PhlioColors
-                                                          .textSecondary),
-                                                  const SizedBox(height: 16),
-                                                  const Text(
-                                                      'Could not load your conversations.',
-                                                      textAlign:
-                                                          TextAlign.center),
-                                                  TextButton(
-                                                      onPressed: () =>
-                                                          ref.invalidate(
-                                                              dmConversationsProvider),
-                                                      child: const Text(
-                                                          'Try again')),
-                                                ]))),
-                                        data: _inbox)),
-                              ])))),
+                  child: RailPanel(
+                      title: 'Messages',
+                      actions: [
+                        RoomIconButton('search',
+                            tooltip: 'Search Rooms',
+                            color: PhlioColors.textPrimary,
+                            onTap: () => showRoomsSearch(context)),
+                        const PhlioNotificationsButton(),
+                      ],
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                                child: Row(children: [
+                                  Expanded(
+                                      child: _pill(
+                                          glyph: 'invite',
+                                          label: 'Add Friends',
+                                          onTap: () =>
+                                              showRoomsFriends(context))),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                      child: _pill(
+                                          glyph: 'members',
+                                          label: 'Groups',
+                                          onTap: () => Navigator.of(context)
+                                              .push(MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const GroupInboxScreen())))),
+                                  const SizedBox(width: 8),
+                                  // Plain + (same surface as the pills).
+                                  Tooltip(
+                                    message: 'New message',
+                                    child: Material(
+                                      color: PhlioColors.surfaceElevated,
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(14),
+                                        onTap: () =>
+                                            showDirectMessagesPanel(context),
+                                        child: const SizedBox.square(
+                                          dimension: 42,
+                                          child: Center(
+                                              child: RoomGlyph('plus',
+                                                  size: 20,
+                                                  color: PhlioColors
+                                                      .textPrimary)),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ])),
+                            Expanded(
+                                child: conversations.when(
+                                    loading: () => const Center(
+                                        child: CircularProgressIndicator()),
+                                    error: (_, __) => SingleChildScrollView(
+                                        child: Padding(
+                                            padding: const EdgeInsets.all(20),
+                                            child: Column(children: [
+                                              const RoomGlyph('chat',
+                                                  size: 40,
+                                                  color: PhlioColors
+                                                      .textSecondary),
+                                              const SizedBox(height: 16),
+                                              const Text(
+                                                  'Could not load your conversations.',
+                                                  textAlign: TextAlign.center),
+                                              TextButton(
+                                                  onPressed: () => ref.invalidate(
+                                                      dmConversationsProvider),
+                                                  child:
+                                                      const Text('Try again')),
+                                            ]))),
+                                    data: _inbox)),
+                          ]))),
             ])));
   }
 
-  Widget _railButton(
-          {required Widget icon,
+  Widget _pill(
+          {required String glyph,
           required String label,
-          required VoidCallback onTap,
-          bool selected = false}) =>
-      Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Tooltip(
-              message: label,
-              child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(selected ? 16 : 22),
-                  child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      height: 48,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                          color: selected
-                              ? PhlioColors.brandViolet
-                              : PhlioColors.roomsSidebar,
-                          borderRadius:
-                              BorderRadius.circular(selected ? 16 : 22)),
-                      child: icon))));
+          required VoidCallback onTap}) =>
+      Material(
+        color: PhlioColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: SizedBox(
+            height: 42,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              RoomGlyph(glyph, size: 18, color: PhlioColors.textPrimary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13.5)),
+              ),
+            ]),
+          ),
+        ),
+      );
 
   Widget _inbox(List<Map<String, dynamic>> items) {
     final filtered = items
@@ -230,10 +180,9 @@ class _RoomsHomeState extends ConsumerState<RoomsHome> {
                 style:
                     TextStyle(color: PhlioColors.textSecondary, height: 1.5)),
             const SizedBox(height: 24),
-            FilledButton.icon(
+            FilledButton(
                 onPressed: () => showDirectMessagesPanel(context),
-                icon: const Icon(Icons.waving_hand_outlined),
-                label: const Text('Start a conversation')),
+                child: const Text('Start a conversation')),
           ]));
     return RefreshIndicator(
       onRefresh: () async {

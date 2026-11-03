@@ -314,7 +314,9 @@ async def vote_poll(post_id: str, body: PollVote, user=Depends(get_current_user)
 @router.post('/memories', status_code=201)
 async def create_memory(file: UploadFile = File(...), caption: str = Form(default='', max_length=500),
                         audience: str = Form(default='friends'), recipients: str = Form(default='[]'),
-                        kind: str = Form(default='snap'),
+                        kind: str = Form(default='snap'), decorations: str = Form(default='[]', max_length=50000),
+                        filter: str = Form(default='normal', max_length=40),
+                        group: str = Form(default='', max_length=40),
                         user=Depends(get_current_user), c=Depends(get_container)):
     import uuid
     from app.domains.graph.store import now
@@ -322,6 +324,8 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
     from pydantic import ValidationError
     from app.api.v1.snap_audience import SnapAudience, validate_audience
     from app.core.container import media_root_path
+    from app.api.v1.snap_decorations import parse_snap_decorations
+    layers = parse_snap_decorations(decorations)
     if kind not in {'snap', 'moment', 'experience'}:
         raise HTTPException(422, 'Unknown content type.')
     try:
@@ -339,7 +343,7 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
     private.mkdir(parents=True, exist_ok=True)
     video = (file.content_type or '').startswith('video/')
     if video:
-        if kind != 'experience': raise HTTPException(422, 'Video exports are supported for experiences.')
+        # Snap videos (hold to record) and experience clips.
         destination = private / (uuid.uuid4().hex + '.mp4')
         try:
             size = 0
@@ -360,7 +364,7 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
         filename = destination.name
     else:
         if not (file.content_type or '').startswith('image/'):
-            raise HTTPException(422, 'Choose a photo or experience video.')
+            raise HTTPException(422, 'Choose a photo or a video.')
         uploaded = await composer_upload(file, user, c)
         source = root / uploaded['url'].removeprefix('/media/')
         source.replace(private / source.name)
@@ -368,7 +372,12 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
     memory_id = 'social_memory:' + uuid.uuid4().hex
     return await c.graph.store.put(memory_id, dict(
         author=user.id, image_url='/social/memories/' + memory_id + '/photo',
-        private_file=filename, media_kind='video' if video else 'image', caption=caption.strip(), kind=kind, **policy, created_at=now()))
+        private_file=filename, media_kind='video' if video else 'image', caption=caption.strip(), decorations=layers, kind=kind,
+        # Look / effect drawn live by the app ("look" or "look+effect").
+        filter=filter.strip() or 'normal',
+        # Experiences: photos shared together as one weekly dump.
+        group=group.strip() or None,
+        **policy, created_at=now()))
 
 
 
@@ -377,15 +386,26 @@ async def memories(user=Depends(get_current_user), c=Depends(get_container)):
     import datetime as dt
     from app.api.v1.snap_audience import can_view
     cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=24)
+    week_cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
     result = []
     for row in sorted(await c.graph.store.rows('social_memory'), key=lambda r: r['created_at'], reverse=True):
         if not await can_view(c, user.id, row):
             continue
-        if row['author'] != user.id and dt.datetime.fromisoformat(row['created_at']) < cutoff:
+        # Snaps are visible for 24 hours, experiences (weekly dumps) for 7 days.
+        limit = week_cutoff if row.get('kind') == 'experience' else cutoff
+        if row['author'] != user.id and dt.datetime.fromisoformat(row['created_at']) < limit:
             continue
         from app.domains.graph.service import key
         seen = await c.graph.store.get(key('memory_seen', user.id, row['id']))
-        reactions = await c.graph.store.rows('memory_reaction', {'memory_id': row['id']})
+        reactions = []
+        # Newest first, each with who reacted (name + avatar) for the snap's detail view.
+        for reaction in sorted(await c.graph.store.rows('memory_reaction', {'memory_id': row['id']}),
+                               key=lambda r: r.get('reacted_at', ''), reverse=True):
+            try:
+                person = c.graph.profile(await c.graph.user(reaction['user_id']))
+            except HTTPException:  # account removed since
+                person = None
+            reactions.append(dict(reaction, user=person))
         safe = {k: v for k, v in row.items() if k not in {'private_file', 'recipients'}}
         result.append(dict(safe, author=c.graph.profile(await c.graph.user(row['author'])),
             unread=row['author'] != user.id and not seen, reactions=reactions))
@@ -420,7 +440,9 @@ async def memory_react(memory_id: str, body: MemoryReaction, user=Depends(get_cu
     from app.domains.graph.service import key
     if not any(row['id'] == memory_id for row in await memories(user, c)):
         raise HTTPException(404, 'Memory unavailable.')
-    await c.graph.store.put(key('memory_reaction', user.id, memory_id), dict(user_id=user.id, memory_id=memory_id, emoji=body.emoji))
+    from app.domains.graph.store import now
+    await c.graph.store.put(key('memory_reaction', user.id, memory_id),
+                            dict(user_id=user.id, memory_id=memory_id, emoji=body.emoji, reacted_at=now()))
 
 
 @router.get('/memories/{memory_id}/photo')

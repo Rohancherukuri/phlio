@@ -3,6 +3,7 @@ uploads, and message reactions."""
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -12,6 +13,7 @@ from app.api.deps import get_container, get_current_user, get_rooms_service
 from app.common.pagination import clamp_limit
 from app.common.schemas import Page, PageMeta
 from app.core.container import Container
+from app.domains.graph.service import key
 from app.domains.identity.entities import User
 from app.domains.rooms.entities import (
     MessageAttachment,
@@ -35,20 +37,53 @@ class RoomResponse(BaseModel):
     is_private: bool
     member_count: int
     created_at: dt.datetime
+    # Community look (Discord-style cards): from the graph's room_profile.
+    icon_url: str | None = None
+    banner_url: str | None = None
+    credit: str | None = None
+    # Distinct people who posted in the last 7 days.
+    active_count: int = 0
 
     @classmethod
-    def from_entity(cls, room: Room) -> RoomResponse:
+    def from_entity(cls, room: Room, profile: dict | None = None, active: int = 0) -> RoomResponse:
+        profile = profile or {}
         return cls(
             id=room.id,
             name=room.name,
             slug=room.slug,
-            description=room.description,
+            description=profile.get("description") or room.description,
             category=room.category,
             icon=room.icon,
             is_private=room.is_private,
             member_count=room.member_count,
             created_at=room.created_at,
+            icon_url=profile.get("icon_url"),
+            banner_url=profile.get("banner_url"),
+            credit=profile.get("credit"),
+            active_count=active,
         )
+
+
+async def _active_people(container: Container, room_id: str) -> int:
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
+    try:
+        messages, _ = await container.rooms_repository.list_messages(room_id, cursor=None, limit=100)
+    except Exception:  # counts are decoration; never fail the listing
+        return 0
+    def recent(m):
+        at = m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=dt.UTC)
+        return at >= since
+    return len({m.author_id for m in messages if recent(m)})
+
+
+async def describe(container: Container, rooms: list[Room]) -> list[RoomResponse]:
+    """Rooms with their banner/icon and how many people were active lately."""
+    if not rooms:
+        return []
+    profiles = await container.graph.store.get_many([key("room_profile", r.id) for r in rooms])
+    by_id = {p["id"]: p for p in profiles if p}
+    active = await asyncio.gather(*(_active_people(container, r.id) for r in rooms))
+    return [RoomResponse.from_entity(r, by_id.get(key("room_profile", r.id)), n) for r, n in zip(rooms, active)]
 
 
 class CreateRoomRequest(BaseModel):
@@ -143,11 +178,12 @@ async def discover_rooms(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     rooms_service: RoomsService = Depends(get_rooms_service),
+    container: Container = Depends(get_container),
 ) -> Page[RoomResponse]:
     rooms, next_cursor = await rooms_service.discover(
         category=category, cursor=cursor, limit=clamp_limit(limit)
     )
-    items = [RoomResponse.from_entity(r) for r in rooms]
+    items = await describe(container, rooms)
     return Page(items=items, meta=PageMeta(next_cursor=next_cursor, has_more=next_cursor is not None))
 
 
@@ -155,9 +191,10 @@ async def discover_rooms(
 async def my_rooms(
     rooms_service: RoomsService = Depends(get_rooms_service),
     current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
 ) -> list[RoomResponse]:
     rooms = await rooms_service.my_rooms(current_user.id)
-    return [RoomResponse.from_entity(r) for r in rooms]
+    return await describe(container, rooms)
 
 
 @router.post("", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
@@ -178,9 +215,13 @@ async def create_room(
 
 
 @router.get("/{room_id}", response_model=RoomResponse)
-async def get_room(room_id: str, rooms_service: RoomsService = Depends(get_rooms_service)) -> RoomResponse:
+async def get_room(
+    room_id: str,
+    rooms_service: RoomsService = Depends(get_rooms_service),
+    container: Container = Depends(get_container),
+) -> RoomResponse:
     room = await rooms_service.get_room_or_raise(room_id)
-    return RoomResponse.from_entity(room)
+    return (await describe(container, [room]))[0]
 
 
 @router.post("/{room_id}/join", response_model=RoomResponse)
@@ -188,9 +229,10 @@ async def join_room(
     room_id: str,
     rooms_service: RoomsService = Depends(get_rooms_service),
     current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
 ) -> RoomResponse:
     room = await rooms_service.join(room_id, current_user.id)
-    return RoomResponse.from_entity(room)
+    return (await describe(container, [room]))[0]
 
 
 @router.get("/{room_id}/messages", response_model=Page[RoomMessageResponse])

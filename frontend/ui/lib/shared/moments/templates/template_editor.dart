@@ -15,6 +15,11 @@
 //            background. Drag to move, pinch to resize, twist to rotate.
 //   Next     exports a 1080 × 1920 PNG that opens in the composer, with the
 //            tags and mentions added to the caption.
+//
+// Opened with your own photo or video ([TemplateMedia], like Instagram's
+// "Use template"), every design previews with it in its first frame and the
+// editor starts with it in place. A video plays inside its frame; the design
+// exports as an overlay with a hole there (template_media.dart).
 
 import 'dart:io';
 import 'dart:math' as math;
@@ -25,6 +30,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../app/config/app_config.dart';
 import '../../../design_system/colors.dart';
@@ -32,6 +38,7 @@ import '../../media/phlio_look_data.dart';
 import '../stickers/sticker_tray.dart' show askText;
 import 'template_canvas.dart';
 import 'template_catalog.dart';
+import 'template_media.dart';
 import 'template_model.dart';
 import 'template_store.dart';
 
@@ -39,7 +46,15 @@ const _brand = LinearGradient(colors: [PhlioColors.brandViolet, PhlioColors.bran
 
 /// What the template flow produced.
 class TemplateOutcome {
-  const TemplateOutcome.image(String this.path, {this.tags = const [], this.mentions = const []})
+  const TemplateOutcome.image(String this.path, {this.tags = const [], this.mentions = const [], this.design})
+      : blank = false,
+        prompt = null,
+        videoSlot = null;
+
+  /// A design for the user's video: [path] is the overlay PNG (transparent
+  /// where [videoSlot] is); the video plays underneath.
+  const TemplateOutcome.video(String this.path, TemplateVideoSlot this.videoSlot,
+      {this.tags = const [], this.mentions = const [], this.design})
       : blank = false,
         prompt = null;
   const TemplateOutcome.blank()
@@ -47,6 +62,8 @@ class TemplateOutcome {
         tags = const [],
         mentions = const [],
         prompt = null,
+        videoSlot = null,
+        design = null,
         blank = true;
 
   /// Joining a trending "Add yours" prompt: the composer adds the sticker
@@ -55,6 +72,8 @@ class TemplateOutcome {
       : path = null,
         tags = const [],
         mentions = const [],
+        videoSlot = null,
+        design = null,
         blank = false;
 
   /// The exported PNG (null for [blank] and [prompt]).
@@ -68,18 +87,78 @@ class TemplateOutcome {
 
   /// An "Add yours" prompt to answer.
   final String? prompt;
+
+  /// Set for [TemplateOutcome.video]: where the video plays.
+  final TemplateVideoSlot? videoSlot;
+
+  /// The editable design behind the export, so the composer can reopen it
+  /// ("Edit template") with every frame, crop and text as it was.
+  final TemplateDesign? design;
 }
 
+/// A design in progress: the template, its background and its elements.
+class TemplateDesign {
+  const TemplateDesign(this.template, this.backdrop, this.elements);
+  final MomentTemplate template;
+  final TBackdrop backdrop;
+  final List<TElement> elements;
+}
+
+/// Reopens a design in the editor (Instagram's "edit" on a used template).
+Future<TemplateOutcome?> editMomentTemplate(BuildContext context, TemplateDesign design, {TemplateMedia? media}) =>
+    Navigator.of(context, rootNavigator: true).push<TemplateOutcome>(MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => MomentTemplateEditor(template: design.template, media: media, design: design)));
+
 /// Opens the template gallery; returns the finished design or null.
-Future<TemplateOutcome?> openMomentTemplates(BuildContext context) => Navigator.of(context, rootNavigator: true)
-    .push<TemplateOutcome>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const MomentTemplateGallery()));
+/// With [media] (the photo / video already picked) every design uses it.
+Future<TemplateOutcome?> openMomentTemplates(BuildContext context, {TemplateMedia? media}) =>
+    Navigator.of(context, rootNavigator: true).push<TemplateOutcome>(
+        MaterialPageRoute(fullscreenDialog: true, builder: (_) => MomentTemplateGallery(media: media)));
+
+/// Puts [media] into the first empty frame of [els] (true if it found one).
+bool applyTemplateMedia(List<TElement> els, TemplateMedia media) {
+  final slot = els.where((e) => e.isSlot && e.photo == null && !e.video).firstOrNull;
+  if (slot == null) return false;
+  if (media.video) {
+    slot.video = true;
+  } else {
+    slot
+      ..photo = media.path
+      ..photoOffset = Offset.zero
+      ..photoScale = 1;
+  }
+  return true;
+}
+
+/// A muted, looping player for the user's video (previews and the editor).
+Future<VideoPlayerController?> _loopingVideo(String path, {bool play = true}) async {
+  final c = VideoPlayerController.file(File(path));
+  try {
+    await c.initialize();
+    await c.setVolume(0);
+    await c.setLooping(true);
+    if (play) await c.play();
+    return c;
+  } catch (_) {
+    await c.dispose();
+    return null;
+  }
+}
+
+/// The video at its own aspect ratio (FittedBox-friendly).
+Widget _videoBox(VideoPlayerController c) =>
+    SizedBox(width: c.value.size.width, height: c.value.size.height, child: VideoPlayer(c));
 
 // -- gallery ----------------------------------------------------------------------------
 
 /// Browse (community prompts, trending prompts, templates by group) and
 /// Saved (your bookmarks and your own designs); + starts a blank design.
 class MomentTemplateGallery extends StatefulWidget {
-  const MomentTemplateGallery({super.key});
+  const MomentTemplateGallery({super.key, this.media});
+
+  /// The photo / video to use the templates with (null: start empty).
+  final TemplateMedia? media;
   @override
   State<MomentTemplateGallery> createState() => _MomentTemplateGalleryState();
 }
@@ -89,19 +168,42 @@ class _MomentTemplateGalleryState extends State<MomentTemplateGallery> {
   late final Future<List<TrendingPrompt>> _prompts = loadTrendingPrompts();
   final _store = SavedTemplates.instance;
 
-  /// Previews are built once (fresh elements per template).
+  /// Previews are built once (fresh elements per template), with the
+  /// user's photo / video in the first frame.
   final _previews = <String, (TBackdrop, List<TElement>)>{};
-  (TBackdrop, List<TElement>) _preview(MomentTemplate t) => _previews[t.id] ??= (t.backdrop(), t.build());
+  (TBackdrop, List<TElement>) _preview(MomentTemplate t) => _previews[t.id] ??= () {
+        final els = t.build();
+        if (widget.media != null) applyTemplateMedia(els, widget.media!);
+        return (t.backdrop(), els);
+      }();
+
+  /// One paused player shared by every preview's video frame.
+  VideoPlayerController? _video;
+
+  /// With media, only designs that have a frame for it.
+  List<MomentTemplate> _usable(Iterable<MomentTemplate> list) =>
+      [for (final t in list) if (widget.media == null || t.slots > 0) t];
 
   @override
   void initState() {
     super.initState();
     _store.addListener(_changed);
+    final media = widget.media;
+    if (media != null && media.video) {
+      _loopingVideo(media.path, play: false).then((c) {
+        if (!mounted) {
+          c?.dispose();
+          return;
+        }
+        setState(() => _video = c);
+      });
+    }
   }
 
   @override
   void dispose() {
     _store.removeListener(_changed);
+    _video?.dispose();
     super.dispose();
   }
 
@@ -113,7 +215,11 @@ class _MomentTemplateGalleryState extends State<MomentTemplateGallery> {
   Future<void> _open(MomentTemplate t) async {
     HapticFeedback.selectionClick();
     final out = await Navigator.of(context)
-        .push<TemplateOutcome>(MaterialPageRoute(builder: (_) => MomentTemplateEditor(template: t)));
+        .push<TemplateOutcome>(MaterialPageRoute(
+            // With your photo / video: apply the template straight away and go
+            // back to the composer for effects, stickers and music ("Edit
+            // template" there reopens it). Without media: edit it first.
+            builder: (_) => MomentTemplateEditor(template: t, media: widget.media, autoApply: widget.media != null)));
     if (out != null && mounted) Navigator.pop(context, out);
   }
 
@@ -151,7 +257,24 @@ class _MomentTemplateGalleryState extends State<MomentTemplateGallery> {
               ),
             ]),
           ),
-          Expanded(child: _saved ? _savedTab() : _browse()),
+          if (widget.media != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Row(children: [
+                Icon(widget.media!.video ? Icons.videocam_rounded : Icons.photo_rounded, color: PhlioColors.brandPeach, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Pick a template for your ${widget.media!.video ? 'video' : 'photo'}',
+                      style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+            ),
+          Expanded(
+            child: TemplateSlotMedia(
+              media: _video == null ? null : _videoBox(_video!),
+              child: _saved ? _savedTab() : _browse(),
+            ),
+          ),
         ]),
       ),
     );
@@ -189,10 +312,10 @@ class _MomentTemplateGalleryState extends State<MomentTemplateGallery> {
                 itemBuilder: (_, i) => _PromptCard(prompt: prompts[i], onAdd: () => _addYours(prompts[i].prompt)),
               ),
             ),
-            _shelf('Trending templates', momentTemplates.where((t) => t.category == TemplateCategory.trending).toList(), big: true),
+            _shelf('Trending templates', _usable(momentTemplates.where((t) => t.category == TemplateCategory.trending)), big: true),
             for (final c in TemplateCategory.values)
-              if (c != TemplateCategory.trending)
-                _shelf(templateCategoryNames[c]!, momentTemplates.where((t) => t.category == c).toList()),
+              if (c != TemplateCategory.trending && _usable(momentTemplates.where((t) => t.category == c)).isNotEmpty)
+                _shelf(templateCategoryNames[c]!, _usable(momentTemplates.where((t) => t.category == c))),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: OutlinedButton.icon(
@@ -282,7 +405,7 @@ class _MomentTemplateGalleryState extends State<MomentTemplateGallery> {
   // -- Saved -------------------------------------------------------------------------------
 
   Widget _savedTab() {
-    final list = _store.templates;
+    final list = _usable(_store.templates);
     if (list.isEmpty) {
       return Center(
         child: Padding(
@@ -447,18 +570,31 @@ class _CommunityCard extends StatelessWidget {
 // -- editor -----------------------------------------------------------------------------
 
 class MomentTemplateEditor extends StatefulWidget {
-  const MomentTemplateEditor({required this.template, super.key});
+  const MomentTemplateEditor({required this.template, this.media, this.design, this.autoApply = false, super.key});
+
+  /// Apply and return at once (the design is rendered, then exported).
+  final bool autoApply;
   final MomentTemplate template;
+
+  /// Reopening an earlier design: start from it instead of the template.
+  final TemplateDesign? design;
+
+  /// The user's photo / video, placed in the first frame.
+  final TemplateMedia? media;
   @override
   State<MomentTemplateEditor> createState() => _MomentTemplateEditorState();
 }
 
 class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
-  late final TBackdrop _backdrop = widget.template.backdrop();
-  late final List<TElement> _els = widget.template.build();
+  late final TBackdrop _backdrop = widget.design?.backdrop ?? widget.template.backdrop();
+  late final List<TElement> _els =
+      widget.design == null ? widget.template.build() : [for (final e in widget.design!.elements) e.copy()];
   final _canvasKey = GlobalKey();
   TElement? _selected;
-  TElement? _adjusting; // slot whose photo is being panned / zoomed
+  // Photo frames crop by default: drag / pinch inside a frame pans and zooms
+  // its photo, like Instagram. Double-tap a frame (or Photo → Move & resize
+  // frame) to move, resize and rotate the frame itself instead.
+  TElement? _movingFrame;
   bool _exporting = false;
   double _k = 1; // screen px per design unit
 
@@ -466,14 +602,60 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
   double _startFont = 0, _startScale = 1, _startRotation = 0;
   Size _startSize = Size.zero;
 
+  /// The user's video, playing in its frame.
+  VideoPlayerController? _video;
+  bool get _hasVideo => widget.media?.video == true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoApply) WidgetsBinding.instance.addPostFrameCallback((_) => _applyNow());
+    final media = widget.media;
+    if (media == null) return;
+    if (widget.design == null && !applyTemplateMedia(_els, media)) {
+      // No free frame (or a text-only design): add one for the media.
+      _els.insert(0, TElement.slot(const Offset(180, 320), const Size(300, 420), shape: SlotShape.rounded, radius: 22, shadow: true));
+      applyTemplateMedia(_els, media);
+    }
+    if (media.video) {
+      _loopingVideo(media.path).then((c) {
+        if (!mounted) {
+          c?.dispose();
+          return;
+        }
+        setState(() => _video = c);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _video?.dispose();
+    super.dispose();
+  }
+
+  /// The design as it is now (copies, so later edits don't change it).
+  TemplateDesign _snapshot() => TemplateDesign(widget.template, _backdrop, [for (final e in _els) e.copy()]);
+
+  /// Moves the video into [slot] (its photo, if any, is dropped).
+  void _moveVideo(TElement slot) => setState(() {
+        for (final e in _els) {
+          e.video = false;
+        }
+        slot
+          ..video = true
+          ..photo = null;
+      });
+
   void _select(TElement? e) => setState(() {
         _selected = e;
-        if (e != _adjusting) _adjusting = null;
+        if (e != _movingFrame) _movingFrame = null;
       });
 
   // -- photos -------------------------------------------------------------------------------
 
   Future<void> _pickInto(TElement slot) async {
+    if (slot.video) return _videoSlotHint();
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 2160, imageQuality: 92);
     if (picked == null) return;
     setState(() {
@@ -486,7 +668,7 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
 
   /// Fills empty frames, in order, from a multi-select.
   Future<void> _fillAll() async {
-    final empty = _els.where((e) => e.isSlot && e.photo == null).toList();
+    final empty = _els.where((e) => e.isSlot && e.photo == null && !e.video).toList();
     if (empty.isEmpty) {
       _say('Every frame already has a photo — tap one to replace it.');
       return;
@@ -500,7 +682,10 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
     });
   }
 
+  void _videoSlotHint() => _say('Your video plays in this frame. To move it, select another frame → Photo → Play my video here.');
+
   Future<void> _slotSheet(TElement slot) async {
+    if (slot.video) return _videoSlotHint();
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -516,14 +701,23 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
                 _pickInto(slot);
               },
             ),
+            if (_hasVideo)
+              ListTile(
+                leading: const Icon(Icons.smart_display_outlined, color: Colors.white),
+                title: const Text('Play my video here', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _moveVideo(slot);
+                },
+              ),
             if (slot.photo != null) ...[
               ListTile(
                 leading: const Icon(Icons.open_with_rounded, color: Colors.white),
-                title: const Text('Move & zoom photo', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Or double-tap the frame', style: TextStyle(color: Colors.white54)),
+                title: const Text('Move & resize frame', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Or double-tap it · pinch inside a frame to crop', style: TextStyle(color: Colors.white54)),
                 onTap: () {
                   Navigator.pop(sheet);
-                  setState(() => _adjusting = slot);
+                  setState(() => _movingFrame = slot);
                 },
               ),
               const Padding(
@@ -693,9 +887,26 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
 
   // -- export -------------------------------------------------------------------------------
 
-  Future<void> _export() async {
-    final empty = _els.where((e) => e.isSlot && e.photo == null).length;
-    if (empty > 0) {
+  /// Template tapped with your media: let photos decode, then export.
+  bool _autoApplying = false;
+  Future<void> _applyNow() async {
+    setState(() => _autoApplying = true);
+    try {
+      for (final e in _els) {
+        if (e.isSlot && e.photo != null) await precacheImage(FileImage(File(e.photo!)), context);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 350)); // fonts + backdrop's first frame
+      if (mounted) await _export(auto: true);
+    } catch (_) {
+      // Stay in the editor if anything goes wrong.
+    } finally {
+      if (mounted) setState(() => _autoApplying = false);
+    }
+  }
+
+  Future<void> _export({bool auto = false}) async {
+    final empty = _els.where((e) => e.isSlot && e.photo == null && !e.video).length;
+    if (empty > 0 && !auto) {
       final go = await showDialog<bool>(
         context: context,
         builder: (d) => AlertDialog(
@@ -712,22 +923,32 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
     setState(() {
       _exporting = true;
       _selected = null;
-      _adjusting = null;
+      _movingFrame = null;
     });
     await WidgetsBinding.instance.endOfFrame;
     try {
       final boundary = _canvasKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 1080 / boundary.size.width);
-      final png = await image.toByteData(format: ui.ImageByteFormat.png);
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/phlio_template_${DateTime.now().millisecondsSinceEpoch}.png');
+      final tags = [for (final e in _els) if (e.isText && e.role == TextRole.tag) e.text.trim()];
+      final mentions = [for (final e in _els) if (e.isText && e.role == TextRole.mention) e.text.trim()];
+      final videoSlot = _els.where((e) => e.isSlot && e.video).firstOrNull;
+      if (videoSlot != null) {
+        // The video can't go in a PNG: export the design with a hole where
+        // it plays, and send where that is.
+        final slot = TemplateVideoSlot.of(videoSlot);
+        await punchVideoHole(image, slot, image.width / templateSize.width, file);
+        image.dispose();
+        if (!mounted) return;
+        Navigator.pop(context, TemplateOutcome.video(file.path, slot, tags: tags, mentions: mentions, design: _snapshot()));
+        return;
+      }
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
       await file.writeAsBytes(png!.buffer.asUint8List());
       if (!mounted) return;
-      Navigator.pop(
-          context,
-          TemplateOutcome.image(file.path,
-              tags: [for (final e in _els) if (e.isText && e.role == TextRole.tag) e.text.trim()],
-              mentions: [for (final e in _els) if (e.isText && e.role == TextRole.mention) e.text.trim()]));
+      Navigator.pop(context, TemplateOutcome.image(file.path, tags: tags, mentions: mentions, design: _snapshot()));
     } catch (_) {
       _say('Couldn\'t export the design. Try again.');
     } finally {
@@ -760,19 +981,26 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
 
   Widget _interactive(TElement e, Widget child) {
     final selected = _selected == e && !_exporting;
-    final adjusting = _adjusting == e;
+    // Crop the photo unless this frame is in move mode.
+    final adjusting = e.isSlot && e.photo != null && _movingFrame != e;
+    final moving = _movingFrame == e;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
         if (_selected == e) {
           if (e.isText) _textSheet(e);
-          if (e.isSlot) e.photo == null ? _pickInto(e) : _slotSheet(e);
+          if (e.isSlot) e.photo == null && !e.video ? _pickInto(e) : _slotSheet(e);
         } else {
           _select(e);
-          if (e.isSlot && e.photo == null) _pickInto(e);
+          if (e.isSlot && e.photo == null && !e.video) _pickInto(e);
         }
       },
-      onDoubleTap: e.isSlot && e.photo != null ? () => setState(() => _adjusting = adjusting ? null : e) : null,
+      onDoubleTap: e.isSlot && (e.photo != null || e.video)
+          ? () => setState(() {
+                _selected = e;
+                _movingFrame = moving ? null : e;
+              })
+          : null,
       onScaleStart: (_) {
         if (_selected != e) _select(e);
         _startFont = e.fontSize;
@@ -783,8 +1011,11 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
       onScaleUpdate: (d) => setState(() {
         final delta = d.focalPointDelta / _k;
         if (adjusting) {
-          e.photoOffset += delta;
+          // Crop: zoom 1-5x, pan without ever showing an empty edge.
           e.photoScale = (_startScale * d.scale).clamp(1.0, 5.0);
+          final maxX = (e.photoScale - 1) * e.size.width / 2, maxY = (e.photoScale - 1) * e.size.height / 2;
+          final o = e.photoOffset + delta;
+          e.photoOffset = Offset(o.dx.clamp(-maxX, maxX), o.dy.clamp(-maxY, maxY));
           return;
         }
         e.center = Offset((e.center.dx + delta.dx).clamp(0.0, templateSize.width), (e.center.dy + delta.dy).clamp(0.0, templateSize.height));
@@ -800,7 +1031,7 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
       child: DecoratedBox(
         position: DecorationPosition.foreground,
         decoration: BoxDecoration(
-          border: selected ? Border.all(color: adjusting ? PhlioColors.brandPeach : Colors.white, width: 1.5) : null,
+          border: selected ? Border.all(color: moving ? PhlioColors.brandPeach : Colors.white, width: 1.5) : null,
           borderRadius: BorderRadius.circular(4),
         ),
         child: child,
@@ -815,7 +1046,8 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
     final sel = _selected;
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
+      body: Stack(children: [
+       SafeArea(
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
@@ -855,11 +1087,16 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
                       borderRadius: BorderRadius.circular(18),
                       child: RepaintBoundary(
                         key: _canvasKey,
-                        child: TemplateCanvas(
-                          backdrop: _backdrop,
-                          elements: _els,
-                          animate: !_exporting,
-                          elementBuilder: _interactive,
+                        // The video plays in its frame; while exporting the
+                        // frame is left empty (the hole is punched after).
+                        child: TemplateSlotMedia(
+                          media: _exporting || _video == null ? null : _videoBox(_video!),
+                          child: TemplateCanvas(
+                            backdrop: _backdrop,
+                            elements: _els,
+                            animate: !_exporting,
+                            elementBuilder: _interactive,
+                          ),
                         ),
                       ),
                     );
@@ -868,11 +1105,16 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
               ),
             ),
           ),
-          if (_adjusting != null)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: Text('Drag and pinch to frame the photo · double-tap when done',
-                  style: TextStyle(color: PhlioColors.brandPeach, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          if (sel != null && sel.isSlot && (sel.photo != null || sel.video))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                  _movingFrame == sel
+                      ? 'Moving the frame · double-tap when done'
+                      : sel.video
+                          ? 'Your video plays here · double-tap to move the frame'
+                          : 'Pinch and drag to crop · double-tap to move the frame',
+                  style: const TextStyle(color: PhlioColors.brandPeach, fontSize: 12.5, fontWeight: FontWeight.w600)),
             ),
           SizedBox(
             height: 76,
@@ -909,6 +1151,21 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
           ),
         ]),
       ),
+       // Applying straight from the gallery: cover the editor until it's done.
+       if (_autoApplying)
+         const Positioned.fill(
+           child: ColoredBox(
+             color: Colors.black,
+             child: Center(
+               child: Column(mainAxisSize: MainAxisSize.min, children: [
+                 CircularProgressIndicator(color: PhlioColors.brandPink),
+                 SizedBox(height: 14),
+                 Text('Applying template…', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+               ]),
+             ),
+           ),
+         ),
+      ]),
     );
   }
 }

@@ -1,4 +1,5 @@
 import io
+import json
 import pytest
 from PIL import Image
 
@@ -6,12 +7,16 @@ from PIL import Image
 async def test_memory_capture_archive_delete(client, auth_headers):
     image = io.BytesIO()
     Image.new('RGB', (20, 20), 'orange').save(image, format='JPEG')
+    decorations = [{'type': 'location', 'data': {'text': 'Hyderabad'}, 'x': .3, 'y': .8}]
     response = await client.post('/api/v1/social/memories', headers=auth_headers,
-        files={'file': ('snap.jpg', image.getvalue(), 'image/jpeg')}, data={'caption': 'My snap'})
+        files={'file': ('snap.jpg', image.getvalue(), 'image/jpeg')},
+        data={'caption': 'My snap', 'decorations': json.dumps(decorations)})
     assert response.status_code == 201, response.text
     memory = response.json()
     rows = (await client.get('/api/v1/social/memories', headers=auth_headers)).json()
     assert rows[0]['caption'] == 'My snap'
+    assert rows[0]['decorations'][0]['data']['text'] == 'Hyderabad'
+    assert rows[0]['decorations'][0]['x'] == .3
     assert rows[0]['image_url'].startswith('/social/memories/')
     assert (await client.get('/api/v1/social/memories')).status_code == 401
     assert (await client.delete('/api/v1/social/memories/' + memory['id'], headers=auth_headers)).status_code == 204

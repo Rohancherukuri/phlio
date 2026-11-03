@@ -1,8 +1,15 @@
+import 'snap_decorations.dart';
+import '../../../../shared/moments/stickers/sticker_model.dart';
 import 'dart:convert';
 import 'snap_audience.dart';
 import '../../../../shared/content/memory_photo.dart';
 import '../../../../shared/content/content_surface.dart';
 import 'snap_camera_screen.dart';
+import 'snap_archive.dart';
+import 'snap_send_view.dart';
+import 'package:video_player/video_player.dart';
+import '../../../../shared/media/phlio_look_data.dart';
+import '../../../../shared/media/phlio_look_view.dart';
 import 'dart:async';
 import '../../../rooms/data/datasources/messaging_api.dart';
 import 'dart:io';
@@ -35,6 +42,10 @@ class MemoriesScreen extends ConsumerStatefulWidget {
 class _MemoriesState extends ConsumerState<MemoriesScreen> {
   SnapAudience audience = const SnapAudience();
   XFile? snap;
+
+  /// The captured snap is a video (hold-to-record) and its filter.
+  bool snapVideo = false;
+  String snapFilter = 'normal';
   bool grid = false;
   int selected = 0;
   String? burst;
@@ -86,6 +97,17 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
   }
 
   final caption = TextEditingController();
+  final decorations = <MomentSticker>[];
+
+  Future<void> decorate() async {
+    if (decorations.length >= 20) { message("You can add up to 20 decorations."); return; }
+    final item = await pickSnapDecoration(context);
+    if (!mounted || item == null) return;
+    setState(() {
+      if (item.type == StickerType.music) decorations.removeWhere((s) => s.type == StickerType.music);
+      decorations.add(item);
+    });
+  }
   bool busy = false, picking = false;
   @override
   void initState() {
@@ -115,16 +137,18 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
           builder: (_) => SnapCameraScreen(audience: audience),),);
       if (!mounted) return;
       if (result == true) {
-        setState(() => grid = true);
+        // The camera's grid button: your saved snaps.
+        openArchive();
         return;
       }
-      final capture =
-          result is ({XFile photo, SnapAudience audience}) ? result : null;
-      final photo = capture?.photo;
+      final capture = result is SnapCapture ? result : null;
       if (capture != null) audience = capture.audience;
-      if (mounted && photo != null) {
+      if (mounted && capture != null) {
         setState(() {
-          snap = photo;
+          snap = capture.photo;
+          snapVideo = capture.video;
+          snapFilter = capture.filter;
+          decorations.clear();
           caption.clear();
         });
       }
@@ -139,6 +163,10 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
     }
   }
 
+  /// "Your snaps": every snap you've shared, by month, with reactions.
+  void openArchive() => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SnapArchiveScreen(onCamera: capture)));
+
   Future<void> publish() async {
     if (busy || snap == null) return;
     setState(() => busy = true);
@@ -147,19 +175,27 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
             '/social/memories',
             data: FormData.fromMap({
               'caption': caption.text.trim(),
+              'decorations': jsonEncode(decorations.map((s) => s.toJson()).toList()),
               'audience': audience.mode,
               'recipients': jsonEncode(audience.recipients),
               'kind': widget.kind,
+              // The filter travels as data and is drawn live everywhere.
+              'filter': snapFilter,
               'file': await MultipartFile.fromFile(
                 snap!.path,
                 filename: snap!.name,
-                contentType: DioMediaType('image', 'jpeg'),
+                contentType: snapVideo
+                    ? DioMediaType('video', 'mp4')
+                    : snap!.path.toLowerCase().endsWith('.png')
+                        ? DioMediaType('image', 'png')
+                        : DioMediaType('image', 'jpeg'),
               ),
             }),
           );
       if (!mounted) return;
       setState(() {
         snap = null;
+        decorations.clear();
         caption.clear();
       });
       ref.invalidate(memoriesProvider);
@@ -185,11 +221,6 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
           'This removes the snap from your Memories and friends\' view.',
         ),
         actions: [
-          IconButton(
-            tooltip: grid ? "Stack view" : "Grid view",
-            onPressed: () => setState(() => grid = !grid),
-            icon: Icon(grid ? Icons.layers_outlined : Icons.grid_view_rounded),
-          ),
           TextButton(
             onPressed: () => Navigator.pop(c, false),
             child: const Text('Cancel'),
@@ -217,86 +248,50 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
       canPop: !busy,
       child: Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(
+        appBar: snap != null ? null : AppBar(
           backgroundColor: Colors.black,
           title:
               Text(widget.kind == 'snap' ? 'Memories' : 'New ${widget.kind}'),
           centerTitle: true,
+          actions: [
+            if (snap == null) ...[
+              IconButton(
+                tooltip: 'Your snaps',
+                onPressed: openArchive,
+                icon: const Icon(Icons.grid_view_rounded),
+              ),
+              IconButton(
+                tooltip: 'Take a snap',
+                onPressed: capture,
+                icon: const Icon(Icons.photo_camera_outlined),
+              ),
+            ],
+          ],
         ),
         body: snap != null
-            ? SafeArea(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(28),
-                          child: Image.file(
-                            File(snap!.path),
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: TextField(
-                        controller: caption,
-                        enabled: !busy,
-                        maxLength: 500,
-                        decoration: const InputDecoration(
-                          hintText: 'Add a caption...',
-                        ),
-                      ),
-                    ),
-                    TextButton.icon(
-                        onPressed: busy
-                            ? null
-                            : () async {
-                                final value =
-                                    await pickSnapAudience(context, audience);
-                                if (mounted && value != null) {
-                                  setState(() => audience = value);
-                                }
-                              },
-                        icon: const Icon(Icons.people_outline),
-                        label: Text(audience.label),),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        alignment: WrapAlignment.center,
-                        children: [
-                          TextButton(
-                            onPressed:
-                                busy ? null : () => setState(() => snap = null),
-                            child: const Text('Discard'),
-                          ),
-                          TextButton.icon(
-                            onPressed: busy ? null : capture,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Retake'),
-                          ),
-                          FilledButton.icon(
-                            onPressed: busy ? null : publish,
-                            icon: busy
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.arrow_upward),
-                            label: Text(busy ? 'Sharing...' : 'Share ${widget.kind}'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+            // Locket-style "Send to…": preview, quick-add pill, send, people.
+            ? SnapSendView(
+                file: snap!,
+                video: snapVideo,
+                filter: snapFilter,
+                decorations: decorations,
+                caption: caption,
+                audience: audience,
+                busy: busy,
+                media: snapMediaPreview(
+                  path: snap!.path,
+                  video: snapVideo,
+                  filter: snapFilter,
+                  videoPlayer: SnapVideoPreview(key: ValueKey(snap!.path), path: snap!.path, filter: snapFilter),
                 ),
+                onChanged: () => setState(() {}),
+                onAudience: (value) => setState(() => audience = value),
+                onDiscard: () => setState(() {
+                  snap = null;
+                  decorations.clear();
+                  caption.clear();
+                }),
+                onSend: publish,
               )
             : RefreshIndicator(
                 onRefresh: () => ref.refresh(memoriesProvider.future),
@@ -318,13 +313,19 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
     );
   }
 
-  Widget photo(Map item) => ClipRRect(
+  Widget photo(Map item, {bool autoplay = false}) => ClipRRect(
       borderRadius: BorderRadius.circular(64),
-      child: MemoryPhoto(item['image_url'] as String, isVideo: item['media_kind']=='video'),);
+      child: MemoryPhoto(item['image_url'] as String,
+          decorations: (item['decorations'] as List?) ?? const [],
+          isVideo: item['media_kind'] == 'video',
+          filter: item['filter'] as String?,
+          autoplay: autoplay),);
 
   Widget memoryFeed(List<Map> items) {
     // Friends' active snaps lead the stack; the creator's archive follows.
     final me = ref.read(authControllerProvider).valueOrNull?.id;
+    // Experiences (weekly dumps) live in their own screen.
+    items = items.where((m) => (m['kind'] ?? 'snap') != 'experience').toList();
     items = [
       ...items.where((m) => m['author']['id'] != me),
       ...items.where((m) => m['author']['id'] == me),
@@ -442,7 +443,7 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                       Positioned.fill(
                         top: 14,
                         bottom: 0,
-                        child: photo(item),
+                        child: photo(item, autoplay: true),
                       ),
                       if (burst != null)
                         Center(
@@ -507,10 +508,22 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                 if ((item['reactions'] as List? ?? []).isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text(
-                      (item['reactions'] as List)
-                          .map((r) => r['emoji'])
-                          .join(' '),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      // Your own snap: see who reacted, and when.
+                      onTap: mine
+                          ? () => Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => SnapDetailScreen(item: item)))
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(
+                          (item['reactions'] as List)
+                                  .map((r) => r['emoji'])
+                                  .join(' ') +
+                              (mine ? '  ·  See reactions' : ''),
+                        ),
+                      ),
                     ),
                   ),
                 const SizedBox(height: 24),
@@ -570,6 +583,53 @@ class MemoryCameraButton extends ConsumerWidget {
         isLabelVisible: count > 0,
         label: Text(count > 99 ? '99+' : '$count'),
         child: const Icon(Icons.photo_camera_outlined),
+      ),
+    );
+  }
+}
+
+/// The recorded snap video, looping with its filter, before sharing.
+class SnapVideoPreview extends StatefulWidget {
+  const SnapVideoPreview({required this.path, required this.filter, super.key});
+  final String path;
+  final String filter;
+  @override
+  State<SnapVideoPreview> createState() => _SnapVideoPreviewState();
+}
+
+class _SnapVideoPreviewState extends State<SnapVideoPreview> {
+  late final VideoPlayerController player = VideoPlayerController.file(File(widget.path));
+
+  @override
+  void initState() {
+    super.initState();
+    player.initialize().then((_) async {
+      await player.setLooping(true);
+      await player.play();
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!player.value.isInitialized) return const Center(child: CircularProgressIndicator());
+    final (look, effect) = splitMomentFilter(widget.filter);
+    return PhlioLook(
+      look: look,
+      effect: effect,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+            width: player.value.size.width,
+            height: player.value.size.height,
+            child: VideoPlayer(player)),
       ),
     );
   }

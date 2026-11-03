@@ -1,3 +1,5 @@
+import '../../features/profile/presentation/widgets/snap_decorations.dart';
+import '../moments/stickers/sticker_model.dart';
 import 'dart:io';
 import 'package:video_player/video_player.dart';
 import '../../features/rooms/data/datasources/messaging_api.dart';
@@ -9,6 +11,8 @@ import '../../app/config/app_config.dart';
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
+import '../media/phlio_look_data.dart';
+import '../media/phlio_look_view.dart';
 
 final privatePhotoProvider =
     FutureProvider.autoDispose.family<Uint8List, String>((ref, path) async {
@@ -19,15 +23,42 @@ final privatePhotoProvider =
   return Uint8List.fromList(result.data!);
 });
 
+/// A snap / experience photo or video, with its decorations. [filter] is
+/// the snap's look and effect ("look" or "look+effect",
+/// shared/media/phlio_look_data.dart), drawn live on the GPU so animated
+/// effects (drift, glitch…) keep moving on photos and videos alike.
 class MemoryPhoto extends ConsumerWidget {
   const MemoryPhoto(this.url,
-      {super.key, this.fit = BoxFit.cover, this.isVideo = false});
+      {super.key,
+      this.fit = BoxFit.cover,
+      this.isVideo = false,
+      this.decorations = const [],
+      this.filter,
+      this.autoplay = false});
+  final List decorations;
   final bool isVideo;
   final String url;
   final BoxFit fit;
+  final String? filter;
+
+  /// Videos start playing (looping) instead of waiting for a tap.
+  final bool autoplay;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (isVideo) return _MemoryVideo(url);
+    final layers = decorations.whereType<Map>().map(MomentSticker.fromJson).whereType<MomentSticker>().toList();
+    return layers.isEmpty ? _filtered(context, ref) : SnapDecorationCanvas(layers: layers, child: _filtered(context, ref));
+  }
+
+  /// The filter applies to the photo / video, under the decorations.
+  Widget _filtered(BuildContext context, WidgetRef ref) {
+    final (look, effect) = splitMomentFilter(filter);
+    if (look == 'normal' && effect == 'none') return _photo(context, ref);
+    return PhlioLook(look: look, effect: effect, child: _photo(context, ref));
+  }
+
+  Widget _photo(BuildContext context, WidgetRef ref) {
+    if (isVideo) return _MemoryVideo(url, fit: fit, autoplay: autoplay);
     if (!url.startsWith('/social/memories/'))
       return Image.network(AppConfig.mediaUrl(url),
           fit: fit,
@@ -42,8 +73,10 @@ class MemoryPhoto extends ConsumerWidget {
 }
 
 class _MemoryVideo extends ConsumerStatefulWidget {
-  const _MemoryVideo(this.url);
+  const _MemoryVideo(this.url, {this.fit = BoxFit.cover, this.autoplay = false});
   final String url;
+  final BoxFit fit;
+  final bool autoplay;
   @override
   ConsumerState<_MemoryVideo> createState() => _MemoryVideoState();
 }
@@ -62,10 +95,12 @@ class _MemoryVideoState extends ConsumerState<_MemoryVideo> {
       final path = await ref.read(messagingApiProvider).localFile(widget.url);
       final next = VideoPlayerController.file(File(path));
       await next.initialize();
+      await next.setLooping(true);
       if (!mounted) {
         await next.dispose();
         return;
       }
+      if (widget.autoplay) await next.play();
       setState(() => player = next);
     } catch (_) {
       if (mounted) setState(() => failed = true);
@@ -83,8 +118,16 @@ class _MemoryVideoState extends ConsumerState<_MemoryVideo> {
     if (failed) return const Center(child: Text('Video unavailable'));
     if (player == null) return const Center(child: CircularProgressIndicator());
     return Stack(alignment: Alignment.center, children: [
-      AspectRatio(
-          aspectRatio: player!.value.aspectRatio, child: VideoPlayer(player!)),
+      SizedBox.expand(
+        child: FittedBox(
+          fit: widget.fit,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+              width: player!.value.size.width,
+              height: player!.value.size.height,
+              child: VideoPlayer(player!)),
+        ),
+      ),
       IconButton.filledTonal(
           onPressed: () {
             player!.value.isPlaying ? player!.pause() : player!.play();

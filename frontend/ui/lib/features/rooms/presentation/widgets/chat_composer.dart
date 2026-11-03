@@ -664,10 +664,12 @@ class _ChatComposerState extends State<ChatComposer> {
             padding:
                 widget.audience == ChatAudience.directMessage && !_isRecording
                     ? const EdgeInsets.fromLTRB(6, 6, 8, 6)
-                    : EdgeInsets.symmetric(
-                        horizontal: PhlioSpacing.md,
-                        vertical: widget.compact ? 4 : 6,
-                      ),
+                    : _isRecording
+                        ? EdgeInsets.symmetric(
+                            horizontal: PhlioSpacing.md,
+                            vertical: widget.compact ? 4 : 6,
+                          )
+                        : const EdgeInsets.symmetric(vertical: 4),
             decoration: widget.audience == ChatAudience.directMessage
                 ? BoxDecoration(
                     // Messages: borderless pill, like the reference.
@@ -677,15 +679,15 @@ class _ChatComposerState extends State<ChatComposer> {
                         ? Border.all(color: PhlioColors.danger)
                         : null,
                   )
-                : BoxDecoration(
-                    color: widget.surfaceColor,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: _isRecording
-                          ? PhlioColors.danger
-                          : PhlioColors.borderSubtle,
-                    ),
-                  ),
+                : _isRecording
+                    ? BoxDecoration(
+                        color: widget.surfaceColor,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: PhlioColors.danger),
+                      )
+                    // Rooms: no box around the composer (Discord-style);
+                    // the buttons and the input pill float on the chat.
+                    : null,
             child: _isRecording
                 ? _recordingRow()
                 : widget.audience == ChatAudience.directMessage
@@ -1115,94 +1117,167 @@ class _ChatComposerState extends State<ChatComposer> {
             ]),
           )));
 
+  /// Rooms composer, Discord-style:  (+)  ( Message #channel   ☺ )  (🎙/➤)
+  /// Round buttons on a shared 40 px grid; no border around the field.
   Widget _inputRow() {
-    return Row(
-      children: [
-        // Attachments follow the conversation policy.
-        GestureDetector(
-          onTap: _isSending ? null : _pickAttachments,
-          child: const Icon(
-            Icons.add_rounded,
-            size: 26,
-            color: PhlioColors.textSecondary,
-          ),
-        ),
-        Expanded(
-          child: TextField(
-            minLines: 1,
-            maxLines: 4,
-            maxLength: 4000,
-            textInputAction: TextInputAction.send,
-            controller: _textController,
-            focusNode: _focusNode,
-            style: PhlioTypography.body,
-            enabled: !_isSending,
-            onTap: () => setState(() => _showEmojiTray = false),
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              hintText: widget.hint,
-              counterText: '',
-              hintStyle:
-                  PhlioTypography.body.copyWith(color: PhlioColors.textMuted),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: PhlioSpacing.sm,
-                vertical: PhlioSpacing.sm,
+    const extent = 40.0;
+    Widget round({
+      required String tooltip,
+      required Widget child,
+      VoidCallback? onTap,
+      Gradient? gradient,
+      Color? color,
+    }) =>
+        Tooltip(
+          message: tooltip,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+                shape: BoxShape.circle, gradient: gradient, color: color),
+            child: Material(
+              type: MaterialType.transparency,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                child: SizedBox.square(
+                    dimension: extent, child: Center(child: child)),
               ),
             ),
-            onSubmitted: (_) => _send(),
           ),
+        );
+    Widget glyph(String name, {Color color = PhlioColors.textSecondary}) =>
+        SvgPicture.asset('assets/images/rooms_icons/$name.svg',
+            width: 22,
+            height: 22,
+            colorFilter: ColorFilter.mode(color, BlendMode.srcIn));
+
+    final showMic = widget.audience != ChatAudience.publicChat &&
+        !_canSend &&
+        !_isSending;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Attachments follow the conversation policy.
+        round(
+          tooltip: 'Attach',
+          color: PhlioColors.surfaceElevated,
+          onTap: _isSending ? null : _pickAttachments,
+          child: glyph('plus', color: PhlioColors.textPrimary),
         ),
-        // Emoji tray toggle.
-        GestureDetector(
-          onTap: () => setState(() => _showEmojiTray = !_showEmojiTray),
-          child: Icon(
-            Icons.emoji_emotions_outlined,
-            size: 22,
-            color: _showEmojiTray
-                ? PhlioColors.brandOrange
-                : PhlioColors.textSecondary,
-          ),
-        ),
-        const SizedBox(width: PhlioSpacing.sm),
-        // Mic — voice message recording.
-        if (widget.audience != ChatAudience.publicChat)
-          GestureDetector(
-            onLongPress: _startRecording,
-            onTap: _startRecording,
-            child: const Icon(
-              Icons.mic_none_rounded,
-              size: 22,
-              color: PhlioColors.textSecondary,
-            ),
-          ),
-        const SizedBox(width: PhlioSpacing.xs),
-        // Send — submits text, staged attachments or the recorded voice note.
-        GestureDetector(
-          onTap: _canSend ? _send : null,
+        const SizedBox(width: 8),
+        Expanded(
           child: Container(
-            width: 34,
-            height: 34,
+            constraints: const BoxConstraints(minHeight: extent),
             decoration: BoxDecoration(
-              gradient: _canSend ? PhlioColors.sunsetGradient : null,
-              color: _canSend ? null : PhlioColors.surfaceElevated,
-              shape: BoxShape.circle,
+              color: widget.surfaceColor,
+              borderRadius: BorderRadius.circular(22),
             ),
-            child: _isSending
-                ? const Padding(
-                    padding: EdgeInsets.all(9),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: PhlioColors.textOnBrand,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    minLines: 1,
+                    maxLines: 5,
+                    maxLength: 4000,
+                    textInputAction: TextInputAction.send,
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    style: PhlioTypography.body
+                        .copyWith(color: PhlioColors.textPrimary),
+                    cursorColor: PhlioColors.brandViolet,
+                    enabled: !_isSending,
+                    onTap: () => setState(() => _showEmojiTray = false),
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: widget.hint,
+                      counterText: '',
+                      isDense: true,
+                      filled: false,
+                      hintMaxLines: 1,
+                      hintStyle: PhlioTypography.body
+                          .copyWith(color: PhlioColors.textMuted),
+                      // Override the app theme's outlined fields: no box.
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
+                      contentPadding:
+                          const EdgeInsets.fromLTRB(16, 10, 4, 10),
                     ),
-                  )
-                : PhlioSendIcon(
-                    size: 17,
-                    color: _canSend
-                        ? PhlioColors.textOnBrand
-                        : PhlioColors.textMuted,
+                    onSubmitted: (_) => _send(),
                   ),
+                ),
+                // Emoji / Foxy tray toggle, inside the pill.
+                SizedBox.square(
+                  dimension: extent,
+                  child: InkResponse(
+                    radius: 20,
+                    onTap: () =>
+                        setState(() => _showEmojiTray = !_showEmojiTray),
+                    child: Center(
+                      child: glyph('smile',
+                          color: _showEmojiTray
+                              ? PhlioColors.brandOrange
+                              : PhlioColors.textSecondary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
+        const SizedBox(width: 8),
+        // Mic when idle; the send button once there is something to send.
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 160),
+          transitionBuilder: (child, animation) =>
+              ScaleTransition(scale: animation, child: child),
+          child: showMic
+              ? KeyedSubtree(
+                  key: const ValueKey('mic'),
+                  child: round(
+                    tooltip: 'Voice message',
+                    color: PhlioColors.surfaceElevated,
+                    onTap: _startRecording,
+                    child: glyph('mic', color: PhlioColors.textPrimary),
+                  ),
+                )
+              : KeyedSubtree(
+                  key: const ValueKey('send'),
+                  child: round(
+                    tooltip: 'Send',
+                    gradient: _canSend || _isSending
+                        ? PhlioColors.sunsetGradient
+                        : null,
+                    color: _canSend || _isSending
+                        ? null
+                        : PhlioColors.surfaceElevated,
+                    onTap: _canSend ? _send : null,
+                    child: _isSending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: PhlioColors.textOnBrand,
+                            ),
+                          )
+                        // The plane points up-right, so nudge it down-left
+                        // a hair to sit optically centred in the circle.
+                        : Transform.translate(
+                            offset: const Offset(-1, 1),
+                            child: PhlioSendIcon(
+                              size: 19,
+                              color: _canSend
+                                  ? PhlioColors.textOnBrand
+                                  : PhlioColors.textMuted,
+                            ),
+                          ),
+                  ),
+                ),
         ),
       ],
     );

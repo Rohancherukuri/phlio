@@ -97,6 +97,51 @@ BANKS = {
         stickers=["surprised", "excited", "happy", "thinking"],
         media="film",
     ),
+    "openmovie": dict(
+        size=(4, 9),
+        comments=[
+            "the animation in this is so smooth 😮‍💨",
+            "can't believe this was made with free software",
+            "Blender Foundation really built different",
+            "this soundtrack though 🎻",
+            "watched the whole film after seeing this clip",
+            "every frame is a wallpaper fr",
+            "the lighting here is unreal",
+            "my childhood unlocked",
+            "the character animation is so expressive",
+            "need this in 4K immediately",
+            "showing this to my animation class tomorrow",
+            "how did they render this in that year??",
+            "ok I'm emotional now 🥲",
+            "the vertical crop works surprisingly well",
+            "this deserves way more views",
+            "rewatched like 5 times",
+            "the texture work on this 🔥",
+            "open movies >>> half of what's in cinemas",
+            "the timing on this is perfect 😂",
+            "saving this as animation reference 🔖",
+        ],
+        questions=[
+            ("What film is this from?", ["It's from a Blender Foundation open movie, the whole film is free online 🎬",
+                                          "One of the Blender open movies! Free to watch, CC licensed"],
+             ["it's a Blender open movie, all free on their site", "Blender Foundation film, totally free to watch"]),
+            ("Is this made in Blender?", ["Yep, the whole thing, start to finish 🙌", "100%, open-source all the way"],
+             ["yes! that's why they made it, to push Blender", "yep, all Blender"]),
+            ("Can I use this clip for my edit?", ["It's CC BY, so yes as long as you credit the Blender Foundation 👍",
+                                                  "Go for it, just credit the Blender Foundation"],
+             ["it's Creative Commons, just credit them", "yes, CC BY, credit the Blender Foundation"]),
+            ("Which one should I watch first?", ["Big Buck Bunny if you want fun, Sintel if you want to cry 😭",
+                                                 "Start with Sintel, trust me"],
+             ["Sintel. no question", "Big Buck Bunny for the vibes"]),
+        ],
+        replies=["Facts", "this!!", "same 😭", "hard agree", "true lol", "right?? 🔥", "fr fr",
+                 "you have to watch Sintel next", "came here to say this"],
+        owner=["Thank you!! 🙏", "more clips coming this week", "haha right?? 😂", "Glad you liked it ❤️",
+               "that's my favourite part too", "appreciate you watching!"],
+        gifs=["mindblown", "wow", "clap", "laugh"],
+        stickers=["surprised", "excited", "happy", "thinking"],
+        media="openmovie",
+    ),
     "social": dict(
         size=(2, 6),
         comments=["This is so good 🔥", "Love this!", "Need more of this content", "The quality on this 😍",
@@ -206,6 +251,8 @@ def category(obj):
     platform, _, sub = obj["object_type"].partition(".")
     if platform == "social":
         title = (obj.get("title") or "").lower()
+        if obj.get("domain_ref", "").startswith("open_clip_"):
+            return "openmovie"
         return "film" if "tears of steel" in title or "film study" in title else "social"
     if platform == "book":
         return "book_food" if sub == "restaurant" else "book"
@@ -287,6 +334,8 @@ async def main(do_reset=False):
         creators = [uid for uid in member_ids if int(uid[-3:]) < 20]
         scene_gifs = make_scene_gifs(media_root_path(c.settings))
         stills = [f"/media/licensed_social/tears-clip-{i:02}.jpg" for i in range(20)]
+        open_dir = media_root_path(c.settings) / "open_movies"
+        open_stills = sorted("/media/open_movies/" + p.name for p in open_dir.glob("*-cover.jpg")) if open_dir.exists() else []
 
         objects = [o for o in await c.graph.store.rows("phlio_object")
                    if o.get("platform") in PLATFORMS and o.get("audience") == "public"
@@ -396,6 +445,10 @@ async def main(do_reset=False):
                             image = rng.choice(stills)
                             text = rng.choice(["this frame though 👇", "screenshotted this one, look at the light",
                                                "my favourite still from the film"])
+                    elif media == "openmovie" and open_stills:
+                        image = rng.choice(open_stills)
+                        text = rng.choice(["this frame though 👇", "paused right here, look at this",
+                                           "my favourite still from this film"])
                     elif picture:
                         image = picture
                         text = rng.choice(bank.get("photo_lines") or ["📸"])

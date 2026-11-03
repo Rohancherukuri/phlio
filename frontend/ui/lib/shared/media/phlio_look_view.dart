@@ -70,7 +70,7 @@ class _PhlioLookState extends State<PhlioLook> with TickerProviderStateMixin {
   Ticker? _ticker;
   double _time = 0;
 
-  static const _animated = {2, 4, 5, 7, 8, 9, 1};
+  static const _animated = {2, 4, 5, 7, 8, 9, 1, 14};
 
   @override
   void initState() {

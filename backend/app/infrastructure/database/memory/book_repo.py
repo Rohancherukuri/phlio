@@ -43,6 +43,9 @@ class InMemoryBookRepository:
         return self._listings.get(listing_id)
 
     async def create_booking(self, booking: Booking) -> Booking:
+        if not booking.id:
+            import uuid
+            booking.id = "bkg_" + uuid.uuid4().hex
         async with self._lock:
             self._bookings[booking.id] = booking
             self._bookings_by_user.setdefault(booking.user_id, []).insert(0, booking)
@@ -54,11 +57,12 @@ class InMemoryBookRepository:
         return _paginate(self._bookings_by_user.get(user_id, []), cursor=cursor, limit=limit)
 
     async def listing_has_booking_on(
-        self, *, listing_id: str, user_id: str, date: dt.date
+        self, *, listing_id: str, user_id: str, date: dt.date, time: dt.time | None = None
     ) -> bool:
         return any(
             b.listing_id == listing_id
             and b.date == date
+            and (time is None or b.time == time)
             and b.status.value == "confirmed"
             for b in self._bookings_by_user.get(user_id, [])
         )

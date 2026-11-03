@@ -69,9 +69,24 @@ async def lifespan(app: FastAPI):
     state_sync = asyncio.create_task(media_sync.run(settings, settings.state_sync_interval))
     from app.domains.graph.news import run as refresh_news
     news_worker = asyncio.create_task(refresh_news(container)) if settings.news_ingestion_enabled else None
+    # Development: make sure Phlio Book has its catalogue (sample services +
+    # OpenStreetMap places + openly licensed photos) without a manual seed.
+    book_seed = None
+    if settings.database_backend != "memory" and not settings.is_production:
+        async def seed_book():
+            try:
+                from scripts.import_book_services import ensure_catalog
+                await ensure_catalog(container)
+            except Exception:
+                logger.exception("Phlio Book catalogue seed failed (run scripts.import_book_services).")
+        book_seed = asyncio.create_task(seed_book())
     try:
         yield
     finally:
+        if book_seed and not book_seed.done():
+            book_seed.cancel()
+            with suppress(asyncio.CancelledError):
+                await book_seed
         if news_worker:
             news_worker.cancel()
             with suppress(asyncio.CancelledError):

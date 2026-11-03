@@ -38,6 +38,8 @@ TABLES = {
     "moment_mute",
     "moment_response",
     "live_location",
+    "snap_list",
+    "room_profile",
     "platform_content",
     "graph_group",
     "graph_group_message",

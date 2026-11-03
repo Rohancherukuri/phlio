@@ -14,6 +14,7 @@ abstract interface class BookRepository {
     required DateTime date,
     DateTime? time,
     int participants,
+    Map<String, String> details,
   });
 
   Future<Result<PaginatedResponse<BookingEntity>>> myBookings({String? cursor});
