@@ -26,7 +26,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
-        android:label="phlio"
+        android:label="Phlio"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true"
@@ -36,6 +36,20 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}"/>
         
+        <!-- Sign in with Apple (web flow): the backend's /auth/oauth/apple/callback
+             redirects back into the app here. -->
+        <activity
+            android:name="com.aboutyou.dart_packages.sign_in_with_apple.SignInWithAppleCallback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="signinwithapple"/>
+                <data android:path="callback"/>
+            </intent-filter>
+        </activity>
+
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
             android:screenOrientation="portrait"

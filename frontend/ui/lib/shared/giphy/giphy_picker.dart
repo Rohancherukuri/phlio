@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
+import '../../design_system/widgets/foxy_stickers.dart';
 
 const giphyApiKey = String.fromEnvironment('GIPHY_API_KEY');
 Future<String> resolveGiphyKey() async {
@@ -21,7 +22,15 @@ final _giphy = Dio(BaseOptions(
 class GiphyItem {
   const GiphyItem(this.id, this.kind, this.title, this.url);
   final String id, kind, title, url;
-  String get reference => 'giphy:$kind:$id';
+
+  /// An animated Foxy sticker from the picker's Foxy tab (id is the
+  /// `foxy2:<act>` sticker id; it renders locally, no GIPHY call).
+  bool get isFoxy => kind == 'foxy';
+  String get reference => isFoxy ? id : 'giphy:$kind:$id';
+  static List<GiphyItem> get foxyPack => [
+        for (final s in FoxyPuppetStickers.catalog)
+          GiphyItem(FoxyPuppetStickers.idOf(s.act), 'foxy', s.label, ''),
+      ];
   factory GiphyItem.from(Map m, String kind) => GiphyItem(
       m['id'] as String,
       kind,
@@ -79,6 +88,15 @@ class _PickerState extends State<GiphyPicker> {
         offset = 0;
       }
     });
+    if (mode == 'Foxy') {
+      // The Foxy pack ships with the app: no key or network needed.
+      setState(() {
+        items = GiphyItem.foxyPack;
+        more = false;
+        loading = false;
+      });
+      return;
+    }
     try {
       final apiKey = await resolveGiphyKey();
       if (!mounted || ticket != generation) return;
@@ -131,6 +149,15 @@ class _PickerState extends State<GiphyPicker> {
 
   Future<void> select(GiphyItem item) async {
     if (saving) return;
+    if (item.isFoxy) {
+      rememberSticker(item.id);
+      if (widget.onSelected != null) {
+        widget.onSelected!(item);
+      } else {
+        Navigator.pop(context, item);
+      }
+      return;
+    }
     setState(() => saving = true);
     try {
       await getIt<ApiClient>().dio.post('/messaging/giphy/recents',
@@ -184,6 +211,7 @@ class _PickerState extends State<GiphyPicker> {
                     padding: const EdgeInsets.all(12),
                     child: Row(children: [
                       for (final category in <(String, IconData)>[
+                        ('Foxy', Icons.pets_rounded),
                         ('Recents', Icons.history),
                         ('Trending', Icons.trending_up),
                         ('Happy', Icons.sentiment_satisfied_alt),
@@ -205,7 +233,14 @@ class _PickerState extends State<GiphyPicker> {
                             child: IconButton(
                                 tooltip: category.$1,
                                 isSelected: mode == category.$1,
-                                icon: Icon(category.$2, size: 22),
+                                icon: category.$1 == 'Foxy'
+                                    ? Image.asset(
+                                        'assets/images/foxy/foxy_face.png',
+                                        width: 24,
+                                        height: 24,
+                                        errorBuilder: (_, __, ___) =>
+                                            Icon(category.$2, size: 22))
+                                    : Icon(category.$2, size: 22),
                                 onPressed: () {
                                   debounce?.cancel();
                                   setState(() {
@@ -230,12 +265,20 @@ class _PickerState extends State<GiphyPicker> {
                             itemCount: items.length,
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: kind == 'gif' ? 2 : 3,
+                                    crossAxisCount:
+                                        kind == 'gif' && mode != 'Foxy' ? 2 : 3,
                                     crossAxisSpacing: 8,
                                     mainAxisSpacing: 8),
                             itemBuilder: (_, i) => InkWell(
                                 onTap: saving ? null : () => select(items[i]),
-                                child: ClipRRect(
+                                child: items[i].isFoxy
+                                    ? LayoutBuilder(
+                                        builder: (context, box) => Center(
+                                            child: FoxyStickerView(
+                                                id: items[i].id,
+                                                size: box.biggest.shortestSide -
+                                                    8)))
+                                    : ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
                                     child: Image.network(items[i].url,
                                         fit: kind == 'gif'
@@ -298,6 +341,7 @@ class _ReferenceState extends State<GiphyReferenceView> {
   }
 
   Future<String> resolve() async {
+    if (!widget.reference.startsWith('giphy:')) return '';
     final apiKey = await resolveGiphyKey();
     if (apiKey.isEmpty) throw StateError('Not configured');
     final id = widget.reference.split(':').last;
@@ -308,7 +352,15 @@ class _ReferenceState extends State<GiphyReferenceView> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<String>(
+  Widget build(BuildContext context) => !widget.reference.startsWith('giphy:')
+      ? LayoutBuilder(
+          builder: (context, box) => Center(
+              child: FoxyStickerView(
+                  id: widget.reference,
+                  size: box.biggest.isFinite
+                      ? box.biggest.shortestSide
+                      : 96)))
+      : FutureBuilder<String>(
       future: url,
       builder: (_, state) => state.hasError
           ? const Center(child: Text('GIPHY unavailable'))

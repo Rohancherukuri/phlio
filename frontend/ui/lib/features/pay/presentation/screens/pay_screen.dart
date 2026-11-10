@@ -1,4 +1,5 @@
 import 'pay_gateway_screen.dart';
+import 'transaction_history_screen.dart';
 import 'package:phlio/shared/widgets/notifications_button.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Phlio Pay — the Pay platform's home, formatted after the reference
@@ -191,7 +192,16 @@ class PayScreen extends ConsumerWidget {
               const SizedBox(height: PhlioSpacing.xl),
 
               // -- Recent activity ------------------------------------------------
-              _SectionHeader(title: 'Recent activity'),
+              Row(
+                children: [
+                  Expanded(child: _SectionHeader(title: 'Recent activity')),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const TransactionHistoryScreen())),
+                    child: const Text('See all'),
+                  ),
+                ],
+              ),
               const SizedBox(height: PhlioSpacing.md),
               transactionsAsync.when(
                 loading: () => const Center(

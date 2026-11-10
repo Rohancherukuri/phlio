@@ -1,18 +1,20 @@
 """
 Core engine client.
 
-Talks to the compiled `phlio-core` Rust binary (see
-`phlio_core/cli/src/main.rs`) as a local subprocess, one JSON request per
-call. This is where the backend reaches for anything that belongs in the
-security-critical Rust layer per architecture doc section 39: request
-signing, secure ID generation, and rule-based risk scoring.
+Routes the backend's security-critical primitives (secure IDs, HMAC
+signing/verification, rule-based risk scoring — architecture doc section 39)
+to Rust, through the fastest path available:
 
-If the binary cannot be found or fails to start (e.g. a contributor hasn't
-run `cargo build --release` yet), every method transparently falls back to
-a pure-Python equivalent so the rest of the backend keeps working during
-local development. Production deployments should always ship the compiled
-binary — the fallback exists for developer convenience, not as a supported
-alternative implementation, and logs a warning whenever it is used.
+1. **In-process** — ``phlio_native`` (PyO3 build of ``phlio_core``, see
+   ``native.py``). A direct function call: no process, no JSON, no event-loop
+   hop. This is what production images use.
+2. **Subprocess** — the ``phlio-core`` CLI, one JSON request per call. Kept
+   for hosts where the extension can't be loaded; ~1.5 ms per call.
+3. **Pure Python** — mirrors of the same algorithms, so local development
+   works without any Rust build. Logged once at startup.
+
+All three produce identical results (the Python mirrors are kept in lockstep
+with the Rust crates; see ``tests/test_core_engine.py``).
 """
 
 from __future__ import annotations
@@ -27,8 +29,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.config import Settings
+from app.infrastructure.core_engine.native import native
 
 logger = logging.getLogger("phlio.core_engine")
+
+#: Upper bound for one CLI call; a wedged binary must never hang a request.
+_SUBPROCESS_TIMEOUT_S = 5.0
 
 
 class CoreEngineError(RuntimeError):
@@ -36,18 +42,26 @@ class CoreEngineError(RuntimeError):
 
 
 class CoreEngineClient:
-    """Async client for the phlio_core CLI, with a pure-Python fallback."""
+    """Async facade over the Rust core engine with CLI and Python fallbacks."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._binary_path = self._resolve_binary_path(settings.core_engine_binary_path)
-        if self._binary_path is None:
+        self._native = native
+        self._binary_path = None if native else self._resolve_binary_path(settings.core_engine_binary_path)
+        if native is None and self._binary_path is None:
             logger.warning(
-                "phlio_core binary not found at %s — falling back to pure-Python "
-                "implementations. Run `cargo build --release` in phlio_core/ for "
-                "production-equivalent behaviour.",
+                "phlio_core not available (no phlio_native module, no binary at %s) — "
+                "using pure-Python implementations. Build it with `maturin develop "
+                "--release -m phlio_core/crates/native/Cargo.toml` for production behaviour.",
                 settings.core_engine_binary_path,
             )
+
+    @property
+    def engine(self) -> str:
+        """Which implementation serves calls: ``native``, ``subprocess`` or ``python``."""
+        if self._native is not None:
+            return "native"
+        return "subprocess" if self._binary_path is not None else "python"
 
     @staticmethod
     def _resolve_binary_path(configured_path: str) -> Path | None:
@@ -67,7 +81,12 @@ class CoreEngineClient:
             stderr=asyncio.subprocess.PIPE,
         )
         stdin_bytes = json.dumps(stdin_payload).encode("utf-8") if stdin_payload is not None else None
-        stdout, stderr = await proc.communicate(stdin_bytes)
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(stdin_bytes), _SUBPROCESS_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise CoreEngineError("core engine timed out") from None
 
         if proc.returncode != 0:
             raise CoreEngineError(stderr.decode("utf-8", errors="replace").strip())
@@ -80,6 +99,8 @@ class CoreEngineClient:
     # -- Public API -----------------------------------------------------
 
     async def generate_id(self, prefix: str) -> str:
+        if self._native is not None:
+            return self._native.generate_id(prefix)
         try:
             data = await self._run("generate-id", "--prefix", prefix)
             return data["id"]
@@ -87,6 +108,8 @@ class CoreEngineClient:
             return f"{prefix}_{secrets.token_hex(16)}"
 
     async def sign(self, secret: str, payload: str) -> str:
+        if self._native is not None:
+            return self._native.sign(secret, payload)
         try:
             data = await self._run("sign", stdin_payload={"secret": secret, "payload": payload})
             return data["signature"]
@@ -94,6 +117,8 @@ class CoreEngineClient:
             return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
     async def verify(self, secret: str, payload: str, signature: str) -> bool:
+        if self._native is not None:
+            return self._native.verify(secret, payload, signature)
         try:
             data = await self._run(
                 "verify",
@@ -108,11 +133,17 @@ class CoreEngineClient:
         """Scores a risk event. See `phlio_core/crates/risk_features` for the
         canonical rule definitions — this method's fallback intentionally
         mirrors those rules so behaviour stays identical either way."""
-        try:
-            result = await self._run("score-risk", stdin_payload=event)
-        except CoreEngineError:
-            result = _fallback_score_risk(event)
-
+        result: dict[str, Any] | None = None
+        if self._native is not None:
+            try:
+                result = self._native.score_risk(event)
+            except ValueError as exc:
+                logger.warning("core_engine.native_score_rejected %s", exc)
+        if result is None:
+            try:
+                result = await self._run("score-risk", stdin_payload=event)
+            except CoreEngineError:
+                result = _fallback_score_risk(event)
         if result.get("decision") != "Allow":
             logger.warning(
                 "core_engine.risk_flagged decision=%s score=%s reasons=%s",

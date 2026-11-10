@@ -38,6 +38,7 @@ import '../../features/authentication/presentation/controllers/auth_controller.d
 import '../../features/authentication/presentation/screens/login_screen.dart';
 import '../../features/authentication/presentation/screens/signup_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
+import '../../features/onboarding/presentation/tutorial_screen.dart';
 import '../../features/pay/presentation/screens/qr_scanner_screen.dart';
 import '../../features/rooms/presentation/screens/dm_screen.dart';
 import '../../features/rooms/presentation/screens/call_screen.dart';
@@ -129,6 +130,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/chats',
           pageBuilder: (context, state) =>
               _fadeThroughPage(const ChatsInboxScreen())),
+      // The first-run tour (also replayable from Settings).
+      GoRoute(
+          path: '/tour',
+          pageBuilder: (context, state) =>
+              _fadeThroughPage(const TutorialScreen())),
       GoRoute(
           path: '/settings',
           pageBuilder: (context, state) =>

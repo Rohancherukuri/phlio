@@ -472,6 +472,60 @@ async def share(
     return dict(destination=body.destination, target=target, shared=True)
 
 
+@router.post("/profiles/{username}/share", status_code=201)
+async def share_profile(
+    username: str, body: ShareIn, user=Depends(get_current_user), c=Depends(get_container)
+):
+    """Shares a profile card (``phlio://profile/<username>``) to a DM, a group,
+    a new group or a room, with an optional message after it."""
+    person = await c.graph.user(username)
+    if await c.graph.blocked(user.id, person.id):
+        raise HTTPException(404, "Profile unavailable.")
+    await c.cache.rate_limit(user.id, "share", 30)
+    text = f"Shared a profile: @{person.username}\nphlio://profile/{quote(person.username, safe='')}"
+    note = body.message.strip() if body.message and body.message.strip() else None
+    if body.destination == "dm":
+        peer = await c.graph.user(body.target or "")
+        if await c.graph.blocked(user.id, peer.id) or await c.graph.blocked(peer.id, person.id):
+            raise HTTPException(403, "Recipient unavailable.")
+        c.messaging_service.send(user.id, peer.id, text, [])
+        if note:
+            c.messaging_service.send(user.id, peer.id, note, [])
+        target = peer.username
+    elif body.destination == "room":
+        target = body.target or ""
+        if not await c.rooms_repository.is_member(target, user.id):
+            raise HTTPException(403, "Join this room first.")
+        await c.rooms_service.send_message(room_id=target, author_id=user.id, text=text)
+        if note:
+            await c.rooms_service.send_message(room_id=target, author_id=user.id, text=note)
+    else:
+        if body.destination == "new_group":
+            members = {user.id}
+            for member in body.members:
+                members.add((await c.graph.user(member)).id)
+            if len(members) < 3:
+                raise HTTPException(422, "Choose at least two other people.")
+            for a in members:
+                for b in members:
+                    if a != b and await c.graph.blocked(a, b):
+                        raise HTTPException(403, "These members cannot share a group.")
+            group = dict(name=body.name.strip() or "Shared plans", owner=user.id,
+                         members=sorted(members), created_at=now())
+            target = "graph_group:" + uuid.uuid4().hex
+            await c.graph.store.put(target, group)
+        else:
+            target = body.target or ""
+            group = await group_for(c, user.id, target)
+            for member in group["members"]:
+                if await c.graph.blocked(user.id, member):
+                    raise HTTPException(403, "Group sharing unavailable.")
+        for line in [text] + ([note] if note else []):
+            await c.graph.store.put("graph_group_message:" + uuid.uuid4().hex,
+                                    dict(group_id=target, author=user.id, text=line, created_at=now()))
+    return dict(destination=body.destination, target=target, shared=True)
+
+
 async def record_share(c, user_id, object_id):
     await c.graph.store.put("share_event:" + uuid.uuid4().hex,
                             dict(object_id=object_id, user_id=user_id, created_at=now()))

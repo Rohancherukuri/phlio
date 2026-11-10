@@ -50,7 +50,7 @@ extension on UploadMode {
   /// Backend `kind` for uploads.
   String get kind => this == UploadMode.short ? 'clip' : 'video';
 
-  (int, int) get limits => this == UploadMode.short ? (15, 120) : (60, 300);
+  (int, int) get limits => this == UploadMode.short ? (15, 120) : (60, 420);
 }
 
 String _clock(Duration d) {

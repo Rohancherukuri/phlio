@@ -31,6 +31,7 @@ import '../../features/rooms/presentation/widgets/create_room_sheet.dart';
 import '../../features/social/presentation/widgets/social_feed_view.dart'
     show showPostComposer;
 import '../platform/phlio_platform.dart';
+import '../../features/phlio_agent/presentation/widgets/agent_quick_actions.dart';
 import 'platform_home_screen.dart' show switchPlatform;
 import 'platform_tray_sheet.dart';
 import '../../features/social/presentation/controllers/video_playback_controller.dart';
@@ -81,7 +82,9 @@ class AppShell extends ConsumerWidget {
                   ? 'Scan and pay'
                   : onPlaylist
                       ? 'Create playlist'
-                      : 'Create',
+                      : platform == PhlioPlatform.agent
+                          ? 'Foxy actions'
+                          : 'Create',
           createCount: onShop
               ? (ref.watch(cartProvider).valueOrNull?['count'] as int? ?? 0)
               : 0,
@@ -93,6 +96,9 @@ class AppShell extends ConsumerWidget {
                   ? () => context.push('/qr-scanner')
                   : platform == PhlioPlatform.rooms
                       ? () => showCreateRoomSheet(context)
+                      // Agent: the Foxy wheel — Lens, Voice, Photos, New chat.
+                      : platform == PhlioPlatform.agent
+                          ? () => showAgentWheel(context)
                       : onPlaylist
                           ? () => showPlaylists(
                               context,
@@ -114,61 +120,22 @@ class AppShell extends ConsumerWidget {
           trayColor: ref.watch(_trayPlatformSelectedProvider)
               ? platform.color
               : PhlioColors.textMuted,
+          trayOpen: ref.watch(platformTrayOpenProvider),
           onTrayTap: () => _showPlatformTray(context, ref),
         ),
       ),
     );
   }
 
-  Future<void> _showPlatformTray(BuildContext context, WidgetRef ref) async {
-    final reduced = MediaQuery.disableAnimationsOf(context);
-    final selected = await showGeneralDialog<PhlioPlatform>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Close platform tray',
-      barrierColor: Colors.black38,
-      transitionDuration:
-          reduced ? Duration.zero : const Duration(milliseconds: 280),
-      pageBuilder: (popupContext, animation, secondaryAnimation) => SafeArea(
-        child: Align(
-          alignment: Alignment.bottomRight,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 72),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Material(
-                color: PhlioColors.surface,
-                elevation: 12,
-                borderRadius: BorderRadius.circular(24),
-                clipBehavior: Clip.antiAlias,
-                child: SingleChildScrollView(
-                  child: PlatformTraySheet(
-                    onSelected: (platform) =>
-                        Navigator.of(popupContext).pop(platform),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final motion = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic);
-        return FadeTransition(
-            opacity: motion,
-            child: ScaleTransition(
-                alignment: Alignment.bottomRight,
-                scale: Tween<double>(begin: .65, end: 1).animate(motion),
-                child: child));
-      },
-    );
-    if (selected == null || !context.mounted) return;
-    ref.read(_trayPlatformSelectedProvider.notifier).state = true;
-    ref.read(currentPlatformProvider.notifier).state = selected;
-    context.go('/home');
+  Future<void> _showPlatformTray(BuildContext context, WidgetRef ref) {
+    // The animated tray (platform_tray_sheet.dart): the card grows out of the
+    // nav, and on a pick the new platform's home fades in while the card
+    // sinks back into the tray button.
+    return showPlatformSwitcher(context, onSelected: (selected) {
+      ref.read(_trayPlatformSelectedProvider.notifier).state = true;
+      ref.read(currentPlatformProvider.notifier).state = selected;
+      context.go('/home');
+    });
   }
 
   void _showCreateSheet(BuildContext context, WidgetRef ref) {
@@ -257,7 +224,7 @@ class AppShell extends ConsumerWidget {
             icon: Icons.videocam_rounded,
             color: PhlioColors.domainStream,
             title: 'New video',
-            subtitle: '1–5 minutes',
+            subtitle: '1–7 minutes',
             onTap: () {
               Navigator.of(context).pop();
               showVideoPublisher(context, kind: 'video');

@@ -30,6 +30,10 @@ services:
         value: "*"
       - key: REDIS_ENABLED
         value: "false"
+      # Ping itself every 10 min so the free instance doesn't sleep (cold
+      # starts take 30-60 s). Uses ~744 of the 750 free hours a month.
+      - key: KEEP_AWAKE
+        value: "true"
       # -- Database (Surreal Cloud) --
       - key: DATABASE_BACKEND
         value: surreal
@@ -57,7 +61,15 @@ services:
         sync: false
       - key: OBJECT_STORE_SECRET_KEY
         sync: false
+      # Second R2 bucket with public access OFF: DMs, payments, snap photos.
+      - key: OBJECT_STORE_STATE_BUCKET
+        sync: false
       - key: MEDIA_PUBLIC_URL
         sync: false # https://pub-<id>.r2.dev
       - key: ANTHROPIC_API_KEY
         sync: false
+      # -- Sign in with Google / Apple (comma-separated client ids) --
+      - key: GOOGLE_CLIENT_IDS
+        sync: false # Google web client id (+ iOS client id)
+      - key: APPLE_CLIENT_IDS
+        sync: false # iOS bundle id, Apple Services ID

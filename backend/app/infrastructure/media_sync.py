@@ -4,7 +4,9 @@ Render's free web services lose their disk on every restart, sleep and
 deploy. With ``OBJECT_STORE_*`` configured, this module makes the bucket the
 durable copy of everything Phlio keeps on disk outside SurrealDB:
 
-* **State** (``_state/`` in the bucket): the SQLite databases (DM messages,
+* **State** (``_state/`` in the *state* bucket, ``OBJECT_STORE_STATE_BUCKET``,
+  which must be private; falls back to the media bucket for older setups):
+  the SQLite databases (DM messages,
   social videos, music links, payments), DM attachments and snap photos
   (``media_private_memories``, never public). Restored on boot
   before the container opens them, then backed up every ``interval`` seconds
@@ -22,7 +24,9 @@ import asyncio
 import logging
 import sqlite3
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
 
@@ -40,6 +44,30 @@ def store_from_settings(settings: Settings) -> ObjectStore | None:
             and settings.object_store_access_key and settings.object_store_secret_key):
         return None
     return ObjectStore(settings.object_store_endpoint, settings.object_store_bucket,
+                       settings.object_store_access_key, settings.object_store_secret_key,
+                       settings.object_store_region)
+
+
+_warned_shared_state = False
+
+
+def state_store_from_settings(settings: Settings) -> ObjectStore | None:
+    """The bucket that holds private state: OBJECT_STORE_STATE_BUCKET when set.
+
+    Falls back to the media bucket (how older deployments were set up) and
+    warns once, because when that bucket is public its ``_state/`` objects
+    (DMs, payments, private snaps) can be downloaded by anyone.
+    """
+    global _warned_shared_state
+    store = store_from_settings(settings)
+    if store is None or not settings.object_store_state_bucket:
+        if store is not None and settings.media_public_url and not _warned_shared_state:
+            _warned_shared_state = True
+            log.warning("State is stored in the PUBLIC media bucket. Set OBJECT_STORE_STATE_BUCKET to a "
+                        "private bucket and run `publish_local_data --only move-state`.")
+        return store
+    store.close()
+    return ObjectStore(settings.object_store_endpoint, settings.object_store_state_bucket,
                        settings.object_store_access_key, settings.object_store_secret_key,
                        settings.object_store_region)
 
@@ -78,29 +106,58 @@ def state_folders(settings: Settings) -> list[tuple[Path, str]]:
             (private_memories_root(settings), STATE_PREFIX + "private_memories/")]
 
 
-def restore_state(settings: Settings) -> None:
+def restore_state(settings: Settings, workers: int = 8) -> None:
     """Downloads missing SQLite databases and DM attachments from the bucket.
 
     Runs at startup, before anything opens the databases. Files that already
     exist locally are left alone (local development keeps its own copies).
+
+    Boot time is the time until the API answers its first request, so the
+    downloads run in parallel (``workers`` connections, one bucket client per
+    thread so TLS connections are reused) instead of one file after another.
     """
-    store = store_from_settings(settings)
+    store = state_store_from_settings(settings)
     if store is None:
         return
+    jobs: list[tuple[str, Path]] = []
     try:
-        for db in state_databases(settings):
-            if not db.exists() and store.get_file(STATE_PREFIX + db.name, db):
-                log.info("Restored %s from object storage", db.name)
+        jobs += [(STATE_PREFIX + db.name, db) for db in state_databases(settings) if not db.exists()]
         for root, prefix in state_folders(settings):
-            restored = 0
             for obj in store.list(prefix):
                 target = root / obj.key.removeprefix(prefix)
-                if not target.exists() and store.get_file(obj.key, target):
-                    restored += 1
-            if restored:
-                log.info("Restored %d files under %s from object storage", restored, prefix)
+                if not target.exists():
+                    jobs.append((obj.key, target))
     finally:
         store.close()
+    if not jobs:
+        return
+
+    local = threading.local()
+    clients: list[ObjectStore] = []
+    lock = threading.Lock()
+
+    def fetch(job: tuple[str, Path]) -> bool:
+        client = getattr(local, "store", None)
+        if client is None:
+            client = local.store = state_store_from_settings(settings)
+            with lock:
+                clients.append(client)
+        key, target = job
+        try:
+            return bool(client.get_file(key, target))
+        except Exception:  # one bad object must not stop the boot
+            log.exception("Could not restore %s", key)
+            return False
+
+    started = time.time()
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            restored = sum(pool.map(fetch, jobs))
+    finally:
+        for client in clients:
+            client.close()
+    log.info("Restored %d/%d state files from object storage in %.1fs",
+             restored, len(jobs), time.time() - started)
 
 
 class StateSync:
@@ -122,6 +179,7 @@ class StateSync:
         store = store_from_settings(self.settings)
         if store is None:
             return 0
+        state = state_store_from_settings(self.settings) or store
         uploads = 0
         try:
             for db in state_databases(self.settings):
@@ -136,18 +194,22 @@ class StateSync:
                 with tempfile.TemporaryDirectory() as tmp:
                     copy = Path(tmp) / db.name
                     _backup(db, copy)
-                    store.put_file(STATE_PREFIX + db.name, copy, "application/vnd.sqlite3")
+                    state.put_file(STATE_PREFIX + db.name, copy, "application/vnd.sqlite3")
                 self._db_marks[db] = mark
                 uploads += 1
-            for root, prefix in ((media_root(self.settings), ""), *state_folders(self.settings)):
+            targets = [(media_root(self.settings), "", store),
+                       *((root, prefix, state) for root, prefix in state_folders(self.settings))]
+            for root, prefix, target in targets:
                 for path in _files(root):
                     st = path.stat()
                     if self._seen.get(path) == (st.st_size, st.st_mtime) or time.time() - st.st_mtime < 3:
                         continue  # unchanged, or still being written
-                    store.put_file(prefix + path.relative_to(root).as_posix(), path)
+                    target.put_file(prefix + path.relative_to(root).as_posix(), path)
                     self._seen[path] = (st.st_size, st.st_mtime)
                     uploads += 1
         finally:
+            if state is not store:
+                state.close()
             store.close()
         return uploads
 

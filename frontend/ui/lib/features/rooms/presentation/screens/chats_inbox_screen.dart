@@ -1,3 +1,4 @@
+import '../../../../shared/pay/payment_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -95,7 +96,10 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
     final shared = sharedContentPath(text);
     final mine = message['sender_id'] ==
         ref.read(authControllerProvider).valueOrNull?.id;
-    final content = shared != null
+    final payment = parsePaymentMessage(text);
+    final content = payment != null
+        ? (mine ? 'You paid ${payment.amount}' : 'Paid you ${payment.amount}')
+        : shared != null
         ? '${mine ? 'You sent' : 'Sent'} ${_sharedNoun(shared, text)}'
         : text.isNotEmpty
         ? text

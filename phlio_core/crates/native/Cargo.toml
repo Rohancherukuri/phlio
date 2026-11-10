@@ -1,0 +1,26 @@
+[package]
+name = "phlio-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "phlio_core as an in-process Python extension (PyO3) for the Phlio backend."
+
+[lib]
+name = "phlio_native"
+# cdylib: the shared library Python imports. rlib: lets `cargo test` link it.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+phlio-common = { path = "../common" }
+phlio-crypto = { path = "../crypto" }
+phlio-risk-features = { path = "../risk_features" }
+phlio-guard = { path = "../guard" }
+# abi3-py39: one wheel/.so works on every CPython >= 3.9, so the Docker image
+# and developer machines don't need a per-Python-version build.
+pyo3 = { version = "0.22", features = ["abi3-py39"] }
+
+[features]
+# maturin enables this when building the importable module; plain `cargo test`
+# leaves it off so the test binary can link against libpython.
+extension-module = ["pyo3/extension-module"]
+default = []

@@ -142,10 +142,13 @@ class _ExperienceIntroState extends ConsumerState<ExperienceIntroScreen> with Ti
         .take(_cards.length)
         .toList();
     final size = MediaQuery.sizeOf(context);
-    final collageH = size.height * .42;
+    // Shorter collage on short phones so the text and button fit.
+    final collageH = size.height * (size.height < 760 ? .36 : .42);
     return Scaffold(
       backgroundColor: PhlioColors.background,
-      body: Stack(children: [
+      // Fill the screen: without this the Stack only sized to the collage,
+      // squeezing the text block below it into ~30 px (overflow).
+      body: SizedBox.expand(child: Stack(children: [
         // The collage.
         SizedBox(
           height: collageH + 60,
@@ -195,7 +198,11 @@ class _ExperienceIntroState extends ConsumerState<ExperienceIntroScreen> with Ti
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-              child: Column(children: [
+              child: LayoutBuilder(builder: (context, box) => SingleChildScrollView(
+                child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: box.maxHeight),
+                child: IntrinsicHeight(
+                child: Column(children: [
                 _rise(.42, .62, Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const ExperienceMark(size: 44),
                   const SizedBox(width: 10),
@@ -210,6 +217,7 @@ class _ExperienceIntroState extends ConsumerState<ExperienceIntroScreen> with Ti
                 _rise(.48, .68, const Text('Weekly photo dumps\nwith all your best friends',
                     textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 17, height: 1.3))),
                 const Spacer(),
+                const SizedBox(height: 16),
                 _rise(.55, .75, const _Promise(
                   leading: _SundayBadge(),
                   text: 'Share your favourite photos of the week, every Sunday',
@@ -223,6 +231,7 @@ class _ExperienceIntroState extends ConsumerState<ExperienceIntroScreen> with Ti
                   text: 'Friends can only see your Experience for the next 7 days',
                 )),
                 const Spacer(),
+                const SizedBox(height: 20),
                 ScaleTransition(
                   scale: _interval(.75, 1, Curves.easeOutBack),
                   child: SizedBox(
@@ -241,10 +250,13 @@ class _ExperienceIntroState extends ConsumerState<ExperienceIntroScreen> with Ti
                   ),
                 ),
               ]),
+              ),
+              ),
+              )),
             ),
           ),
         ),
-      ]),
+      ])),
     );
   }
 

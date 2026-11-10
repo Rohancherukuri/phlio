@@ -95,6 +95,21 @@ The backend looks for the compiled binary at
 `../phlio_core/target/release/phlio-core` relative to `backend/` by
 default (`app/config.py`'s `core_engine_binary_path`).
 
+For the fastest path, also build the in-process extension `phlio_native`
+(IDs, HMAC, TOTP, risk scoring and the sign-in brute-force guard, called
+directly instead of spawning the CLI per request — about 3000x cheaper):
+
+```bash
+cd phlio_core
+PYO3_PYTHON=../backend/.venv/bin/python cargo build --profile release-native -p phlio-native --features extension-module
+# Windows (PowerShell, from phlio_core\):
+# $env:PYO3_PYTHON="..\backend\.venv\Scripts\python.exe"
+# cargo build --profile release-native -p phlio-native --features extension-module
+```
+
+The backend picks it up from `phlio_core/target/release-native/` and logs
+`phlio_native 0.1.0 loaded`. Details: `docs/architecture/PERFORMANCE_AND_SECURITY.md`.
+
 Run the test suite:
 
 ```bash

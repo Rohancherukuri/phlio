@@ -81,6 +81,9 @@ dependencies:
   # Foxy's state-machine animation (assets/rive/foxy.riv when present).
   rive: ^0.13.20
   razorpay_flutter: 1.4.7
+  # Sign in with Google / Apple (ID tokens verified by the backend).
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
 
 dev_dependencies:
   flutter_test:
@@ -96,6 +99,8 @@ flutter:
     - assets/shaders/phlio_look.frag
     - assets/shaders/retro_glow.frag
     - assets/shaders/moment_backdrop.frag
+    - assets/shaders/profile_fx.frag
+    - assets/shaders/hacker_theme.frag
   uses-material-design: true
 
   # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker

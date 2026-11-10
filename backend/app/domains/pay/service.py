@@ -49,7 +49,13 @@ class PayService:
         return await self._repository.list_transactions(user_id=user_id, cursor=cursor, limit=limit)
 
     async def send_money(
-        self, *, user_id: str, counterparty: str, amount_minor_units: int, note: str = ""
+        self,
+        *,
+        user_id: str,
+        counterparty: str,
+        amount_minor_units: int,
+        note: str = "",
+        currency: str | None = None,
     ) -> Transaction:
         if amount_minor_units <= 0:
             raise ValidationAppError("Amount must be greater than zero.")
@@ -70,7 +76,7 @@ class PayService:
             counterparty=counterparty.strip(),
             amount_minor_units=amount_minor_units,
             note=note,
-            currency=wallet.currency,
+            currency=currency or wallet.currency,
             status=TransactionStatus.SUCCESS,
         )
         created = await self._repository.add_transaction(transaction)
@@ -81,7 +87,13 @@ class PayService:
         return created
 
     async def receive_money(
-        self, *, user_id: str, counterparty: str, amount_minor_units: int, note: str = ""
+        self,
+        *,
+        user_id: str,
+        counterparty: str,
+        amount_minor_units: int,
+        note: str = "",
+        currency: str | None = None,
     ) -> Transaction:
         if amount_minor_units <= 0:
             raise ValidationAppError("Amount must be greater than zero.")
@@ -97,7 +109,7 @@ class PayService:
             counterparty=counterparty.strip(),
             amount_minor_units=amount_minor_units,
             note=note,
-            currency=wallet.currency,
+            currency=currency or wallet.currency,
         )
         created = await self._repository.add_transaction(transaction)
         logger.info(

@@ -1,11 +1,11 @@
 {
-    "name": "phlio",
-    "short_name": "phlio",
+    "name": "Phlio",
+    "short_name": "Phlio",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#06060A",
+    "theme_color": "#06060A",
+    "description": "People. Places. Possibilities.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

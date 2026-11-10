@@ -11,6 +11,8 @@
 // screen can show a field-level or form-level error message inline,
 // *in addition* to updating the shared session state on success.
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/service_locator.dart';
@@ -29,7 +31,10 @@ final authControllerProvider =
     AsyncNotifierProvider<AuthController, UserEntity?>(AuthController.new);
 
 class AuthController extends AsyncNotifier<UserEntity?> {
-  void activateAccount(UserEntity user) => state = AsyncData(user);
+  void activateAccount(UserEntity user) {
+    state = AsyncData(user);
+    unawaited(ref.read(authRepositoryProvider).rememberUser(user));
+  }
   late final LoginUseCase _loginUseCase;
   late final RegisterUseCase _registerUseCase;
   late final GetCurrentUserUseCase _getCurrentUserUseCase;
@@ -44,6 +49,15 @@ class AuthController extends AsyncNotifier<UserEntity?> {
     _logoutUseCase = LogoutUseCase(repository);
 
     if (!await repository.hasActiveSession()) return null;
+
+    // Fast path: open the app with the profile saved on this device and
+    // refresh it in the background. Launch no longer waits on the server,
+    // and a slow or sleeping server can't bounce a signed-in user to login.
+    final cached = await repository.cachedUser();
+    if (cached != null) {
+      unawaited(_refreshInBackground());
+      return cached;
+    }
 
     final result = await _getCurrentUserUseCase();
     return result.when(
@@ -76,6 +90,7 @@ class AuthController extends AsyncNotifier<UserEntity?> {
     required List<String> interests,
     String? dateOfBirth,
     String? phoneNumber,
+    String? country,
   }) async {
     final result = await _registerUseCase(
       fullName: fullName,
@@ -85,6 +100,7 @@ class AuthController extends AsyncNotifier<UserEntity?> {
       interests: interests,
       dateOfBirth: dateOfBirth,
       phoneNumber: phoneNumber,
+      country: country,
     );
     return result.when(
       success: (data) {
@@ -106,5 +122,22 @@ class AuthController extends AsyncNotifier<UserEntity?> {
   /// the auth flow without the user explicitly tapping "log out".
   void forceSignOut() {
     state = const AsyncData(null);
+  }
+
+  Future<void> _refreshInBackground() async {
+    try {
+      await future;
+    } catch (_) {
+      return;
+    }
+    final result = await _getCurrentUserUseCase();
+    // An expired session is handled by ApiClient (refresh, then
+    // onSessionExpired → forceSignOut); a network error keeps the saved
+    // profile, so only a fresh profile for the same account is applied.
+    final fresh = result.valueOrNull;
+    final current = state.valueOrNull;
+    if (fresh != null && current != null && current.id == fresh.id) {
+      state = AsyncData(fresh);
+    }
   }
 }

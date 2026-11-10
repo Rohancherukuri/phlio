@@ -2,12 +2,16 @@
 
 import uvicorn
 
+import os
+
 from app.config import Settings
 from app.main import create_app
 
+# SURREAL_DATABASE in the shell (not .env) points scripts such as the seeded
+# Spaces runner at another database, e.g. the Surreal Cloud one.
 settings = Settings(
     database_backend="surreal",
-    surreal_database="phlio_graph_dev",
+    surreal_database=os.environ.get("SURREAL_DATABASE", "phlio_graph_dev"),
     redis_enabled=True,
     redis_url="redis://127.0.0.1:6379/0",
     redis_namespace="phlio_graph_dev",

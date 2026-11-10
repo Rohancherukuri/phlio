@@ -129,6 +129,8 @@ if ($Seed) {
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Catalog demo engagement seed failed. See the error above.' }
     uv run python -m scripts.import_open_movie_clips
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Open-movie clip import failed; rerun python -m scripts.import_open_movie_clips later.' }
+    uv run python -m scripts.import_open_long_videos
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Long video import failed; rerun python -m scripts.import_open_long_videos later.' }
     uv run python -m scripts.import_open_communities
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Community rooms import failed; rerun python -m scripts.import_open_communities later.' }
     uv run python -m scripts.seed_community_comments

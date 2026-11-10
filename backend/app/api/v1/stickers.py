@@ -12,7 +12,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.domains.stickers import FOXY_ANIMATED_CATALOG, FOXY_MOVES_CATALOG, FOXY_STICKER_CATALOG
+from app.domains.stickers import (FOXY_ANIMATED_CATALOG, FOXY_MOVES_CATALOG, FOXY_PUPPET_CATALOG,
+                                  FOXY_STICKER_CATALOG)
 
 router = APIRouter(prefix="/stickers", tags=["stickers"])
 
@@ -25,4 +26,4 @@ class StickerResponse(BaseModel):
 
 @router.get("", response_model=list[StickerResponse])
 async def list_stickers() -> list[StickerResponse]:
-    return [StickerResponse(**s) for s in FOXY_MOVES_CATALOG + FOXY_ANIMATED_CATALOG + FOXY_STICKER_CATALOG]
+    return [StickerResponse(**s) for s in FOXY_PUPPET_CATALOG + FOXY_MOVES_CATALOG + FOXY_ANIMATED_CATALOG + FOXY_STICKER_CATALOG]

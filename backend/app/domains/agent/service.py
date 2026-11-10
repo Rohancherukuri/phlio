@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 
+from app.domains.agent.attachments import AgentAttachment, describe
 from app.domains.agent.entities import AgentMessage, MessageRole
 from app.domains.agent.planner import AgentPlanner
 from app.domains.agent.repository import AgentRepository
@@ -39,28 +40,44 @@ class AgentService:
         self._core_engine = core_engine
 
     async def send_message(
-        self, *, user_id: str, conversation_id: str, text: str, tools: AgentTools
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        text: str,
+        tools: AgentTools,
+        attachments: list[AgentAttachment] | None = None,
     ) -> AgentMessage:
+        attachments = attachments or []
         user_message = AgentMessage(
             id=await self._core_engine.generate_id("msg"),
             conversation_id=conversation_id,
             role=MessageRole.USER,
             text=text,
+            attachments=attachments,
         )
         await self._repository.append_message(user_id, user_message)
 
-        plan = await self._planner.create_plan(message=text, tools=tools)
+        ack = describe(attachments, text)
+        if text.strip():
+            plan = await self._planner.create_plan(message=text, tools=tools)
+            reply = f"{ack}\n\n{plan.summary}" if ack else plan.summary
+        else:
+            # Only files, no question yet: acknowledge and ask what to do.
+            plan, reply = None, ack
         agent_message = AgentMessage(
             id=await self._core_engine.generate_id("msg"),
             conversation_id=conversation_id,
             role=MessageRole.AGENT,
-            text=plan.summary,
+            text=reply,
             plan=plan,
         )
         await self._repository.append_message(user_id, agent_message)
         # Every plan is logged with exactly what it contains — auditability
         # is the point (see the module docstring's guardrail): if a plan
         # ever looks wrong, this line is where to start.
+        if plan is None:
+            return agent_message
         logger.info(
             "agent.plan_created user_id=%s conversation_id=%s planner=%s items=%d "
             "estimated_total=%d-%d",

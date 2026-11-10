@@ -50,6 +50,7 @@ class PhlioBottomNav extends StatelessWidget {
     this.trayIcon = Icons.apps_rounded,
     this.trayLabel = 'Tray',
     this.trayColor = PhlioColors.textMuted,
+    this.trayOpen = false,
   });
 
   /// Index into [phlioBottomNavItems] (0-2). The center create button and
@@ -66,6 +67,9 @@ class PhlioBottomNav extends StatelessWidget {
   final IconData trayIcon;
   final String trayLabel;
   final Color trayColor;
+
+  /// The platform tray is showing: the small chevron by the tray icon flips.
+  final bool trayOpen;
 
   /// Optional avatar widget rendered in place of the Profile icon (the
   /// user's picture once they upload one).
@@ -234,8 +238,7 @@ class PhlioBottomNav extends StatelessWidget {
                 children: [
                   SizedBox(
                       height: _iconSlot,
-                      child: Center(
-                          child: Icon(trayIcon, color: trayColor, size: 24))),
+                      child: Center(child: _trayGlyph(context))),
                   const SizedBox(height: 2),
                   Text(trayLabel,
                       maxLines: 1,
@@ -251,6 +254,26 @@ class PhlioBottomNav extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// The tray glyph (grid, or the chosen platform's symbol) with a small
+  /// chevron that points up while the tray is closed and turns down while it
+  /// is open, like the reference switcher.
+  Widget _trayGlyph(BuildContext context) {
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(trayIcon, color: trayColor, size: 24),
+        AnimatedRotation(
+          turns: trayOpen ? 0.5 : 0,
+          duration: reduced ? Duration.zero : const Duration(milliseconds: 320),
+          curve: Curves.easeOutBack,
+          child: Icon(Icons.keyboard_arrow_up_rounded,
+              color: trayColor.withValues(alpha: 0.8), size: 14),
+        ),
+      ],
     );
   }
 }

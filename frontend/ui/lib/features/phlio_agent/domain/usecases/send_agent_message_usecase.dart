@@ -7,7 +7,12 @@ class SendAgentMessageUseCase {
 
   final AgentRepository _repository;
 
-  Future<Result<AgentMessageEntity>> call({required String text, String? conversationId}) {
-    return _repository.sendMessage(text: text, conversationId: conversationId);
+  Future<Result<AgentMessageEntity>> call({
+    required String text,
+    String? conversationId,
+    List<String> attachmentIds = const [],
+  }) {
+    return _repository.sendMessage(
+        text: text, conversationId: conversationId, attachmentIds: attachmentIds);
   }
 }

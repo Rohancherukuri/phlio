@@ -21,6 +21,7 @@ class UserEntity extends Equatable {
     this.avatarUrl,
     this.dateOfBirth,
     this.phoneNumber,
+    this.country,
   });
 
   final String id;
@@ -30,6 +31,9 @@ class UserEntity extends Equatable {
   final String? avatarUrl;
   final DateTime? dateOfBirth;
   final String? phoneNumber;
+
+  /// ISO 3166 alpha-2 chosen at sign-up (decides the Pay currency).
+  final String? country;
   final String bio;
   final List<String> interests;
   final bool isVerified;
@@ -46,6 +50,7 @@ class UserEntity extends Equatable {
         interests,
         isVerified,
         dateOfBirth,
-        phoneNumber
+        phoneNumber,
+        country
       ];
 }

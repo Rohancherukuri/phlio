@@ -1,5 +1,11 @@
 // Foxy, live: a rigged puppet animated at the display's frame rate.
 //
+// v2 art: Foxy in his blue button shorts. Nine poses are rigged from the
+// reference sheet (scripts/media/foxy_rig/puppet_export_v2.py): neutral
+// (bright-eyed, paw out), wave (paw on head, wink), love (blissful), clap
+// (full body, mid-stride "let's go"), peek (paws over face), think (glasses),
+// sad (turned away), phone (phone to ear) and oops (sheepish sweat).
+//
 // Foxy's art is a flat illustration, so instead of redrawing him in parts
 // he is rigged like a puppet. Each pose (assets/foxy_puppet/foxy_puppet_
 // <pose>.png + .json, exported by scripts/media/foxy_rig/puppet_export.py)
@@ -49,19 +55,62 @@ enum FoxyAct {
   /// Paws to his face, hearts.
   love,
 
-  /// Clapping.
+  /// Celebrating a milestone (full-body "let's go!").
   clap,
+
+  /// Phone to his ear — asking for a number or email.
+  phone,
+
+  /// Sheepish grin with a sweat drop — something went wrong.
+  oops,
+
+  /// Blissful and content (love pose, no hearts) — welcomes, the agent.
+  happy,
+
+  /// Sitting back, relaxed, the odd "z" — quiet empty states.
+  chill,
+
+  /// Full-body, ready to go: a light on-the-spot bounce — explore screens.
+  ready,
+
+  /// Full-body run cycle (pair with a moving position, e.g. the splash).
+  run,
+
+  /// Both arms up, bouncing: "hey!" — the splash finale.
+  hooray,
+
+  /// Curled up asleep on his pillow, breathing slowly, Zzz.
+  sleep,
 }
 
 String _poseOf(FoxyAct act) => switch (act) {
+      FoxyAct.idle || FoxyAct.talk => 'neutral',
       FoxyAct.wave => 'wave',
-      FoxyAct.cheer => 'clap',
-      FoxyAct.love => 'love',
-      FoxyAct.clap => 'clap',
-      _ => 'neutral',
+      FoxyAct.peek => 'peek',
+      FoxyAct.think => 'think',
+      FoxyAct.sad => 'sad',
+      FoxyAct.cheer || FoxyAct.clap || FoxyAct.ready || FoxyAct.run => 'clap',
+      FoxyAct.hooray => 'hooray',
+      FoxyAct.sleep => 'sleep',
+      FoxyAct.love || FoxyAct.happy => 'love',
+      FoxyAct.chill => 'wave',
+      FoxyAct.phone => 'phone',
+      FoxyAct.oops => 'oops',
     };
 
-const _poses = ['neutral', 'wave', 'love', 'clap'];
+const _poses = [
+  'neutral',
+  'wave',
+  'love',
+  'clap',
+  'peek',
+  'think',
+  'sad',
+  'phone',
+  'oops',
+  'hooray',
+  'sleep',
+];
 const _assetDir = 'assets/foxy_puppet';
 const _grid = 44;
 const _alpha = 1.6;
@@ -297,6 +346,7 @@ class _Fx {
           'sweat',
           'question',
           'zed',
+          'puff',
         ]) {
           final bytes = await rootBundle.load('$_assetDir/foxy_fx_$name.png');
           final codec =
@@ -321,6 +371,8 @@ class FoxyPuppet extends StatefulWidget {
     this.hopSignal = 0,
     this.tapToHop = true,
     this.entrance = true,
+    this.poseBlend = const Duration(milliseconds: 220),
+    this.poofOnSwap = false,
   });
 
   final FoxyAct act;
@@ -334,6 +386,13 @@ class FoxyPuppet extends StatefulWidget {
   final int hopSignal;
   final bool tapToHop;
   final bool entrance;
+
+  /// Cross-fade between poses. [Duration.zero] snaps cartoon-style (best
+  /// paired with [poofOnSwap] and a hop, as on the splash).
+  final Duration poseBlend;
+
+  /// A ring of dust puffs bursts out when the pose changes, hiding the cut.
+  final bool poofOnSwap;
 
   @override
   State<FoxyPuppet> createState() => _FoxyPuppetState();
@@ -392,7 +451,7 @@ class _FoxyPuppetState extends State<FoxyPuppet>
       _actStart = _t;
       final pose = _poseOf(widget.act);
       if (pose != _pose) {
-        _fromPose = _pose;
+        _fromPose = widget.poseBlend == Duration.zero ? null : _pose;
         _pose = pose;
         _poseAt = _t;
       }
@@ -502,66 +561,181 @@ class _FoxyPuppetState extends State<FoxyPuppet>
     // Turning toward what's being typed.
     add('head', 0.07 * _lean, 4 * _lean, 0);
 
+    // Tail: always alive, a little faster when he's happy.
+    final wagSpeed = switch (act) {
+      FoxyAct.cheer || FoxyAct.clap || FoxyAct.love => 0.55,
+      FoxyAct.sad || FoxyAct.peek || FoxyAct.chill || FoxyAct.sleep => 3.2,
+      FoxyAct.run || FoxyAct.hooray => 0.36,
+      _ => 1.5,
+    };
+    add('tail', 0.09 * _sn(t, wagSpeed));
+
     switch (act) {
       case FoxyAct.idle:
       case FoxyAct.talk:
-        break;
+        // Paw out, presenting; a soft sway.
+        add('paw', 0.05 * _sn(t, 2.2));
+        add('arm', 0.02 * _sn(t, 2.2, 0.2));
+        gAngle += 0.012 * _sn(t, 4.4);
       case FoxyAct.wave:
+        // Paw on his head, a cheeky wink: rubs his head, tail swishing.
         final env = _ease(a / 0.25);
-        final w = _sn(t, 0.62);
-        add('arm', (w < 0 ? 0.16 : 0.08) * w * env);
-        add('paw', (w < 0 ? 0.32 : 0.16) * w * env);
-        add('head', 0.045 * _sn(t, 1.24));
-        props.add(_Prop.twinkle('sparkle_peach', 40, 128, t, 0.62, 0, 26));
-        props.add(_Prop.twinkle('sparkle_violet', 34, 196, t, 0.62, 0.5, 20));
+        add('paw', 0.06 * _sn(t, 0.34) * env);
+        add('arm', 0.025 * _sn(t, 0.34, 0.2) * env);
+        add('head', 0.05 * _sn(t, 1.3) * env);
+        add('tail', 0.12 * _sn(t, 0.7));
+        gAngle += 0.02 * _sn(t, 1.3);
+        props.add(_Prop.twinkle('sparkle_peach', 62, 96, t, 0.7, 0, 26));
+        props.add(_Prop.twinkle('sparkle_violet', 48, 168, t, 0.7, 0.5, 20));
       case FoxyAct.peek:
+        // Paws over his face, trembling a little; ears shy.
         final e = _ease(a / 0.25);
-        blink = math.max(blink, e);
-        add('head', -0.08 * e + 0.012 * _sn(t, 0.14) * e, -3 * e, 1 * e);
-        add('ear0', 0.18 * e);
-        add('ear1', -0.18 * e);
+        add('head', 0.012 * _sn(t, 0.16) * e, 0, 2 * e);
+        add('ear0', -0.08 * e);
+        add('ear1', 0.08 * e);
+        add('paw', 0.02 * _sn(t, 0.5) * e);
       case FoxyAct.think:
+        // Glasses on, tapping his chin, head tilting.
         final e = _ease(a / 0.45);
-        add('head', 0.11 * e, 0, 0);
-        add('ear1', 0.12 * e);
-        props.add(_Prop('question', 252, 70 + 4 * _sn(t, 1.4), 0.55 + 0.05 * _sn(t, 1.4), -8 * _sn(t, 2.8), _ease(a / 0.3)));
+        add('head', 0.06 * e + 0.02 * _sn(t, 2.6), 0, 0);
+        final tap = _pulse(a % 1.1, 0, 0.22);
+        add('paw', -0.07 * tap * e);
+        add('arm', -0.02 * tap * e);
+        add('ear1', 0.08 * e * _sn(t, 3.0).abs());
+        props.add(_Prop('question', 258, 52 + 4 * _sn(t, 1.4),
+            0.55 + 0.05 * _sn(t, 1.4), -8 * _sn(t, 2.8), _ease(a / 0.3)));
       case FoxyAct.sad:
+        // Turned to the wall: head sinks, ears droop, the odd sniffle.
         final e = _ease(a / 0.6);
-        add('head', 0.07 * e, 0, 6 * e);
-        add('ear0', -0.3 * e);
-        add('ear1', 0.3 * e);
+        final sniff = _pulse(a % 2.8, 1.6, 0.3);
+        add('head', 0.04 * e, 0, 4 * e - 2 * sniff);
+        add('ear0', -0.12 * e);
+        add('ear1', 0.14 * e + 0.03 * _sn(t, 3.4));
+        gSy *= 1 - 0.015 * sniff;
       case FoxyAct.cheer:
-        final u = a % 0.8;
-        final air = u < 0.5 ? math.sin(math.pi * u / 0.5) : 0.0;
-        final land = _pulse(u, 0.5, 0.2);
-        gDy -= 26 * air;
-        gSx *= 1 + 0.06 * land;
-        gSy *= 1 - 0.07 * land + 0.04 * air;
-        add('ear0', 0.25 * land - 0.1 * air);
-        add('ear1', -0.25 * land + 0.1 * air);
-        add('head', 0.04 * _sn(t, 0.8));
-        // Clapping on the way up.
-        final open = math.pow(math.sin(math.pi * ((t % 0.4) / 0.4)), 1.5).toDouble();
-        add('arm', 0.18 * open);
-        add('prop', -0.18 * open);
-      case FoxyAct.love:
-        gAngle += 0.04 * _sn(t, 2.4);
-        add('head', 0.05 * _sn(t, 1.2, 0.25));
-        for (final (ph, x, dx) in [(0.0, 220.0, 20.0), (0.33, 105.0, -15.0), (0.66, 245.0, 5.0)]) {
-          props.add(_Prop.rise('heart', t, 2.4, ph, x, 150, x + dx, 30, 0.42, 0.62));
-        }
       case FoxyAct.clap:
-        final u = (t % 0.4) / 0.4;
-        final open = math.pow(math.sin(math.pi * u), 1.5).toDouble();
-        add('arm', 0.2 * open);
-        add('prop', -0.2 * open);
-        add('head', 0.03 * _sn(t, 0.8));
-        final hit = _pulse(t % 0.4, 0, 0.12);
-        if (hit > 0) {
-          for (final (dx, dy) in [(-26.0, -10.0), (26.0, -10.0), (0.0, -26.0)]) {
-            props.add(_Prop('sparkle_yellow', 169 + dx, 196 + dy, 0.25 + 0.25 * hit, 0, hit));
+        // Full-body "let's go!": a bouncy run on the spot, pointing ahead.
+        final u = a % 0.52;
+        final air = u < 0.36 ? math.sin(math.pi * u / 0.36) : 0.0;
+        final land = _pulse(u, 0.36, 0.16);
+        gDy -= (act == FoxyAct.cheer ? 18 : 12) * air;
+        gSx *= 1 + 0.05 * land;
+        gSy *= 1 - 0.06 * land + 0.03 * air;
+        gAngle += 0.025 * _sn(t, 1.04);
+        add('prop', 0.32 * _sn(t, 0.52)); // back leg kicks
+        add('arm', -0.05 * air);
+        add('paw', 0.08 * _pulse(u, 0.0, 0.2));
+        add('ear0', 0.18 * land - 0.08 * air);
+        add('ear1', -0.12 * land + 0.06 * air);
+        add('tail', 0.16 * _sn(t, 0.52, 0.25));
+        if (land > 0) {
+          for (final (dx, dy) in [(16.0, -18.0), (24.0, 6.0), (10.0, 22.0)]) {
+            props.add(_Prop('sparkle_yellow', 262 + dx, 200 + dy,
+                0.22 + 0.22 * land, 0, land));
           }
         }
+      case FoxyAct.love:
+        // Blissful, paw to his cheek, swaying; floppy ears swing.
+        gAngle += 0.045 * _sn(t, 2.2);
+        add('head', 0.05 * _sn(t, 2.2, 0.25));
+        add('paw', 0.06 * _sn(t, 0.8));
+        add('ear0', 0.09 * _sn(t, 2.2, 0.4));
+        add('ear1', -0.09 * _sn(t, 2.2, 0.4));
+        for (final (ph, x, dx) in [(0.0, 238.0, 20.0), (0.33, 70.0, -15.0), (0.66, 262.0, 5.0)]) {
+          props.add(_Prop.rise('heart', t, 2.4, ph, x, 150, x + dx, 30, 0.42, 0.62));
+        }
+      case FoxyAct.phone:
+        // Phone to his ear, nodding along; it buzzes now and then.
+        final e = _ease(a / 0.3);
+        add('head', 0.035 * _sn(t, 1.1) * e, 0, 1.2 * _sn(t, 0.55).abs() * e);
+        add('paw', 0.03 * _sn(t, 1.1, 0.3) * e);
+        final buzz = _pulse(a % 2.6, 1.8, 0.45);
+        add('paw', 0.025 * _sn(t, 0.06) * buzz);
+        add('ear1', 0.06 * _sn(t, 1.6));
+        props.add(_Prop.twinkle('sparkle_peach', 30, 128, t, 0.8, 0, 22));
+        props.add(_Prop.twinkle('sparkle_yellow', 74, 120, t, 0.8, 0.45, 18));
+      case FoxyAct.happy:
+        // Content sway, paw to his cheek.
+        gAngle += 0.03 * _sn(t, 2.8);
+        add('head', 0.04 * _sn(t, 2.8, 0.25));
+        add('paw', 0.04 * _sn(t, 1.2));
+        add('ear0', 0.06 * _sn(t, 2.8, 0.4));
+        add('ear1', -0.06 * _sn(t, 2.8, 0.4));
+      case FoxyAct.chill:
+        // Sitting back: slow head tilt, lazy paw, a drifting "z".
+        add('head', 0.035 * _sn(t, 5.0));
+        add('paw', 0.025 * _sn(t, 3.4));
+        props.add(_Prop.rise('zed', t, 3.2, 0, 236, 112, 262, 40, 0.3, 0.5));
+      case FoxyAct.ready:
+        // Light bounce in his stride, tail up.
+        final u = a % 0.9;
+        final air = u < 0.5 ? math.sin(math.pi * u / 0.5) : 0.0;
+        gDy -= 5 * air;
+        gSy *= 1 + 0.015 * air;
+        add('prop', 0.12 * _sn(t, 0.9));
+        add('tail', 0.1 * _sn(t, 0.9, 0.25));
+        add('ear0', -0.04 * air);
+      case FoxyAct.run:
+        // Run cycle: two bounces per stride, back leg kicking, arm pumping,
+        // leaning into it; dust puffs kicked up behind.
+        const stride = 0.36;
+        final u = (t % stride) / stride;
+        final air = math.sin(math.pi * ((u * 2) % 1.0));
+        gDy -= 7 * air;
+        gSy *= 1 - 0.035 * (1 - air) + 0.02 * air;
+        gSx *= 1 + 0.025 * (1 - air);
+        gAngle += 0.07 + 0.015 * _sn(t, stride);
+        add('prop', 0.5 * _sn(t, stride));
+        add('arm', 0.09 * _sn(t, stride, 0.5));
+        add('paw', 0.1 * _sn(t, stride, 0.5));
+        add('head', -0.03 * air, 0, 1.5 * air);
+        add('ear0', 0.16 * _sn(t, stride, 0.25));
+        add('ear1', -0.12 * _sn(t, stride, 0.25));
+        add('tail', 0.22 * _sn(t, stride, 0.35));
+        for (final ph in [0.0, 0.5]) {
+          final v = ((t / 0.72) + ph) % 1.0;
+          final life = math.sin(math.pi * v);
+          props.add(_Prop('puff', 96 - 70 * v, 292 - 16 * v,
+              0.35 + 0.45 * v, 20 * v, life * (1 - v)));
+        }
+      case FoxyAct.hooray:
+        // Arms up, waving them, little bounces; sparkles all round.
+        final e = _ease(a / 0.2);
+        final u = (a % 0.6) / 0.6;
+        final air = math.sin(math.pi * u);
+        gDy -= 6 * air * e;
+        gSy *= 1 + 0.02 * air * e;
+        add('arm', 0.14 * _sn(t, 0.6) * e);
+        add('paw', 0.16 * _sn(t, 0.3) * e);
+        add('prop', -0.14 * _sn(t, 0.6, 0.15) * e);
+        add('head', 0.05 * _sn(t, 1.2) * e);
+        add('ear1', 0.08 * _sn(t, 0.6, 0.3));
+        add('tail', 0.2 * _sn(t, 0.6));
+        props.add(_Prop.twinkle('sparkle_peach', 46, 70, t, 0.8, 0, 28));
+        props.add(_Prop.twinkle('sparkle_violet', 262, 64, t, 0.8, 0.3, 24));
+        props.add(_Prop.twinkle('sparkle_yellow', 272, 236, t, 0.8, 0.6, 22));
+        props.add(_Prop.twinkle('sparkle_peach', 30, 236, t, 0.8, 0.85, 18));
+      case FoxyAct.sleep:
+        // Deep, slow breaths; a lazy tail; Zzz drifting up.
+        final br = 0.5 - 0.5 * math.cos(2 * math.pi * t / 3.6);
+        gSy *= 1 + 0.02 * br;
+        gSx *= 1 + 0.006 * br;
+        add('head', 0.02 * br, 0, 1.4 * br);
+        add('tail', 0.05 * _sn(t, 4.0));
+        for (final ph in [0.0, 0.5]) {
+          props.add(_Prop.rise('zed', t, 3.6, ph, 236, 130, 266, 34, 0.26, 0.52));
+        }
+      case FoxyAct.oops:
+        // Sheepish grin, rocking, sweat drop sliding down.
+        final e = _ease(a / 0.25);
+        add('head', 0.05 * _sn(t, 1.0) * e);
+        add('ear0', -0.08 * e);
+        add('ear1', 0.06 * e);
+        add('paw', 0.05 * _sn(t, 0.3) * e);
+        add('tail', 0.12 * _sn(t, 0.7));
+        final u = (a % 1.6) / 1.6;
+        props.add(_Prop('sweat', 248, 96 + 22 * _ease(u), 0.5, 0,
+            e * (u < 0.8 ? 1 : (1 - u) / 0.2)));
     }
 
     // One-shots on top.
@@ -589,6 +763,15 @@ class _FoxyPuppetState extends State<FoxyPuppet>
     }
     // Pose change: a quick squash as he "snaps" into the new pose.
     final snap = t - _poseAt;
+    if (widget.poofOnSwap && snap < 0.45) {
+      final v = snap / 0.45;
+      for (var k = 0; k < 7; k++) {
+        final ang = 2 * math.pi * k / 7 + 0.4;
+        final r = 70 + 70 * _ease(v);
+        props.add(_Prop('puff', 160 + r * math.cos(ang), 190 + 0.8 * r * math.sin(ang),
+            (1.15 - 0.5 * v) * (k.isEven ? 1.0 : 0.8), 40 * v, 1 - v));
+      }
+    }
     if (snap < 0.3) {
       final s = math.sin(math.pi * snap / 0.3);
       gSy *= 1 - 0.05 * s;
@@ -658,7 +841,10 @@ class _FoxyPainter extends CustomPainter {
 
     // Cross-fade from the previous pose for a beat.
     final from = state._fromPose;
-    final fade = ((state._t - state._poseAt) / 0.22).clamp(0.0, 1.0);
+    final blend = state.widget.poseBlend.inMicroseconds / 1e6;
+    final fade = blend <= 0
+        ? 1.0
+        : ((state._t - state._poseAt) / blend).clamp(0.0, 1.0);
     if (from != null && fade < 1) {
       final old = state._rigs[from];
       if (old != null) _drawRig(canvas, old, from, f, 1 - fade);

@@ -13,6 +13,7 @@ DEFINE FIELD IF NOT EXISTS date_of_birth ON user TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS phone_number ON user TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS is_creator ON user TYPE option<bool>;
 DEFINE FIELD IF NOT EXISTS is_test_user ON user TYPE option<bool>;
+DEFINE FIELD IF NOT EXISTS country ON user TYPE option<string>;
 DEFINE TABLE IF NOT EXISTS phlio_object SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD IF NOT EXISTS object_type ON phlio_object TYPE string;
 DEFINE FIELD IF NOT EXISTS platform ON phlio_object TYPE string;

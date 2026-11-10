@@ -14,9 +14,11 @@ abstract final class AppConfig {
     defaultValue: 'http://127.0.0.1:8000/api/v1',
   );
 
+  /// Per-request log lines. On by default in debug/profile builds, off in
+  /// release builds (logging every request costs time on the UI isolate).
   static const bool enableRequestLogging = bool.fromEnvironment(
     'ENABLE_REQUEST_LOGGING',
-    defaultValue: true,
+    defaultValue: !bool.fromEnvironment('dart.vm.product'),
   );
 
   /// Origin the API is served from (apiBaseUrl minus the `/api/v1` prefix).

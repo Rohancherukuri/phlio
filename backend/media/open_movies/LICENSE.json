@@ -1,0 +1,22 @@
+{
+  "Sintel": {
+    "credit": "Sintel — (c) copyright Blender Foundation | durian.blender.org · CC BY 3.0",
+    "license": "CC BY 3.0",
+    "url": "https://creativecommons.org/licenses/by/3.0/"
+  },
+  "Big Buck Bunny": {
+    "credit": "Big Buck Bunny — (c) copyright 2008, Blender Foundation | www.bigbuckbunny.org · CC BY 3.0",
+    "license": "CC BY 3.0",
+    "url": "https://creativecommons.org/licenses/by/3.0/"
+  },
+  "Elephants Dream": {
+    "credit": "Elephants Dream — (c) copyright 2006, Blender Foundation / Netherlands Media Art Institute | elephantsdream.org · CC BY 2.5",
+    "license": "CC BY 2.5",
+    "url": "https://creativecommons.org/licenses/by/2.5/"
+  },
+  "Tears of Steel": {
+    "credit": "Tears of Steel — (CC) Blender Foundation | mango.blender.org · CC BY 3.0",
+    "license": "CC BY 3.0",
+    "url": "https://creativecommons.org/licenses/by/3.0/"
+  }
+}

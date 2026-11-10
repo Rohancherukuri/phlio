@@ -35,7 +35,22 @@ FOXY_OUTFITS = ("classic", "explorer", "hoodie", "space", "samurai", "wizard", "
                 "student", "business", "rainy", "winter", "traveler")
 FOXY_MOODS = ("wave", "think", "celebrate", "explore", "sleep", "hello", "curious",
               "noPeeking", "focused", "cozy", "love")
-ANIMATED_STICKER = re.compile(r"foxy:(%s):(%s)" % ("|".join(FOXY_OUTFITS), "|".join(FOXY_MOODS)))
+# The Foxy sticker pack: the rigged mascot (FoxyPuppet in the app), one
+# sticker per act, ids `foxy2:<act>`. Keep in sync with `FoxyPuppetStickers`
+# in frontend/ui/lib/design_system/widgets/foxy_stickers.dart.
+FOXY_PUPPET_CATALOG: list[dict] = [
+    {"id": f"foxy2:{act}", "label": label, "pack": "foxy"}
+    for act, label in [
+        ("wave", "Hey!"), ("love", "Love you"), ("hooray", "Hooray!"), ("clap", "Bravo"),
+        ("happy", "So happy"), ("cheer", "Let's go"), ("think", "Hmm…"), ("peek", "Not looking"),
+        ("oops", "Oops"), ("sad", "Aww"), ("phone", "Call me"), ("chill", "Chillin"),
+        ("ready", "Ready!"), ("run", "On my way"), ("talk", "Chatty"), ("sleep", "Good night"),
+    ]
+]
+FOXY_PUPPET_ACTS = tuple(s["id"].split(":", 1)[1] for s in FOXY_PUPPET_CATALOG)
+# Any animated Foxy sticker: the Rive outfits/moods or the rigged pack.
+ANIMATED_STICKER = re.compile(r"foxy:(%s):(%s)|foxy2:(%s)" % (
+    "|".join(FOXY_OUTFITS), "|".join(FOXY_MOODS), "|".join(FOXY_PUPPET_ACTS)))
 GIPHY_REFERENCE = re.compile(r"giphy:(gif|sticker):[A-Za-z0-9]{1,80}")
 
 # The curated animated set shown first in the app's sticker sheet.

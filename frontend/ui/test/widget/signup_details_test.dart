@@ -26,7 +26,8 @@ class _Auth extends AuthController {
       required String password,
       required List<String> interests,
       String? dateOfBirth,
-      String? phoneNumber}) async {
+      String? phoneNumber,
+      String? country}) async {
     birthday = dateOfBirth;
     phone = phoneNumber;
     return const Result.failure(

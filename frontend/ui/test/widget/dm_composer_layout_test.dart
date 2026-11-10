@@ -28,6 +28,9 @@ void main() {
     await tester.tap(find.text('Send'));
     await tester.pumpAndSettle();
     expect(sent, 'Hello');
+    // Only two quick actions show; the rest scroll into view.
+    await tester.ensureVisible(find.byTooltip('Stickers'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Stickers'));
     await tester.pumpAndSettle();
     expect(find.text('GIPHY'), findsOneWidget);

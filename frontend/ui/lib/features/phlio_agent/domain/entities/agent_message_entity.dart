@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'agent_attachment_entity.dart';
 import 'agent_plan_entity.dart';
 
 enum MessageRole { user, agent }
@@ -11,6 +12,7 @@ class AgentMessageEntity extends Equatable {
     required this.text,
     required this.createdAt,
     this.plan,
+    this.attachments = const [],
   });
 
   final String id;
@@ -20,6 +22,9 @@ class AgentMessageEntity extends Equatable {
   final AgentPlanEntity? plan;
   final DateTime createdAt;
 
+  /// Files the user sent with this message.
+  final List<AgentAttachmentEntity> attachments;
+
   @override
-  List<Object?> get props => [id, conversationId, role, text, plan];
+  List<Object?> get props => [id, conversationId, role, text, plan, attachments];
 }

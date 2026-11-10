@@ -9,6 +9,9 @@ import '../../features/social/presentation/screens/social_graph_screen.dart';
 import '../../shared/content/content_surface.dart';
 import '../../shared/content/playlists_screen.dart';
 import 'account_switcher.dart';
+import '../../features/authentication/presentation/screens/two_factor_screen.dart';
+import '../../shared/appearance/appearance.dart'
+    show accountPrivateProvider, setAccountPrivate;
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -94,6 +97,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       user?.dateOfBirth?.toIso8601String().split('T').first ??
                           'Not provided'))
             ])))
+      ),
+      (
+        section: 'Your account',
+        title: 'Two-factor authentication',
+        subtitle: 'Codes from an authenticator app when you sign in',
+        icon: Icons.verified_user_outlined,
+        tap: () => page(const TwoFactorScreen())
+      ),
+      (
+        section: 'Your account',
+        title: 'Account privacy',
+        subtitle: 'Private accounts show a lock; only followers see posts',
+        icon: Icons.lock_outline_rounded,
+        tap: () => page(const _PrivacyPage())
+      ),
+      (
+        section: 'How you use Phlio',
+        title: 'Take the tour',
+        subtitle: 'Foxy shows you the important buttons again',
+        icon: Icons.tour_outlined,
+        tap: () => context.push('/tour')
       ),
       (
         section: 'How you use Phlio',
@@ -207,5 +231,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: busy ? null : entries[i].tap),
               ],
             ]));
+  }
+}
+
+/// Settings → Account privacy: the private-account switch.
+class _PrivacyPage extends ConsumerStatefulWidget {
+  const _PrivacyPage();
+
+  @override
+  ConsumerState<_PrivacyPage> createState() => _PrivacyPageState();
+}
+
+class _PrivacyPageState extends ConsumerState<_PrivacyPage> {
+  bool? _value;
+  bool _busy = false;
+
+  Future<void> _set(bool value) async {
+    setState(() {
+      _value = value;
+      _busy = true;
+    });
+    try {
+      await setAccountPrivate(value);
+      ref.invalidate(accountPrivateProvider);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _value = !value);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not change account privacy. Try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value =
+        _value ?? ref.watch(accountPrivateProvider).valueOrNull ?? false;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account privacy')),
+      body: ListView(children: [
+        SwitchListTile(
+          value: value,
+          onChanged: _busy ? null : _set,
+          secondary: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Icon(value ? Icons.lock_rounded : Icons.lock_open_rounded,
+                key: ValueKey(value)),
+          ),
+          title: const Text('Private account'),
+          subtitle: Text(value
+              ? 'Your profile shows a lock. Only your followers see your posts.'
+              : 'Your profile is public: anyone can see your posts.'),
+        ),
+      ]),
+    );
   }
 }

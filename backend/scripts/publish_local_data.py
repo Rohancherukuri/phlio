@@ -10,8 +10,13 @@ Three parts, each optional:
    API can redirect ``/media/...`` to the bucket's public URL. Resumable:
    files already uploaded with the same size are skipped.
 3. **State**: uploads consistent copies of the SQLite databases (DMs, social
-   videos, music, payments) and the DM attachments to ``_state/`` in the
-   bucket. The deployed API restores them on boot and keeps backing them up.
+   videos, music, payments), the DM attachments and snap photos to
+   ``_state/`` in the **private state bucket** (``OBJECT_STORE_STATE_BUCKET``).
+   The deployed API restores them on boot and keeps backing them up.
+4. **move-state** (one-off, for deployments made before the state bucket
+   existed): copies ``_state/`` from the public media bucket into the state
+   bucket, then deletes it from the public bucket. Run it with the Render
+   service suspended.
 
 Credentials come from ``backend/.env.publish`` (never commit it) or the
 environment. Keep them out of ``backend/.env``: that file configures the
@@ -22,6 +27,7 @@ to the cloud too.
     OBJECT_STORE_BUCKET=phlio-media
     OBJECT_STORE_ACCESS_KEY=...
     OBJECT_STORE_SECRET_KEY=...
+    OBJECT_STORE_STATE_BUCKET=phlio-state   (a second bucket with public access OFF)
     SURREAL_CLOUD_ENDPOINT=wss://<instance>.surreal.cloud
     SURREAL_CLOUD_USER=...            (a root/system user created in Surreal Cloud)
     SURREAL_CLOUD_PASSWORD=...
@@ -31,7 +37,7 @@ to the cloud too.
 Run from ``backend/`` with the local stack started (Start-GraphDemo.ps1):
 
     uv run python -m scripts.publish_local_data            # everything
-    uv run python -m scripts.publish_local_data --only db  # or media / state
+    uv run python -m scripts.publish_local_data --only db  # or media / state / move-state
 """
 from __future__ import annotations
 
@@ -78,11 +84,23 @@ def need(name: str) -> str:
     return value
 
 
-def bucket() -> ObjectStore:
-    """The object storage bucket from OBJECT_STORE_* variables."""
-    return ObjectStore(need("OBJECT_STORE_ENDPOINT"), need("OBJECT_STORE_BUCKET"),
+def bucket(name: str | None = None) -> ObjectStore:
+    """The media bucket from OBJECT_STORE_* variables (or another bucket on the same account)."""
+    return ObjectStore(need("OBJECT_STORE_ENDPOINT"), name or need("OBJECT_STORE_BUCKET"),
                        need("OBJECT_STORE_ACCESS_KEY"), need("OBJECT_STORE_SECRET_KEY"),
                        os.environ.get("OBJECT_STORE_REGION", "auto"))
+
+
+def state_bucket() -> ObjectStore:
+    """The private bucket for DMs, payments and snap photos (OBJECT_STORE_STATE_BUCKET)."""
+    name = os.environ.get("OBJECT_STORE_STATE_BUCKET", "").strip()
+    if not name:
+        sys.exit("Set OBJECT_STORE_STATE_BUCKET in backend/.env.publish: a second R2 bucket with public "
+                 "access turned off. State (DMs, payments, private snaps) must not go into the public "
+                 "media bucket, which anyone can read through MEDIA_PUBLIC_URL.")
+    if name == os.environ.get("OBJECT_STORE_BUCKET", "").strip():
+        sys.exit("OBJECT_STORE_STATE_BUCKET must be a different bucket from OBJECT_STORE_BUCKET.")
+    return bucket(name)
 
 
 def human(n: float) -> str:
@@ -295,8 +313,8 @@ def publish_media(settings: Settings, workers: int) -> None:
 
 
 def publish_state(settings: Settings) -> None:
-    """Uploads SQLite snapshots, DM attachments and snap photos to _state/ in the bucket."""
-    store = bucket()
+    """Uploads SQLite snapshots, DM attachments and snap photos to _state/ in the state bucket."""
+    store = state_bucket()
     try:
         with tempfile.TemporaryDirectory() as tmp:
             for db in state_databases(settings):
@@ -321,11 +339,34 @@ def publish_state(settings: Settings) -> None:
         store.close()
 
 
+def move_state(workers: int) -> None:
+    """Copies _state/ from the public media bucket into the state bucket, then deletes it there."""
+    source, target = bucket(), state_bucket()
+    try:
+        objects = list(source.list(STATE_PREFIX))
+        print(f"Moving {len(objects)} objects from {source.bucket}/{STATE_PREFIX} to {target.bucket} …")
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, obj in enumerate(objects, 1):
+                local = Path(tmp) / "object"
+                if source.get_file(obj.key, local):
+                    target.put_file(obj.key, local)
+                    if target.head(obj.key) != local.stat().st_size:
+                        sys.exit(f"\nCopy of {obj.key} didn't verify; nothing was deleted from the public bucket.")
+                print(f"\r  copied {i}/{len(objects)}", end="", flush=True)
+        print()
+        for obj in objects:
+            source.delete(obj.key)
+        print(f"  removed {len(objects)} objects from the public bucket")
+    finally:
+        source.close()
+        target.close()
+
+
 def main() -> None:
     """Parses arguments and runs the chosen parts."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--only", choices=["db", "media", "state"], action="append",
-                        help="run only these parts (repeatable); default: all three")
+    parser.add_argument("--only", choices=["db", "media", "state", "move-state"], action="append",
+                        help="run only these parts (repeatable); default: db, state and media")
     parser.add_argument("--slim", action="store_true", help="leave event-outbox history out of the database import")
     parser.add_argument("--workers", type=int, default=4, help="parallel media uploads")
     parser.add_argument("--export-only", choices=["2", "3"],
@@ -339,6 +380,8 @@ def main() -> None:
         export_database(settings, surreal, args.slim, v3=args.export_only == "3")
         return
     parts = set(args.only or ["db", "media", "state"])
+    if "move-state" in parts:
+        move_state(args.workers)
     if "db" in parts:
         publish_database(settings, args.slim)
     if "state" in parts:

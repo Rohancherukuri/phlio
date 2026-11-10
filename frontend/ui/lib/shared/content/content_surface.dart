@@ -832,6 +832,10 @@ class _LikerAvatarStack extends StatelessWidget {
   }
 }
 
+/// Share someone's profile (to people, groups, rooms or outside Phlio).
+Future<void> showProfileShare(BuildContext context, String username) =>
+    showContentShare(context, 'profile/$username');
+
 Future<void> showContentShare(BuildContext context, String path) =>
     showModalBottomSheet<void>(
         context: context,
@@ -899,13 +903,21 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
         }
       });
 
+  /// `profile/<username>` shares a profile instead of a piece of content.
+  bool get _isProfile => widget.path.startsWith('profile/');
+  String get _profileName => widget.path.substring('profile/'.length);
+
   Future<Map> _post(String destination,
           {String? target,
           List<String> members = const [],
           String? name}) async =>
       (await getIt<ApiClient>()
               .dio
-              .post('/content/${widget.path}/share', data: {
+              .post(
+                  _isProfile
+                      ? '/profiles/${Uri.encodeComponent(_profileName)}/share'
+                      : '/content/${widget.path}/share',
+                  data: {
         'destination': destination,
         'target': target,
         'members': members,
@@ -994,7 +1006,9 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
     }
   }
 
-  String get link => 'phlio://app/shared/${widget.path}';
+  String get link => _isProfile
+      ? 'phlio://profile/$_profileName'
+      : 'phlio://app/shared/${widget.path}';
   Future<void> external(String action) async {
     try {
       if (action == 'copy') {
@@ -1026,6 +1040,7 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
             sharePositionOrigin: box.localToGlobal(Offset.zero) & box.size));
         if (result.status != ShareResultStatus.success) return;
       }
+      if (_isProfile) return;
       await getIt<ApiClient>()
           .dio
           .put('/content/${widget.path}/actions/shared');
@@ -1313,17 +1328,20 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
                           horizontal: 12, vertical: 14),
                       child: Row(children: [
                         for (final item in [
-                          (
-                            'story',
-                            'Add to story',
-                            Icons.add_circle_outline_rounded
-                          ),
+                          if (!_isProfile)
+                            (
+                              'story',
+                              'Add to story',
+                              Icons.add_circle_outline_rounded
+                            ),
                           ('whatsapp', 'WhatsApp', Icons.chat_outlined),
                           ('copy', 'Copy link', Icons.link_rounded),
                           ('share', 'More', Icons.ios_share_rounded),
-                          ('saved', 'Bookmarks', Icons.bookmark_border_rounded),
-                          if (platformShowsSocialMetrics(
-                              widget.path.split('/').first))
+                          if (!_isProfile)
+                            ('saved', 'Bookmarks', Icons.bookmark_border_rounded),
+                          if (!_isProfile &&
+                              platformShowsSocialMetrics(
+                                  widget.path.split('/').first))
                             ('reposted', 'Reposts', Icons.repeat_rounded)
                         ])
                           SizedBox(
@@ -2038,6 +2056,112 @@ class ContentLibraryScreen extends ConsumerWidget {
                     ]),
             ),
       );
+}
+
+/// Your reposts or bookmarks as a 3-column grid (the profile's Reposts
+/// tab); the same data as Settings → Reposts (`GET /library/{verb}`).
+class ContentLibraryGrid extends ConsumerWidget {
+  const ContentLibraryGrid({super.key, required this.verb});
+  final String verb;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref.watch(contentLibraryProvider(verb)).when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, __) => Center(
+              child: TextButton(
+                  onPressed: () => ref.invalidate(contentLibraryProvider(verb)),
+                  child: const Text('Couldn\'t load. Try again'))),
+          data: (items) {
+            if (items.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(
+                        verb == 'saved'
+                            ? Icons.bookmark_border_rounded
+                            : Icons.repeat_rounded,
+                        size: 40,
+                        color: PhlioColors.textMuted),
+                    const SizedBox(height: 8),
+                    Text(verb == 'saved' ? 'No bookmarks yet' : 'No reposts yet',
+                        style: PhlioTypography.title),
+                    const SizedBox(height: 4),
+                    Text(
+                        verb == 'saved'
+                            ? 'Save something and it lands here.'
+                            : 'Repost something you love and it lands here.',
+                        textAlign: TextAlign.center,
+                        style: PhlioTypography.caption),
+                  ]),
+                ),
+              );
+            }
+            return RefreshIndicator(
+              onRefresh: () => ref.refresh(contentLibraryProvider(verb).future),
+              child: GridView.builder(
+                padding: const EdgeInsets.only(top: 2),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 2,
+                    crossAxisSpacing: 2,
+                    childAspectRatio: 0.8),
+                itemCount: items.length,
+                itemBuilder: (context, i) {
+                  final item = (items[i] as Map).cast<String, dynamic>();
+                  final image = item['image_url'] as String?;
+                  final kind = '${item['kind'] ?? ''}';
+                  final video = kind == 'video' || kind == 'clip';
+                  return GestureDetector(
+                    onTap: () => openSharedContent(
+                        context, ref, '${item['platform']}/${item['ref']}'),
+                    child: Stack(fit: StackFit.expand, children: [
+                      if (image != null && image.isNotEmpty)
+                        Image.network(AppConfig.mediaUrl(image),
+                            fit: BoxFit.cover,
+                            cacheWidth: 360,
+                            errorBuilder: (_, __, ___) =>
+                                const ColoredBox(color: PhlioColors.surfaceElevated))
+                      else
+                        Container(
+                          color: PhlioColors.surfaceElevated,
+                          padding: const EdgeInsets.all(10),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${item['description'] ?? ''}'.trim().isNotEmpty
+                                ? '${item['description']}'
+                                : '${item['title'] ?? ''}',
+                            maxLines: 5,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: PhlioTypography.caption
+                                .copyWith(color: PhlioColors.textPrimary),
+                          ),
+                        ),
+                      const Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Icon(Icons.repeat_rounded,
+                            size: 16, color: Colors.white,
+                            shadows: [Shadow(blurRadius: 4)]),
+                      ),
+                      if (video)
+                        const Positioned(
+                          left: 6,
+                          bottom: 6,
+                          child: Icon(Icons.play_arrow_rounded,
+                              size: 20, color: Colors.white,
+                              shadows: [Shadow(blurRadius: 4)]),
+                        ),
+                    ]),
+                  );
+                },
+              ),
+            );
+          },
+        );
+  }
 }
 
 String formatEngagementCount(num value) {

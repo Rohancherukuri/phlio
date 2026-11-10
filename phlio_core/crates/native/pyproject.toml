@@ -1,0 +1,17 @@
+# Builds `phlio_native` (crates/native) as a Python wheel.
+#
+#   pip install maturin
+#   maturin develop --release -m phlio_core/crates/native/Cargo.toml   # into the active venv
+#   maturin build   --release -m phlio_core/crates/native/Cargo.toml   # wheel in target/wheels
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "phlio-native"
+requires-python = ">=3.9"
+description = "phlio_core (IDs, HMAC, TOTP, risk scoring, brute-force guard) for the Phlio backend"
+
+[tool.maturin]
+features = ["extension-module"]
+profile = "release-native"

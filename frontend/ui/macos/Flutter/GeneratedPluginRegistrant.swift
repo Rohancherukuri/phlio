@@ -15,6 +15,7 @@ import file_selector_macos
 import flutter_secure_storage_macos
 import flutter_webrtc
 import geolocator_apple
+import google_sign_in_ios
 import just_audio
 import livekit_client
 import mobile_scanner
@@ -22,6 +23,7 @@ import photo_manager
 import record_macos
 import rive_common
 import share_plus
+import sign_in_with_apple
 import sqflite_darwin
 import url_launcher_macos
 import video_player_avfoundation
@@ -37,6 +39,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   FlutterSecureStoragePlugin.register(with: registry.registrar(forPlugin: "FlutterSecureStoragePlugin"))
   FlutterWebRTCPlugin.register(with: registry.registrar(forPlugin: "FlutterWebRTCPlugin"))
   GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))
+  FLTGoogleSignInPlugin.register(with: registry.registrar(forPlugin: "FLTGoogleSignInPlugin"))
   JustAudioPlugin.register(with: registry.registrar(forPlugin: "JustAudioPlugin"))
   LiveKitPlugin.register(with: registry.registrar(forPlugin: "LiveKitPlugin"))
   MobileScannerPlugin.register(with: registry.registrar(forPlugin: "MobileScannerPlugin"))
@@ -44,6 +47,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   RecordMacOsPlugin.register(with: registry.registrar(forPlugin: "RecordMacOsPlugin"))
   RivePlugin.register(with: registry.registrar(forPlugin: "RivePlugin"))
   SharePlusMacosPlugin.register(with: registry.registrar(forPlugin: "SharePlusMacosPlugin"))
+  SignInWithApplePlugin.register(with: registry.registrar(forPlugin: "SignInWithApplePlugin"))
   SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
   VideoPlayerPlugin.register(with: registry.registrar(forPlugin: "VideoPlayerPlugin"))

@@ -3,6 +3,12 @@ import '../../shared/moments/moments.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart';
 import '../../features/profile/presentation/widgets/invite_friends.dart';
 import '../../shared/music/song_picker.dart';
+import '../../shared/music/stream_song_picker.dart';
+import '../config/app_config.dart';
+import '../../shared/appearance/appearance.dart';
+import 'package:phlio/shared/content/content_surface.dart'
+    show ContentLibraryGrid, showProfileShare;
+import '../../features/profile/presentation/widgets/profile_editor_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 // Profile — the user's own page, an Instagram/Discord hybrid in Phlio's
 // language:
@@ -32,6 +38,7 @@ import '../../../design_system/typography.dart';
 import '../../../design_system/widgets/phlio_card.dart';
 import '../../../design_system/widgets/phlio_fox.dart';
 import 'account_switcher.dart';
+import 'package:phlio/shared/social/discover_people.dart';
 import '../../features/profile/presentation/widgets/profile_connections.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
@@ -45,6 +52,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with SingleTickerProviderStateMixin {
+  bool _discover = false;
   late final TabController _tabController =
       TabController(length: _tabs.length, vsync: this);
 
@@ -86,7 +94,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     try {
       final song = ref.read(avatarProvider);
       final customPath = song.songPath;
-      if (customPath != null) {
+      final stream = song.streamSong;
+      if (stream != null) {
+        // A Phlio Stream track: the first minute, looping.
+        await _songPlayer
+            .play(UrlSource(AppConfig.mediaUrl('${stream['url']}')));
+        _songPositionSub?.cancel();
+        _songPositionSub = _songPlayer.onPositionChanged.listen((position) {
+          if (position.inSeconds >= 60) _songPlayer.seek(Duration.zero);
+        });
+      } else if (customPath != null) {
         await _songPlayer.play(DeviceFileSource(customPath));
         // Loop inside the selected section, Instagram-style.
         final start = song.songStart;
@@ -257,6 +274,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   String get _songTitle {
     final spotify = ref.watch(selectedSongProvider('profile')).valueOrNull;
     if (spotify != null) return spotify['title'] as String;
+    final stream = ref.read(avatarProvider).streamSong;
+    if (stream != null) return '${stream['title']}';
+    final custom = ref.read(avatarProvider).songPath;
+    if (custom == null) return 'Ambient Sketch — Phlio Original';
+    return custom.split('/').last;
+  }
+
+  /// The song title outside build (no watch).
+  String _songTitleNow() {
+    final spotify = ref.read(selectedSongProvider('profile')).valueOrNull;
+    if (spotify != null) return spotify['title'] as String;
+    final stream = ref.read(avatarProvider).streamSong;
+    if (stream != null) return '${stream['title']}';
     final custom = ref.read(avatarProvider).songPath;
     if (custom == null) return 'Ambient Sketch — Phlio Original';
     return custom.split('/').last;
@@ -266,6 +296,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final spotify = ref.watch(selectedSongProvider('profile')).valueOrNull;
     if (spotify != null) return '${spotify['artist']} · Open in Spotify';
     final song = ref.read(avatarProvider);
+    if (song.streamSong != null) {
+      return '${song.streamSong!['artist']} · Phlio Stream';
+    }
     if (song.songPath == null) return 'My song · 0:16 · loops';
     final length = song.songEnd > song.songStart
         ? (song.songEnd - song.songStart).round()
@@ -274,33 +307,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Future<void> _openSongPicker() async {
-    final source = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.library_music_rounded,
-                  color: PhlioColors.brandOrange),
-              title: const Text('Choose from device'),
-              subtitle: const Text('Pick an audio file'),
-              onTap: () => Navigator.of(sheetContext).pop('device'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.album_rounded,
-                  color: PhlioColors.brandViolet),
-              title: const Text('Spotify'),
-              subtitle: const Text('Connect your account'),
-              onTap: () => Navigator.of(sheetContext).pop('spotify'),
-            ),
-          ],
-        ),
-      ),
-    );
+    final source = await showSongSourceSheet(context);
     if (source == null || !mounted) return;
+    await _applySongSource(source);
+  }
 
+  /// Runs one song source: 'device', 'stream', 'spotify' or 'default'.
+  Future<void> _applySongSource(String source) async {
+    if (!mounted) return;
+    await _songPlayer.stop();
+    if (mounted) setState(() => _songPlaying = false);
+
+    Future<void> clearSpotify() async {
+      try {
+        await ref.read(musicApiProvider).delete('/music/selection',
+            queryParameters: {'context': 'profile'});
+      } catch (_) {}
+      ref.invalidate(selectedSongProvider('profile'));
+    }
+
+    if (source == 'stream' || source == 'default') {
+      final picked =
+          source == 'stream' ? await showStreamSongPicker(context) : null;
+      if (source == 'stream' && picked == null) return;
+      final avatar = ref.read(avatarProvider.notifier);
+      if (picked != null) {
+        await avatar.setStreamSong(picked);
+      } else {
+        await avatar.resetSong();
+      }
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile song updated.')));
+      unawaited(clearSpotify()); // in the background; keeps the UI quick
+      return;
+    }
+    await _applySongSourceRest(source);
+  }
+
+  Future<void> _applySongSourceRest(String source) async {
     if (source == 'spotify') {
       final selected = await showSongPicker(context);
       if (selected != null && mounted) {
@@ -322,10 +368,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     try {
       final path = await ref.read(avatarProvider.notifier).pickSong();
       if (path == null || !mounted) return;
-      await ref
+      // Clear a Spotify pick in the background (no wait before the trim).
+      unawaited(ref
           .read(musicApiProvider)
-          .delete('/music/selection', queryParameters: {'context': 'profile'});
-      ref.invalidate(selectedSongProvider('profile'));
+          .delete('/music/selection', queryParameters: {'context': 'profile'})
+          .then((_) => ref.invalidate(selectedSongProvider('profile')))
+          .catchError((_) {}));
       // If the previous song is playing, switch playback off for the trim.
       if (_songPlaying) {
         await _songPlayer.stop();
@@ -337,7 +385,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       final durationFuture = probe.onDurationChanged.first;
       await probe.setSource(DeviceFileSource(path));
       final duration = await durationFuture.timeout(
-        const Duration(seconds: 3),
+        const Duration(milliseconds: 1500),
         onTimeout: () => const Duration(seconds: 30),
       );
       await probe.stop();
@@ -346,6 +394,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       if (!mounted) return;
       final section = await showModalBottomSheet<(double, double)>(
         context: context,
+        useRootNavigator: true,
         isScrollControlled: true,
         builder: (_) => _SongTrimSheet(filePath: path, duration: duration),
       );
@@ -368,12 +417,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     }
   }
 
-  void _comingSoon(BuildContext context, String what) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$what — coming soon.')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider).valueOrNull;
@@ -382,9 +425,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final myPosts =
         ref.watch(profilePostsProvider(user.username)).valueOrNull ?? [];
     final profile = ref.watch(publicProfileProvider(user.username));
+    // The profile's look (Edit profile → background, wallpaper, effects).
+    final look =
+        ref.watch(myAppearanceProvider).valueOrNull ?? Appearance.plain;
+    final styled = !look.isPlain;
 
     return Scaffold(
+      extendBodyBehindAppBar: styled,
+      backgroundColor: PhlioColors.background,
       appBar: AppBar(
+        backgroundColor: styled ? Colors.transparent : null,
+        surfaceTintColor: styled ? Colors.transparent : null,
+        flexibleSpace: styled
+            ? const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x99000000), Color(0x00000000)],
+                  ),
+                ),
+              )
+            : null,
         centerTitle: true,
         leading: Row(children: [
           IconButton(
@@ -404,6 +466,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 onTap: () => showAccountSwitcher(context),
                 borderRadius: BorderRadius.circular(12),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  // Lock = private account (no lock = public).
+                  if (ref.watch(accountPrivateProvider).valueOrNull == true)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 4),
+                      child: Tooltip(
+                        message: 'Private account',
+                        child: Icon(Icons.lock_rounded, size: 16),
+                      ),
+                    ),
                   Flexible(
                       child: Text(user.username,
                           style: PhlioTypography.title,
@@ -423,10 +494,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
+      body: AppearanceBackdrop(
+        appearance: look,
+        child: ListView(
+        padding: EdgeInsets.fromLTRB(
           PhlioSpacing.lg,
-          PhlioSpacing.sm,
+          PhlioSpacing.sm +
+              (styled
+                  ? MediaQuery.paddingOf(context).top + kToolbarHeight
+                  : 0),
           PhlioSpacing.lg,
           PhlioSpacing.xxl,
         ),
@@ -619,7 +695,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => _comingSoon(context, 'Edit profile'),
+                  onPressed: () => openProfileEditor(
+                    context,
+                    songTitle: _songTitle,
+                    onPickSong: (source) async {
+                      await _applySongSource(source);
+                      if (!mounted) return null;
+                      if (source == 'spotify') {
+                        try {
+                          await ref
+                              .read(selectedSongProvider('profile').future);
+                        } catch (_) {}
+                      }
+                      return mounted ? _songTitleNow() : null;
+                    },
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: PhlioColors.border),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -633,7 +723,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               const SizedBox(width: PhlioSpacing.md),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => _comingSoon(context, 'Share profile'),
+                  onPressed: () => showProfileShare(context, user.username),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: PhlioColors.border),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -644,7 +734,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       Text('Share profile', style: PhlioTypography.bodyStrong),
                 ),
               ),
+              const SizedBox(width: PhlioSpacing.sm),
+              // Discover people (globe): suggestion cards open below.
+              DiscoverToggleButton(
+                open: _discover,
+                height: 46,
+                onTap: () => setState(() => _discover = !_discover),
+              ),
             ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _discover
+                ? const DiscoverPeoplePanel()
+                : const SizedBox(width: double.infinity),
           ),
           const SizedBox(height: PhlioSpacing.xl),
 
@@ -663,11 +768,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               controller: _tabController,
               children: [
                 ProfilePosts(author: user.username, type: _postsSubTab),
-                _emptyContent(
-                  icon: Icons.repeat_rounded,
-                  message: 'No reposts yet',
-                  hint: 'Repost something you love and it lands here.',
-                ),
+                // Same list as Settings → Reposts.
+                const ContentLibraryGrid(verb: 'reposted'),
                 _emptyContent(
                   icon: Icons.schedule_rounded,
                   message: 'Nothing scheduled',
@@ -678,6 +780,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ),
           ),
         ],
+      ),
       ),
     );
   }

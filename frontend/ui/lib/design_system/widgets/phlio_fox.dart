@@ -1,47 +1,52 @@
 import 'foxy_stickers.dart';
 // Phlio design system — Foxy, the product mascot.
 //
-// Foxy is a curious orange fox with pilot goggles and a knit scarf: the
-// face of Phlio Agent and the warmth across onboarding. All artwork is
-// bundled under `assets/images/foxy/` (poses), `assets/stickers/`
-// (expression stickers) and `assets/animations/` (looping GIFs), generated
-// from the brand pose sheet.
+// Foxy (v2 art: blue button shorts, cream tufts) is the face of Phlio
+// Agent and the warmth across onboarding and empty states. Static poses
+// live in `assets/images/foxy/`; the rigged live puppet in
+// `assets/foxy_puppet/` (see foxy_puppet.dart).
 //
-// [PhlioFox] renders a static pose; [PhlioFoxLoop] renders a looping
-// GIF (Flutter plays animated GIFs natively via Image.asset); [PhlioSticker]
-// is the chat sticker catalog.
+// [PhlioFox] shows a pose: live and rigged (blinks, ear twitches, tail
+// wag, tap to hop) when `animate` is on and the pose is rigged, otherwise
+// the static art with a gentle bob. [PhlioFoxAnimation] plays a looping act
+// on the puppet. [PhlioStickers] is the chat sticker catalog.
 
 import 'package:flutter/material.dart';
 import '../colors.dart';
+import 'foxy_puppet.dart';
 
-/// Static poses extracted from the brand pose sheet.
+/// Foxy's poses. [act] is the live puppet act for rigged poses.
 enum PhlioFoxPose {
-  happy('assets/images/foxy/foxy_happy.png'),
-  explorer('assets/images/foxy/foxy_explorer.png'),
+  happy('assets/images/foxy/foxy_happy.png', FoxyAct.happy),
+  explorer('assets/images/foxy/foxy_explorer.png', FoxyAct.ready),
   cozy('assets/images/foxy/foxy_cozy.png'),
-  adventurous('assets/images/foxy/foxy_adventurous.png'),
-  sleepy('assets/images/foxy/foxy_sleepy.png'),
-  focused('assets/images/foxy/foxy_focused.png'),
+  adventurous('assets/images/foxy/foxy_adventurous.png', FoxyAct.ready),
+  sleepy('assets/images/foxy/foxy_sleepy.png', FoxyAct.sleep),
+  focused('assets/images/foxy/foxy_focused.png', FoxyAct.think),
   coffee('assets/images/foxy/foxy_coffee.png'),
-  curious('assets/images/foxy/foxy_curious.png'),
-  hello('assets/images/foxy/foxy_hello.png'),
-  journey('assets/images/foxy/foxy_journey.png');
+  curious('assets/images/foxy/foxy_curious.png', FoxyAct.phone),
+  hello('assets/images/foxy/foxy_hello.png', FoxyAct.idle),
+  journey('assets/images/foxy/foxy_journey.png', FoxyAct.ready),
 
-  const PhlioFoxPose(this.assetPath);
+  /// Head-and-shoulders crop for small avatars (app bars, chat).
+  face('assets/images/foxy/foxy_face.png');
+
+  const PhlioFoxPose(this.assetPath, [this.act]);
   final String assetPath;
+  final FoxyAct? act;
 }
 
-/// Looping mascot animations (animated GIF assets).
+/// Looping mascot animations, played live on the rigged puppet.
 enum PhlioFoxLoop {
-  wave('assets/animations/foxy_wave.gif'),
-  think('assets/animations/foxy_think.gif'),
-  sleep('assets/animations/foxy_sleep.gif'),
-  celebrate('assets/animations/foxy_celebrate.gif'),
-  explore('assets/animations/foxy_explore.gif'),
-  moods('assets/animations/foxy_moods.gif');
+  wave(FoxyAct.wave),
+  think(FoxyAct.think),
+  sleep(FoxyAct.sleep),
+  celebrate(FoxyAct.cheer),
+  explore(FoxyAct.ready),
+  moods(FoxyAct.love);
 
-  const PhlioFoxLoop(this.assetPath);
-  final String assetPath;
+  const PhlioFoxLoop(this.act);
+  final FoxyAct act;
 }
 
 /// A gentle idle bob so static poses feel alive without a full GIF.
@@ -107,6 +112,20 @@ class PhlioFox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final act = pose.act;
+    if (animate && act != null) {
+      // Live, rigged Foxy. The puppet canvas is square; he fills ~85% of
+      // its height, so it is sized up slightly to match the static art.
+      return SizedBox(
+        height: size,
+        width: size,
+        child: OverflowBox(
+          maxWidth: size * 1.15,
+          maxHeight: size * 1.15,
+          child: FoxyPuppet(act: act, size: size * 1.15, entrance: false),
+        ),
+      );
+    }
     final image = Image.asset(
       pose.assetPath,
       height: size,
@@ -122,6 +141,43 @@ class PhlioFox extends StatelessWidget {
   }
 }
 
+/// Foxy's face in a soft brand-tinted circle — for app bars, chat rows
+/// and anywhere he needs to read at avatar size.
+class FoxyAvatar extends StatelessWidget {
+  const FoxyAvatar({super.key, this.size = 36});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            PhlioColors.brandOrange.withValues(alpha: 0.30),
+            PhlioColors.brandOrange.withValues(alpha: 0.10),
+          ],
+        ),
+        border: Border.all(
+            color: PhlioColors.brandOrange.withValues(alpha: 0.45), width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset(
+        PhlioFoxPose.face.assetPath,
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.2),
+        filterQuality: FilterQuality.high,
+        errorBuilder: (_, __, ___) => _FoxyPlaceholder(size: size),
+      ),
+    );
+  }
+}
+
 class PhlioFoxAnimation extends StatelessWidget {
   const PhlioFoxAnimation({
     super.key,
@@ -133,15 +189,8 @@ class PhlioFoxAnimation extends StatelessWidget {
   final PhlioFoxLoop animation;
 
   @override
-  Widget build(BuildContext context) {
-    return Image.asset(
-      animation.assetPath,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (_, __, ___) => _FoxyPlaceholder(size: size),
-    );
-  }
+  Widget build(BuildContext context) =>
+      FoxyPuppet(act: animation.act, size: size, entrance: false);
 }
 
 /// Compact fallback shown if a Foxy asset ever fails to load.
