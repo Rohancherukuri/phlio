@@ -17,6 +17,15 @@ exactly as they do for a real Space:
 
 Run: uv run python -m scripts.run_seeded_spaces [--listeners 5] [--live 6]
 (Start-GraphDemo.ps1 starts it in the background when LiveKit is set up.)
+
+Cloud (the Render deploy): add --cloud to write to Surreal Cloud and upload
+recordings to the R2 bucket, with the credentials from backend/.env.publish
+(SURREAL_CLOUD_*, OBJECT_STORE_*). Live rooms also need the deploy's LiveKit
+server there (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET); without it,
+--cloud seeds the recorded Spaces and exits:
+
+    uv run python -m scripts.run_seeded_spaces --cloud              # recordings (+ live if LiveKit set)
+    uv run python -m scripts.run_seeded_spaces --cloud --recordings-only
 Only demo accounts (is_test_user) ever take part.
 """
 import argparse
@@ -250,12 +259,86 @@ async def seed_recordings(c: Any, specs: list[Spec], seed_dir: Path, people: dic
         log.info('Seeded recording: %s', spec['title'])
 
 
+def cloud_settings() -> Any:
+    """Settings for the deployed stack, from backend/.env.publish."""
+    from app.config import Settings
+    publish_env = ROOT / '.env.publish'
+    if publish_env.exists():  # KEY=VALUE lines; real environment variables win
+        for line in publish_env.read_text(encoding='utf-8').splitlines():
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                name, value = line.split('=', 1)
+                os.environ.setdefault(name.strip(), value.strip().strip('"').strip("'"))
+
+    def need(name: str) -> str:
+        value = os.environ.get(name, '').strip()
+        if not value:
+            raise SystemExit(f'Set {name} in backend/.env.publish for --cloud.')
+        return value
+
+    endpoint = need('SURREAL_CLOUD_ENDPOINT').replace('https://', 'wss://').replace('http://', 'ws://')
+    env = os.environ.get
+    return Settings(
+        database_backend='surreal',
+        surreal_url=endpoint.removesuffix('/rpc') + '/rpc',
+        surreal_user=need('SURREAL_CLOUD_USER'),
+        surreal_password=need('SURREAL_CLOUD_PASSWORD'),
+        surreal_namespace=env('SURREAL_CLOUD_NAMESPACE') or settings.surreal_namespace,
+        surreal_database=env('SURREAL_CLOUD_DATABASE') or settings.surreal_database,
+        redis_enabled=False,
+        social_video_database=settings.social_video_database,
+        messaging_database=settings.messaging_database,
+        object_store_endpoint=need('OBJECT_STORE_ENDPOINT'),
+        object_store_bucket=need('OBJECT_STORE_BUCKET'),
+        object_store_access_key=need('OBJECT_STORE_ACCESS_KEY'),
+        object_store_secret_key=need('OBJECT_STORE_SECRET_KEY'),
+        livekit_url=env('LIVEKIT_URL', ''),
+        livekit_api_url=env('LIVEKIT_API_URL', ''),
+        livekit_api_key=env('LIVEKIT_API_KEY', ''),
+        livekit_api_secret=env('LIVEKIT_API_SECRET', ''),
+    )
+
+
+class RecordingUploader:
+    """--cloud: copies new files in media/space_recordings to the bucket, so
+    the deployed API can serve the recordings it finds in the database."""
+
+    def __init__(self, s: Any) -> None:
+        from app.infrastructure.media_sync import store_from_settings
+        self.store = store_from_settings(s)
+        self.folder = media_root_path(s) / 'space_recordings'
+        self.done: dict[Path, int] = {}
+
+    def run_once(self) -> int:
+        if self.store is None or not self.folder.exists():
+            return 0
+        sent = 0
+        for path in sorted(self.folder.iterdir()):
+            if not path.is_file() or path.name.endswith('.part') or time.time() - path.stat().st_mtime < 5:
+                continue
+            size = path.stat().st_size
+            if self.done.get(path) == size:
+                continue
+            self.store.put_file('space_recordings/' + path.name, path)
+            self.done[path] = size
+            sent += 1
+        if sent:
+            log.info('Uploaded %d recording file(s) to the bucket', sent)
+        return sent
+
+    def close(self) -> None:
+        if self.store is not None:
+            self.store.close()
+
+
 async def main(args: argparse.Namespace) -> None:
     """Keeps `--live` seeded Spaces running, rotating one every few minutes."""
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
-    c = await build_container(settings)
+    c = await build_container(cloud_settings() if args.cloud else settings)
     s = c.settings
-    if not all((s.livekit_url, s.livekit_api_key, s.livekit_api_secret)):
+    uploader = RecordingUploader(s) if args.cloud else None
+    has_livekit = all((s.livekit_url, s.livekit_api_key, s.livekit_api_secret))
+    if not has_livekit and not args.cloud:
         raise SystemExit('LiveKit is not configured (run scripts/Start-Realtime.ps1 -Install).')
     seed_dir = media_root_path(s) / 'spaces_seed'
     specs = json.loads((seed_dir / 'spaces.json').read_text(encoding='utf-8'))
@@ -267,7 +350,21 @@ async def main(args: argparse.Namespace) -> None:
     specs = [sp for sp in specs if all(ident in people for ident, _ in sp['cast'].values())]
     if not specs:
         raise SystemExit('Seed the community accounts first (Start-GraphDemo.ps1 -Seed).')
-    pid = ROOT / 'data' / 'seeded-spaces.pid'
+    if args.recordings_only or not has_livekit:
+        # Cloud without LiveKit: the recorded Spaces only.
+        try:
+            await seed_recordings(c, specs, seed_dir, people)
+            # Files written just now are skipped for a few seconds; wait them out.
+            await asyncio.sleep(6)
+            uploader.run_once() if uploader else None
+            log.info('Recorded Spaces are in place%s.', ' (no LiveKit set, so no live rooms)'
+                     if not has_livekit else '')
+        finally:
+            if uploader:
+                uploader.close()
+            await c.cache.close()
+        return
+    pid = ROOT / 'data' / ('seeded-spaces-cloud.pid' if args.cloud else 'seeded-spaces.pid')
     pid.write_text(str(os.getpid()))
     lk = api.LiveKitAPI(s.livekit_api_url or s.livekit_url, s.livekit_api_key, s.livekit_api_secret)
     rnd = random.Random()
@@ -308,6 +405,9 @@ async def main(args: argparse.Namespace) -> None:
                     continue
                 live[key] = space
                 ends[key] = now + rnd.uniform(args.min_minutes, args.max_minutes) * 60
+            if uploader and int(now) % 30 < 5:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(uploader.run_once)
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(stop.wait(), 5)
     finally:
@@ -315,6 +415,11 @@ async def main(args: argparse.Namespace) -> None:
             with contextlib.suppress(Exception):
                 await space.close()
         await lk.aclose()
+        if uploader:
+            with contextlib.suppress(Exception):
+                await asyncio.sleep(6)
+                uploader.run_once()
+            uploader.close()
         pid.unlink(missing_ok=True)
         await c.cache.close()
 
@@ -325,5 +430,9 @@ if __name__ == '__main__':
     parser.add_argument('--live', type=int, default=6, help='Spaces live at once')
     parser.add_argument('--min-minutes', type=float, default=20)
     parser.add_argument('--max-minutes', type=float, default=45)
+    parser.add_argument('--cloud', action='store_true',
+                        help='use Surreal Cloud + R2 (+ LiveKit) from backend/.env.publish')
+    parser.add_argument('--recordings-only', action='store_true',
+                        help='seed the recorded Spaces and exit (no live rooms)')
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(main(parser.parse_args()))

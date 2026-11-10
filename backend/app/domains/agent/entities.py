@@ -48,3 +48,5 @@ class AgentMessage:
     text: str
     plan: AgentPlan | None = None
     created_at: dt.datetime = field(default_factory=lambda: dt.datetime.now(dt.UTC))
+    # AgentAttachment records (app/domains/agent/attachments.py) the user sent.
+    attachments: list = field(default_factory=list)

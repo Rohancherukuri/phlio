@@ -8,14 +8,23 @@
 //     lifetime — it just gets a `401 Failure` if refreshing also fails,
 //     which is the app's true "please log in again" signal.
 //
+// It also owns response caching and connection reuse (see
+// `response_cache.dart`): duplicate concurrent GETs are merged, feeds paint
+// instantly from the last session's copy while a slow server wakes up, and
+// keep-alive connections are reused across a session's requests.
+//
 // Data sources (see e.g. `features/social/data/datasources`) depend on
 // `ApiClient` and call `apiClient.dio.get(...)` directly — this class does
 // not wrap every HTTP verb, it only owns cross-cutting request behaviour.
 
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import '../../app/config/app_config.dart';
 import '../logging/app_logger.dart';
 import '../storage/token_storage.dart';
+import 'response_cache.dart';
 
 final _logger = createLogger('phlio.api');
 
@@ -49,9 +58,25 @@ class ApiClient {
           BaseOptions(
             baseUrl: AppConfig.apiBaseUrl,
             connectTimeout: const Duration(seconds: 15),
-            receiveTimeout: const Duration(seconds: 15),
+            // A free-tier server that was asleep answers its first request
+            // only once it has booted (30-60 s). Lists show their cached copy
+            // meanwhile (response_cache.dart), so waiting is invisible there.
+            receiveTimeout: const Duration(seconds: 45),
           ),
         ) {
+    // Reuse TCP+TLS connections between requests (a new TLS handshake to a
+    // distant server costs 2-3 round trips). 25 s stays under the server's
+    // 30 s keep-alive so we never write to a socket it is about to close.
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () => HttpClient()
+        ..idleTimeout = const Duration(seconds: 25)
+        ..maxConnectionsPerHost = 6,
+    );
+    // First interceptor: answers from the cache / merges duplicates before
+    // any auth work happens. Its own network call re-enters the chain below.
+    cache = ResponseCache(dio, session: () => _tokenStorage.accessToken);
+    dio.interceptors.add(cache);
+    _tokenStorage.addClearListener(cache.clear);
     dio.interceptors.add(
       InterceptorsWrapper(onRequest: _onRequest, onError: _onError),
     );
@@ -82,6 +107,9 @@ class ApiClient {
 
   final Dio dio;
   final Dio _refreshClient;
+
+  /// Response cache in front of [dio]; `clear()` wipes it (done on sign-out).
+  late final ResponseCache cache;
   final TokenStorage _tokenStorage;
 
   /// Invoked when a request fails auth *and* refreshing the token also
@@ -90,6 +118,17 @@ class ApiClient {
   void Function()? onSessionExpired;
 
   bool _isRefreshing = false;
+
+  /// Sends a throwaway request to `/health` so a sleeping server starts
+  /// booting while the app is still drawing its first frame. Never throws.
+  Future<void> wakeServer() async {
+    try {
+      await _refreshClient.get<dynamic>('${AppConfig.apiOrigin}/health',
+          options: Options(receiveTimeout: const Duration(seconds: 90)));
+    } catch (_) {
+      // Offline or still booting: the real requests will retry.
+    }
+  }
 
   Future<void> _onRequest(
       RequestOptions options, RequestInterceptorHandler handler,) async {
@@ -123,6 +162,24 @@ class ApiClient {
         !(request.cancelToken?.isCancelled ?? false)) {
       request.extra['login_retry'] = true;
       await Future<void>.delayed(const Duration(milliseconds: 800));
+      try {
+        handler.resolve(await dio.fetch(request));
+      } on DioException catch (retryError) {
+        handler.next(retryError);
+      }
+      return;
+    }
+    // Idempotent reads get one automatic retry on a dropped connection, a
+    // timeout or a gateway error (502/503/504: the host is restarting or
+    // waking up), so a brief blip doesn't surface as "can't reach Phlio".
+    final status = error.response?.statusCode ?? 0;
+    final retryable = transient || status == 502 || status == 503 || status == 504;
+    if (request.method.toUpperCase() == 'GET' &&
+        retryable &&
+        request.extra['net_retry'] != true &&
+        !(request.cancelToken?.isCancelled ?? false)) {
+      request.extra['net_retry'] = true;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
       try {
         handler.resolve(await dio.fetch(request));
       } on DioException catch (retryError) {

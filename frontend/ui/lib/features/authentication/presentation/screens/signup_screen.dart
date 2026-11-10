@@ -330,6 +330,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           email: _email.text.trim(),
           password: _password.text,
           phoneNumber: _phoneNumber,
+          country: _country.countryCode,
           dateOfBirth: _birthday?.toIso8601String().split('T').first,
           interests: _interests.map((i) => i.toLowerCase()).toList(),
         );
@@ -370,8 +371,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   }
 
   void _finish() {
+    // First time in: Foxy's tour of the important buttons, then home.
+    context.go('/tour');
     SignupScreen.holdForOnboarding.value = false;
-    context.go('/home');
   }
 
   Future<void> _pickPhoto() async {
@@ -461,6 +463,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     switch (_current) {
       case _Step.intro:
         return FoxyAct.wave;
+      case _Step.contact:
+      case _Step.email:
+        return FoxyAct.phone;
       case _Step.password:
         final typing = _password.text.isNotEmpty || _passwordFocus.hasFocus;
         return typing && _obscure ? FoxyAct.peek : FoxyAct.idle;

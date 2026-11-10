@@ -13,13 +13,16 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.api.deps import get_container, get_current_user, get_identity_service
 from app.core.container import Container
 from app.domains.identity.entities import User
+from app.common.exceptions import UnauthorizedError
 from app.domains.identity.service import IdentityService
+from app.infrastructure.security import guard
+from app.infrastructure.security.guard import client_ip
 from app.infrastructure.security.jwt import TokenPair, decode_token, issue_token_pair
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -33,6 +36,12 @@ class RegisterRequest(BaseModel):
     interests: list[str] = Field(default_factory=list, max_length=20)
     date_of_birth: dt.date | None = None
     phone_number: str | None = None
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+
+    @field_validator("country")
+    @classmethod
+    def upper_country(cls, value):
+        return value.upper() if value else None
 
     @field_validator("date_of_birth")
     @classmethod
@@ -53,8 +62,10 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    identifier: str = Field(description="Username, email, or international phone number.")
-    password: str
+    identifier: str = Field(max_length=254, description="Username, email, or international phone number.")
+    # Upper bound keeps one request from making the password hash do
+    # unbounded work (bcrypt/argon2 cost grows with input on some backends).
+    password: str = Field(max_length=256)
 
 
 class RefreshRequest(BaseModel):
@@ -75,6 +86,7 @@ class UserResponse(BaseModel):
     is_test_user: bool = False
     date_of_birth: dt.date | None = None
     phone_number: str | None = None
+    country: str | None = None
 
     @classmethod
     def from_entity(cls, user: User) -> UserResponse:
@@ -92,6 +104,7 @@ class UserResponse(BaseModel):
             is_test_user=user.is_test_user,
             date_of_birth=user.date_of_birth,
             phone_number=user.phone_number,
+            country=user.country,
         )
 
 
@@ -128,16 +141,35 @@ async def register(
         interests=body.interests,
         date_of_birth=body.date_of_birth,
         phone_number=body.phone_number,
+        country=body.country,
     )
     return AuthResponse(user=UserResponse.from_entity(user), tokens=TokenResponse.from_token_pair(tokens))
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login")
 async def login(
-    body: LoginRequest, identity_service: IdentityService = Depends(get_identity_service)
-) -> AuthResponse:
-    user, tokens = await identity_service.authenticate(identifier=body.identifier, password=body.password)
-    return AuthResponse(user=UserResponse.from_entity(user), tokens=TokenResponse.from_token_pair(tokens))
+    body: LoginRequest,
+    request: Request,
+    identity_service: IdentityService = Depends(get_identity_service),
+    container: Container = Depends(get_container),
+):
+    """Tokens, or ``{"two_factor_required": true, "challenge": …}`` when the
+    account has two-factor authentication on (finish with /auth/2fa/verify).
+
+    Brute-force protected: repeated wrong passwords lock the account and the
+    client IP for a growing period (429 + Retry-After), checked before the
+    password hash is computed. See app/infrastructure/security/guard.py."""
+    from app.api.v1.auth_security import session_or_challenge
+
+    ip = client_ip(request)
+    guard.login_guard.check(body.identifier, ip)
+    try:
+        user, _ = await identity_service.authenticate(identifier=body.identifier, password=body.password)
+    except UnauthorizedError:
+        guard.login_guard.failed(body.identifier, ip)
+        raise
+    guard.login_guard.succeeded(body.identifier)
+    return await session_or_challenge(container, user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -153,3 +185,39 @@ async def refresh(body: RefreshRequest, container: Container = Depends(get_conta
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.from_entity(current_user)
+
+
+class CountryRequest(BaseModel):
+    country: str = Field(pattern=r"^[A-Za-z]{2}$")
+
+
+@router.put("/me/country", response_model=UserResponse)
+async def set_country(
+    body: CountryRequest,
+    current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
+) -> UserResponse:
+    """Sets the account's country (decides the Phlio Pay currency)."""
+    current_user.country = body.country.upper()
+    updated = await container.identity_repository.update_user(current_user)
+    return UserResponse.from_entity(updated)
+
+
+class ProfileRequest(BaseModel):
+    bio: str | None = Field(default=None, max_length=150)
+    full_name: str | None = Field(default=None, min_length=1, max_length=60)
+
+
+@router.put("/me/profile", response_model=UserResponse)
+async def update_profile(
+    body: ProfileRequest,
+    current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
+) -> UserResponse:
+    """Edits the profile text: bio (up to 150 characters) and display name."""
+    if body.bio is not None:
+        current_user.bio = body.bio.strip()
+    if body.full_name is not None and body.full_name.strip():
+        current_user.full_name = body.full_name.strip()
+    updated = await container.identity_repository.update_user(current_user)
+    return UserResponse.from_entity(updated)

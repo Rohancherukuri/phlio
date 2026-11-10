@@ -29,6 +29,8 @@ class User:
     phone_number: str | None = None
     is_creator: bool = False
     is_test_user: bool = False
+    # ISO 3166 alpha-2, chosen at sign-up (decides the Pay currency).
+    country: str | None = None
 
     def public_profile(self) -> PublicProfile:
         return PublicProfile(

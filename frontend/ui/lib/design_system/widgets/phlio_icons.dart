@@ -9,7 +9,9 @@ import 'package:flutter/material.dart';
 
 abstract final class PhlioIcons {
   /// Paper-plane send/share. Never pass to a plain [Icon]; use [PhlioIcon].
-  static const IconData send = IconData(0xF8FF, fontFamily: 'PhlioGlyphs');
+  // MaterialIcons family (bundled) so release builds don't warn about a
+  // missing 'PhlioGlyphs' font; the private-use code point is never drawn.
+  static const IconData send = IconData(0xF8FF, fontFamily: 'MaterialIcons');
 }
 
 /// Drop-in replacement for [Icon] that also draws Phlio's custom glyphs.

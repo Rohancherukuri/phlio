@@ -12,6 +12,13 @@
 #                         other crate in the workspace.
 #   crates/crypto         Signing, verification and secure ID generation.
 #   crates/risk_features   Deterministic fraud/risk scoring primitives.
+#   crates/guard          Brute-force throttling (sign-in / 2FA lockouts).
+#   crates/native         `phlio_native`: the crates above as an in-process
+#                          Python extension (PyO3). The backend calls it
+#                          directly — no subprocess per call — and falls back
+#                          to the CLI, then to pure Python (see
+#                          backend/app/infrastructure/core_engine). Build with
+#                          `maturin develop --release -m crates/native/Cargo.toml`.
 #   cli                    A thin binary that exposes the crates above as a
 #                          JSON-in / JSON-out command line tool, which the
 #                          Python backend invokes as a local sidecar process
@@ -27,6 +34,18 @@ members = [
     "crates/common",
     "crates/crypto",
     "crates/risk_features",
+    "crates/guard",
+    "crates/native",
+    "cli",
+]
+# Plain `cargo build` / `cargo test` skip the Python extension: building it
+# needs a Python interpreter (PyO3's build script), which the CLI and the pure
+# Rust crates don't. Build it explicitly with `-p phlio-native` or maturin.
+default-members = [
+    "crates/common",
+    "crates/crypto",
+    "crates/risk_features",
+    "crates/guard",
     "cli",
 ]
 
@@ -41,3 +60,12 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# The Python extension must unwind on panic: PyO3 turns a Rust panic into a
+# Python `PanicException` instead of aborting the whole API process, which is
+# what `panic = "abort"` above would do. Build it with
+# `cargo build --profile release-native -p phlio-native` (or maturin, which
+# reads `[tool.maturin] profile` in crates/native/pyproject.toml).
+[profile.release-native]
+inherits = "release"
+panic = "unwind"

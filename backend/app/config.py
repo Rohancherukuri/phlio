@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -79,8 +79,17 @@ class Settings(BaseSettings):
     object_store_access_key: str = Field(default="", repr=False)
     object_store_secret_key: str = Field(default="", repr=False)
     object_store_region: str = "auto"
+    # A second, PRIVATE bucket for state (SQLite databases with DMs and
+    # payments, DM attachments, snap photos). The media bucket is public
+    # (MEDIA_PUBLIC_URL), and a public r2.dev bucket serves every object in it,
+    # so state must not live there. Same endpoint and keys as the media bucket.
+    object_store_state_bucket: str = ""
     media_public_url: str = ""
     state_sync_interval: float = 60  # seconds between backups to the bucket
+    # Free hosting sleeps after 15 idle minutes; see app/infrastructure/keep_awake.py.
+    keep_awake: bool = False
+    keep_awake_url: str = ""  # default: RENDER_EXTERNAL_URL (set by Render)
+    keep_awake_interval: float = 600
 
     social_video_database: str = 'data/social_videos.sqlite3'
     messaging_database: str = 'data/messages.sqlite3'
@@ -95,6 +104,20 @@ class Settings(BaseSettings):
 
     # --- Auth --------------------------------------------------------------
     jwt_secret: str = "dev-only-change-me-dev-only-change-me"
+    # Sign in with Google / Apple: the OAuth client ids whose ID tokens we
+    # accept (comma separated). Google: the web client id the app passes as
+    # serverClientId (plus the iOS client id). Apple: the app's bundle id
+    # (iOS) and the Services ID (Android / web).
+    google_client_ids: str = ""
+    apple_client_ids: str = ""
+    # Also accepted (merged into the lists above), so the ids can be set
+    # under the same names the app uses.
+    google_server_client_id: str = ""
+    google_ios_client_id: str = ""
+    apple_ios_bundle_id: str = ""
+    apple_service_id: str = ""
+    # Android package, for the Sign in with Apple web-flow callback redirect.
+    android_package_name: str = "com.example.phlio"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
@@ -119,6 +142,13 @@ class Settings(BaseSettings):
     # --- CORS ----------------------------------------------------------------
     cors_allow_origins: str = "http://localhost:3000"
 
+    # --- Hardening (see app/middleware/security.py) ---------------------------
+    # JSON/form bodies above this are rejected with 413 (uploads are exempt).
+    max_json_body_bytes: int = 4 * 1024 * 1024
+    # Swagger UI / ReDoc / openapi.json. Unset = on everywhere except
+    # production; set API_DOCS_ENABLED=true to expose them in production.
+    api_docs_enabled: bool | None = None
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
@@ -126,6 +156,30 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def docs_enabled(self) -> bool:
+        return self.api_docs_enabled if self.api_docs_enabled is not None else not self.is_production
+
+    @model_validator(mode="after")
+    def _refuse_insecure_production(self) -> "Settings":
+        """Fail fast instead of serving production with a guessable JWT key.
+
+        Anyone who knows the signing secret can mint access tokens for any
+        account, so the development default (which is public in this repo)
+        or a short secret must never reach production. Render's blueprint
+        generates a random JWT_SECRET, so deployments there pass this check.
+        """
+        if self.is_production:
+            if self.jwt_secret == "dev-only-change-me-dev-only-change-me" or len(self.jwt_secret) < 32:
+                raise ValueError(
+                    "JWT_SECRET must be set to a random value of at least 32 characters in "
+                    "production (e.g. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`)."
+                )
+            if self.debug:
+                # DEBUG would expose stack traces; production always runs without it.
+                object.__setattr__(self, "debug", False)
+        return self
 
 
 @lru_cache

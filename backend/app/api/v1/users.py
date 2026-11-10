@@ -26,6 +26,8 @@ class PublicProfileResponse(BaseModel):
     followers: int = 0
     following: int = 0
     post_count: int = 0
+    # Private account: a lock on the profile; only followers see its posts.
+    is_private: bool = False
 
     @classmethod
     def from_entity(cls, profile: PublicProfile) -> PublicProfileResponse:
@@ -48,6 +50,9 @@ async def get_public_profile(
 ) -> PublicProfileResponse:
     profile = await identity_service.get_public_profile_by_username(username)
     response = PublicProfileResponse.from_entity(profile)
+    from app.api.v1.appearance import is_private
+
+    response.is_private = await is_private(container, profile.id)
     response.followers = len(await container.graph.store.rows("follows", {"out": "user:" + profile.id}))
     response.following = len(await container.graph.store.rows("follows", {"in": "user:" + profile.id}))
     posts, cursor = await container.social_repository.list_posts_by_author(profile.id, cursor=None, limit=100)
@@ -77,6 +82,11 @@ async def author_posts(
         from fastapi import HTTPException
 
         raise HTTPException(404, "Profile content unavailable.")
+    from app.api.v1.appearance import can_see_private
+
+    if not await can_see_private(container, current_user.id, profile.id):
+        # Private account: followers only.
+        return Page(items=[], meta=PageMeta(next_cursor=None, has_more=False))
     posts, next_cursor = await container.social_repository.list_posts_by_author(
         profile.id, cursor=cursor, limit=limit
     )

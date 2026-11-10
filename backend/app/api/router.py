@@ -25,6 +25,8 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+from app.api.v1 import auth_security
+api_router.include_router(auth_security.router)
 api_router.include_router(users.router)
 api_router.include_router(home.router)
 # Moments before social: /social/moments/* must not hit social's catch-alls.
@@ -66,3 +68,6 @@ api_router.include_router(music.router)
 
 from app.api.v1 import pay_gateway
 api_router.include_router(pay_gateway.router)
+
+from app.api.v1 import appearance
+api_router.include_router(appearance.router)

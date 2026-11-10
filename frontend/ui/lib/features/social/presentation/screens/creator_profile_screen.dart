@@ -12,6 +12,9 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../controllers/video_library.dart';
 import '../widgets/social_videos_view.dart';
 import '../../../../shared/moments/moments.dart';
+import '../../../../shared/social/discover_people.dart';
+import '../../../../shared/appearance/appearance.dart';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 
 /// Creator profile screen — opened by tapping any creator's avatar (video
 /// cards, live rail, stories strip). A replica of the own-profile layout:
@@ -78,6 +81,7 @@ class CreatorProfileScreen extends StatefulWidget {
 }
 
 class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
+  bool _discover = false;
   static const _tabs = [
     'Posts',
     'Reposts',
@@ -130,6 +134,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               );
         final followed = ref.watch(followedCreatorsProvider);
         final isFollowed = followed.contains(profile.handle);
+        final isPrivate = data?['is_private'] == true;
+        final isMe = ref.watch(authControllerProvider).valueOrNull?.username ==
+            profile.handle;
+        // Private account: only followers see the posts.
+        final locked = isPrivate && !isFollowed && !isMe;
         final videos = ref
                 .watch(socialVideoCatalogProvider)
                 .valueOrNull
@@ -141,8 +150,15 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
             videos.where((v) => v.kind == SocialVideoKind.clip).toList();
         final isLive = videos.any((v) => v.kind == SocialVideoKind.live);
 
+        // Their profile look (background, wallpaper, effect).
+        final look = ref
+                .watch(userAppearanceProvider(widget.username))
+                .valueOrNull ??
+            Appearance.plain;
         return Scaffold(
-          body: SafeArea(
+          body: AppearanceBackdrop(
+            appearance: look,
+            child: SafeArea(
             child: CustomScrollView(
               slivers: [
                 // -- Scrollable header -------------------------------------
@@ -156,6 +172,15 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         child: Row(
                           children: [
                             BackButton(onPressed: () => context.pop()),
+                            // Lock = private account (no lock = public).
+                            if (isPrivate)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 6),
+                                child: Tooltip(
+                                  message: 'Private account',
+                                  child: Icon(Icons.lock_rounded, size: 18),
+                                ),
+                              ),
                             Expanded(
                               child: Text(
                                 '@${profile.handle}',
@@ -163,6 +188,13 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 overflow: TextOverflow.ellipsis,
                                 style: PhlioTypography.headline,
                               ),
+                            ),
+                            IconButton(
+                              tooltip: 'Share profile',
+                              icon: const Icon(Icons.ios_share_rounded,
+                                  color: PhlioColors.textSecondary),
+                              onPressed: () =>
+                                  showProfileShare(context, profile.handle),
                             ),
                             IconButton(
                               tooltip: 'More',
@@ -357,8 +389,28 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(width: PhlioSpacing.sm),
+                            // Suggested for you (accounts like this one).
+                            DiscoverToggleButton(
+                              open: _discover,
+                              onTap: () =>
+                                  setState(() => _discover = !_discover),
+                            ),
                           ],
                         ),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: _discover
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: PhlioSpacing.lg),
+                                child: DiscoverPeoplePanel(
+                                    forUser: profile.handle),
+                              )
+                            : const SizedBox(width: double.infinity),
                       ),
                       _CreatorHighlights(user: profile.handle),
                     ],
@@ -380,7 +432,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   ),
                 ),
                 // -- Tab content ---------------------------------------------
-                if (_tab == 0)
+                if (locked)
+                  _privateNotice()
+                else if (_tab == 0)
                   SliverToBoxAdapter(
                       child: SizedBox(
                           height: MediaQuery.sizeOf(context).height * 0.65,
@@ -411,12 +465,37 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               ],
             ),
           ),
+          ),
         );
       },
     );
   }
 
   // -- Pieces -------------------------------------------------------------------
+
+  Widget _privateNotice() => SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 40, 32, 60),
+          child: Column(children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: PhlioColors.textPrimary, width: 2),
+              ),
+              child: const Icon(Icons.lock_outline_rounded, size: 36),
+            ),
+            const SizedBox(height: 16),
+            Text('This account is private', style: PhlioTypography.headline),
+            const SizedBox(height: 6),
+            Text('Follow this account to see their posts, videos and clips.',
+                textAlign: TextAlign.center,
+                style: PhlioTypography.body
+                    .copyWith(color: PhlioColors.textMuted)),
+          ]),
+        ),
+      );
 
   Widget _foxyEmpty(String title, String subtitle, PhlioFoxPose pose) {
     return SliverToBoxAdapter(

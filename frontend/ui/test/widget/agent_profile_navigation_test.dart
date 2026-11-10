@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:phlio/app/theme/app_theme.dart';
 import 'package:phlio/core/result/result.dart';
 import 'package:phlio/design_system/widgets/phlio_card.dart';
+import 'package:phlio/features/phlio_agent/domain/entities/agent_attachment_entity.dart';
 import 'package:phlio/features/phlio_agent/domain/entities/agent_message_entity.dart';
 import 'package:phlio/features/phlio_agent/presentation/controllers/agent_controller.dart';
 import 'package:phlio/features/phlio_agent/presentation/screens/agent_screen.dart';
@@ -19,7 +20,8 @@ class _Agent extends AgentController {
   @override
   Future<List<AgentMessageEntity>> build() async => [];
   @override
-  Future<Result<void>> sendMessage(String text) async {
+  Future<Result<void>> sendMessage(String text,
+      {List<AgentAttachmentEntity> attachments = const []}) async {
     sent = text;
     return const Result.success(null);
   }

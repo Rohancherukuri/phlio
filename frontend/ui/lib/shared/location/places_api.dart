@@ -9,6 +9,8 @@
 //
 // Both ask apps to identify themselves; requests carry a Phlio user agent.
 
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -20,6 +22,54 @@ final _http = Dio(BaseOptions(
   receiveTimeout: const Duration(seconds: 20),
   headers: {'User-Agent': 'Phlio/1.0 (location sharing)'},
 ));
+
+/// Public Overpass servers. The main one is often busy, so if it hasn't
+/// answered quickly (or fails), the others are asked too and the first
+/// good answer wins.
+const _overpassServers = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+/// Runs an Overpass QL [query]; returns its `elements`.
+Future<List<Map>> overpassElements(String query,
+    {Duration headStart = const Duration(milliseconds: 2500)}) {
+  final done = Completer<List<Map>>();
+  var started = 0, failed = 0;
+  Object? lastError;
+  void ask(String url) {
+    started++;
+    _http
+        .post(url,
+            data: {'data': query},
+            options: Options(
+                contentType: Headers.formUrlEncodedContentType,
+                responseType: ResponseType.plain))
+        .then((r) {
+      final body = jsonDecode(r.data as String) as Map;
+      final elements = ((body['elements'] as List?) ?? const []).cast<Map>();
+      if (!done.isCompleted) done.complete(elements);
+    }).catchError((Object e) {
+      failed++;
+      lastError = e;
+      if (started < _overpassServers.length && !done.isCompleted) {
+        // Don't wait for the head start: try the next server now.
+        ask(_overpassServers[started]);
+      } else if (failed >= _overpassServers.length && !done.isCompleted) {
+        done.completeError(lastError ?? StateError('Overpass unavailable'));
+      }
+    });
+  }
+
+  ask(_overpassServers.first);
+  Timer(headStart, () {
+    while (!done.isCompleted && started < _overpassServers.length) {
+      ask(_overpassServers[started]);
+    }
+  });
+  return done.future;
+}
 
 /// Short address from Nominatim's parts: "376, Hyderabad, 500085, TS, IN".
 String _address(Map a) {
@@ -49,13 +99,17 @@ Future<Place?> reverseGeocode(double lat, double lng) async {
 }
 
 /// Places matching [query], biased towards [near].
-Future<List<Place>> searchPlaces(String query, {double? lat, double? lng}) async {
+///
+/// With [bounded], only places inside the box around [lat]/[lng] count.
+Future<List<Place>> searchPlaces(String query,
+    {double? lat, double? lng, bool bounded = false, double box = .3}) async {
   final res = await _http.get('https://nominatim.openstreetmap.org/search', queryParameters: {
     'q': query,
     'format': 'jsonv2',
     'addressdetails': 1,
-    'limit': 15,
-    if (lat != null && lng != null) 'viewbox': '${lng - .3},${lat + .3},${lng + .3},${lat - .3}',
+    'limit': 20,
+    if (lat != null && lng != null) 'viewbox': '${lng - box},${lat + box},${lng + box},${lat - box}',
+    if (bounded && lat != null && lng != null) 'bounded': 1,
   });
   return [
     for (final j in (res.data as List).cast<Map>())
@@ -78,11 +132,9 @@ Future<List<Place>> nearbyPlaces(double lat, double lng, {int radius = 500, int 
       'nwr(around:$radius,$lat,$lng)[name][leisure];'
       'nwr(around:$radius,$lat,$lng)[name][building];'
       ');out center 80;';
-  final res = await _http.post('https://overpass-api.de/api/interpreter',
-      data: {'data': query}, options: Options(contentType: Headers.formUrlEncodedContentType));
   final places = <Place>[];
   final seen = <String>{};
-  for (final e in ((res.data as Map)['elements'] as List).cast<Map>()) {
+  for (final e in await overpassElements(query)) {
     final tags = (e['tags'] as Map?) ?? const {};
     final name = tags['name'] as String?;
     final c = (e['center'] as Map?) ?? e;

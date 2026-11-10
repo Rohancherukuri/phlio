@@ -193,7 +193,7 @@ async def upload_video(
         if not size:
             raise HTTPException(422, "The video is empty.")
         duration = await run_in_threadpool(probe_duration, target)
-        minimum, maximum = (15, 120) if kind == "clip" else (60, 300)
+        minimum, maximum = (15, 120) if kind == "clip" else (60, 420)
         if not minimum <= duration <= maximum + 0.2:
             raise HTTPException(422, f"{kind.title()} must be between {minimum} and {maximum} seconds.")
         url = "/media/social/" + target.name

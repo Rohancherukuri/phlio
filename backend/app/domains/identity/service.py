@@ -47,6 +47,7 @@ class IdentityService:
         interests: list[str] | None = None,
         date_of_birth: dt.date | None = None,
         phone_number: str | None = None,
+        country: str | None = None,
     ) -> tuple[User, TokenPair]:
         username_normalized = username.strip().lower()
         email_normalized = email.strip().lower()
@@ -76,6 +77,7 @@ class IdentityService:
             interests=interests or [],
             date_of_birth=date_of_birth,
             phone_number=phone_number,
+            country=country,
         )
         created = await self._repository.create_user(user)
         tokens = issue_token_pair(created.id, self._settings)

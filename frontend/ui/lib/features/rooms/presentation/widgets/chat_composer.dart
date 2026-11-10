@@ -19,6 +19,9 @@ import 'package:phlio/shared/location/location_message.dart';
 import 'package:phlio/shared/location/location_service.dart';
 import 'package:phlio/shared/location/location_share_screen.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../shared/pay/dm_pay_sheet.dart';
+import '../../../../shared/pay/phlio_currency.dart';
 
 import '../../../../app/platform/phlio_platform.dart';
 import '../../../../app/shell/platform_home_screen.dart' show switchPlatform;
@@ -302,7 +305,9 @@ class _ChatComposerState extends State<ChatComposer> {
   final _focusNode = FocusNode();
 
   bool _showEmojiTray = false;
-  bool _foxyTrayTab = false; // false: unicode emoji, true: Foxy pack
+  // Smile tray tab: 0 unicode emoji, 1 the animated Foxy sticker pack,
+  // 2 the Foxy face pack.
+  int _trayTab = 0;
   final List<StagedAttachment> _staged = [];
   bool _isSending = false;
   bool _isRecording = false;
@@ -472,7 +477,10 @@ class _ChatComposerState extends State<ChatComposer> {
             kind: giphyKind ?? 'sticker',
             name: giphyKind != null
                 ? 'GIPHY'
-                : (FoxyPack.resolve(id)?.label ?? 'Foxy sticker'),
+                : (FoxyPack.resolve(id)?.label ??
+                    (FoxyPuppetStickers.parse(id) != null
+                        ? FoxyPuppetStickers.labelOf(id)
+                        : 'Foxy sticker')),
             packId: id,
           ),
         );
@@ -485,7 +493,8 @@ class _ChatComposerState extends State<ChatComposer> {
       setState(() {
         _staged.add(
           StagedAttachment(
-            kind: item.kind,
+            // The picker's Foxy tab hands back an animated Foxy sticker.
+            kind: item.isFoxy ? 'sticker' : item.kind,
             name: item.title,
             packId: item.reference,
           ),
@@ -658,12 +667,17 @@ class _ChatComposerState extends State<ChatComposer> {
             widget.compact ? 12 : PhlioSpacing.lg,
             0,
             widget.compact ? 12 : PhlioSpacing.lg,
-            widget.compact ? PhlioSpacing.sm : PhlioSpacing.lg,
+            // DMs sit a little higher off the bottom edge.
+            widget.audience == ChatAudience.directMessage
+                ? 18
+                : widget.compact
+                    ? PhlioSpacing.sm
+                    : PhlioSpacing.lg,
           ),
           child: Container(
             padding:
                 widget.audience == ChatAudience.directMessage && !_isRecording
-                    ? const EdgeInsets.fromLTRB(6, 6, 8, 6)
+                    ? const EdgeInsets.fromLTRB(4, 4, 6, 4)
                     : _isRecording
                         ? EdgeInsets.symmetric(
                             horizontal: PhlioSpacing.md,
@@ -673,8 +687,8 @@ class _ChatComposerState extends State<ChatComposer> {
             decoration: widget.audience == ChatAudience.directMessage
                 ? BoxDecoration(
                     // Messages: borderless pill, like the reference.
-                    color: const Color(0xFF26292F),
-                    borderRadius: BorderRadius.circular(32),
+                    color: const Color(0xFF262626),
+                    borderRadius: BorderRadius.circular(999),
                     border: _isRecording
                         ? Border.all(color: PhlioColors.danger)
                         : null,
@@ -787,25 +801,33 @@ class _ChatComposerState extends State<ChatComposer> {
               children: [
                 _trayToggle(
                   'Emoji',
-                  !_foxyTrayTab,
-                  () => setState(() => _foxyTrayTab = false),
+                  _trayTab == 0,
+                  () => setState(() => _trayTab = 0),
                 ),
                 const SizedBox(width: PhlioSpacing.xs),
                 _trayToggle(
                   'Foxy',
-                  _foxyTrayTab,
-                  () => setState(() => _foxyTrayTab = true),
+                  _trayTab == 1,
+                  () => setState(() => _trayTab = 1),
+                ),
+                const SizedBox(width: PhlioSpacing.xs),
+                _trayToggle(
+                  'Faces',
+                  _trayTab == 2,
+                  () => setState(() => _trayTab = 2),
                 ),
                 const Spacer(),
                 Text(
-                  _foxyTrayTab ? 'Tap to attach' : 'Tap to add',
+                  _trayTab != 0 ? 'Tap to attach' : 'Tap to add',
                   style: PhlioTypography.caption.copyWith(fontSize: 10),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: !_foxyTrayTab
+            child: _trayTab == 1
+                ? _foxyStickerGrid()
+                : _trayTab == 0
                 ? GridView.builder(
                     padding: const EdgeInsets.all(PhlioSpacing.sm),
                     gridDelegate:
@@ -872,6 +894,47 @@ class _ChatComposerState extends State<ChatComposer> {
     );
   }
 
+  /// The animated Foxy sticker pack (the rigged mascot), live in the tray.
+  Widget _foxyStickerGrid() {
+    final ids = FoxyPuppetStickers.ids;
+    return GridView.builder(
+      padding: const EdgeInsets.all(PhlioSpacing.xs),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 5,
+        mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+      ),
+      itemCount: ids.length,
+      itemBuilder: (context, index) {
+        final id = ids[index];
+        return Tooltip(
+          message: FoxyPuppetStickers.labelOf(id),
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              rememberSticker(id);
+              setState(() {
+                _staged.add(
+                  StagedAttachment(
+                    kind: 'sticker',
+                    name: FoxyPuppetStickers.labelOf(id),
+                    packId: id,
+                  ),
+                );
+              });
+            },
+            child: LayoutBuilder(
+              builder: (context, box) => Center(
+                child: FoxyStickerView(
+                    id: id, size: box.biggest.shortestSide - 4),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _trayToggle(String label, bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -934,16 +997,17 @@ class _ChatComposerState extends State<ChatComposer> {
   /// Messages composer: [camera] Message…  mic · photo · sticker · (+)
   /// While typing, the trailing icons give way to a Send button.
   Widget _dmInputRow() {
-    Widget action(String label, String icon, VoidCallback tap) => IconButton(
+    // Plain 40×40 hit boxes (not IconButton: Material 3 pads those to a
+    // 48 px tap target, which pushed icons out of line and out of view).
+    Widget action(String label, String icon, VoidCallback tap) => _ComposerIcon(
         tooltip: label,
-        onPressed: _isSending ? null : tap,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 42, height: 46),
-        icon: _svg(icon));
+        onTap: _isSending ? null : tap,
+        child: _svg(icon, size: 24, color: Colors.white));
     final typing = _canSend || _isSending;
-    return Row(children: [
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      // Instagram-style pill: 48 tall, camera · Message… · 2 actions (+ swipe) · (+)
       Material(
-        color: const Color(0xFF3F5BF6),
+        color: const Color(0xFF7B5CFF),
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -951,9 +1015,9 @@ class _ChatComposerState extends State<ChatComposer> {
           child: Tooltip(
               message: 'Camera',
               child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Center(child: _svg('camera', size: 24)))),
+                  width: 40,
+                  height: 40,
+                  child: Center(child: _svg('camera', size: 22)))),
         ),
       ),
       Expanded(
@@ -962,34 +1026,35 @@ class _ChatComposerState extends State<ChatComposer> {
               focusNode: _focusNode,
               minLines: 1,
               maxLines: 4,
-              maxLength: 4000,
+              inputFormatters: [LengthLimitingTextInputFormatter(4000)],
               enabled: !_isSending,
               textInputAction: TextInputAction.send,
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _send(),
               decoration: const InputDecoration(
                   hintText: 'Message…',
-                  hintStyle: TextStyle(color: Color(0xFF9EA3AD), fontSize: 16),
-                  counterText: '',
+                  hintMaxLines: 1,
+                  hintStyle: TextStyle(color: Color(0xFF8E8E93), fontSize: 16),
+                  isDense: true,
                   filled: false,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
                   contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+                      EdgeInsets.fromLTRB(12, 9, 6, 9)),
               style: const TextStyle(fontSize: 16, color: Colors.white))),
       if (typing)
         Padding(
           padding: const EdgeInsets.only(left: 4),
           child: Material(
-            color: const Color(0xFF3F5BF6),
+            color: const Color(0xFF7B5CFF),
             shape: const StadiumBorder(),
             child: InkWell(
               customBorder: const StadiumBorder(),
               onTap: _isSending ? null : _send,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                 child: _isSending
                     ? const SizedBox(
                         width: 18,
@@ -1006,13 +1071,34 @@ class _ChatComposerState extends State<ChatComposer> {
           ),
         )
       else ...[
-        action('Voice message', 'mic', _startRecording),
-        action('Photos and videos', 'image',
-            () => _pickAttachments(type: 'Media')),
-        action('Stickers', 'sticker', () {
-          _focusNode.unfocus();
-          _pickAttachments(type: 'Sticker');
-        }),
+        // Quick actions scroll sideways (with soft edge fades) so the
+        // message field always keeps its room; "+" stays pinned.
+        _ScrollableActions(
+          maxVisible: 2,
+          itemWidth: 40,
+          children: [
+            action('Voice message', 'mic', _startRecording),
+            action('Photos and videos', 'image',
+                () => _pickAttachments(type: 'Media')),
+            if (widget.dmPeer != null)
+              // Pay this person: ₹ in India, $ in the US, € in the euro area…
+              Consumer(
+                builder: (context, ref, _) {
+                  final currency = ref.watch(userCurrencyProvider);
+                  return _ComposerIcon(
+                    tooltip: 'Send money',
+                    onTap: _isSending ? null : _openPay,
+                    child: CurrencyGlyph(
+                        currency: currency, size: 23, color: Colors.white),
+                  );
+                },
+              ),
+            action('Stickers', 'sticker', () {
+              _focusNode.unfocus();
+              _pickAttachments(type: 'Sticker');
+            }),
+          ],
+        ),
         Builder(
             builder: (buttonContext) => action(
                 _moreOpen ? 'Close' : 'More',
@@ -1020,6 +1106,18 @@ class _ChatComposerState extends State<ChatComposer> {
                 () => _openMoreMenu(buttonContext))),
       ],
     ]);
+  }
+
+  /// Opens the DM pay sheet; a completed payment is announced in the chat.
+  Future<void> _openPay() async {
+    _focusNode.unfocus();
+    final message = await showDmPaySheet(context, username: widget.dmPeer!);
+    if (message == null || !mounted) return;
+    try {
+      await widget.onSendText(message);
+    } catch (error) {
+      _showSendError(error);
+    }
   }
 
   /// The "+" menu: Location · AI images · Draw · Foxy AI, floating just
@@ -1489,4 +1587,102 @@ class _MoreMenu extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// A row of composer actions that shows [maxVisible] at a time and scrolls
+/// sideways for the rest, fading its edges to hint there is more.
+class _ScrollableActions extends StatefulWidget {
+  const _ScrollableActions({
+    required this.children,
+    required this.maxVisible,
+    required this.itemWidth,
+  });
+
+  final List<Widget> children;
+  final int maxVisible;
+  final double itemWidth;
+
+  @override
+  State<_ScrollableActions> createState() => _ScrollableActionsState();
+}
+
+class _ScrollableActionsState extends State<_ScrollableActions> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// After a swipe, settle so whole icons show — never half of one.
+  bool _snap(ScrollNotification n) {
+    if (n is ScrollEndNotification && _controller.hasClients) {
+      final p = _controller.position;
+      final target = (p.pixels / widget.itemWidth).round() * widget.itemWidth;
+      final clamped = target.clamp(0.0, p.maxScrollExtent);
+      if ((clamped - p.pixels).abs() > 0.5) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_controller.hasClients) {
+            _controller.animateTo(clamped,
+                duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+          }
+        });
+      }
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.children.length;
+    final visible = count < widget.maxVisible ? count : widget.maxVisible;
+    return SizedBox(
+      width: widget.itemWidth * visible,
+      height: 40,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _snap,
+        child: SingleChildScrollView(
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          physics: const ClampingScrollPhysics(),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            for (final c in widget.children) SizedBox(width: widget.itemWidth, child: c),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// One composer action: a fixed 40×40 box, icon centred, circular ripple.
+class _ComposerIcon extends StatelessWidget {
+  const _ComposerIcon({required this.tooltip, required this.onTap, required this.child});
+
+  final String tooltip;
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 22,
+          containedInkWell: false,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(child: Opacity(opacity: onTap == null ? 0.4 : 1, child: child)),
+          ),
+        ),
+      ),
+    );
+  }
 }

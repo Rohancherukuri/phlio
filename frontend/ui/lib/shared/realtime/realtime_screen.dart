@@ -610,7 +610,9 @@ class _SocialLiveScreenState extends State<SocialLiveScreen> {
     sessions = load();
   }
 
-  void refresh() => setState(() => sessions = load());
+  void refresh() => setState(() {
+        sessions = load();
+      });
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(title: const Text('Live sessions'), actions: [

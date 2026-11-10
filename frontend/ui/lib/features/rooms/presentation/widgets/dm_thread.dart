@@ -5,6 +5,9 @@ import 'dart:ui' show ImageFilter;
 import 'package:go_router/go_router.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:phlio/shared/location/location_message.dart';
+import 'package:phlio/shared/pay/payment_message.dart';
+import 'package:phlio/shared/appearance/appearance.dart';
+import 'package:phlio/shared/social/profile_share_card.dart';
 import 'package:flutter/material.dart';
 import '../../../../design_system/widgets/phlio_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -474,6 +477,11 @@ class _DmThreadState extends ConsumerState<DmThread> {
     if (parseLocationMessage(text) case final location?) {
       return location.isLive ? 'Live location' : 'Location';
     }
+    if (parsePaymentMessage(text) case final payment?) {
+      return paymentSnippet(payment,
+          mine: message['sender_id'] ==
+              ref.read(authControllerProvider).valueOrNull?.id);
+    }
     if (sharedContentPath(text) != null) {
       final caption = sharedContentCaption(text);
       return caption.isNotEmpty ? caption : 'Shared a post';
@@ -497,6 +505,18 @@ class _DmThreadState extends ConsumerState<DmThread> {
   /// Shared Phlio object card or the regular chat bubble.
   Widget _bubble(Map<String, dynamic> message, bool mine) {
     final attachments = message['attachments'] as List;
+    // Completed Phlio Pay payments: a receipt card, tap for details.
+    if (attachments.isEmpty) {
+      if (parsePaymentMessage(message['text'] as String?) case final payment?) {
+        return PaymentMessageCard(payment: payment, mine: mine);
+      }
+    }
+    // A shared profile: the person's card.
+    final profile =
+        attachments.isEmpty ? sharedProfileName(message['text'] as String?) : null;
+    if (profile != null) {
+      return ProfileShareCard(username: profile, mine: mine);
+    }
     final shared = attachments.isEmpty
         ? sharedContentPath(message['text'] as String)
         : null;
@@ -676,7 +696,13 @@ class _DmThreadState extends ConsumerState<DmThread> {
             ),
           ),
         Expanded(
-          child: history.when(
+          // The conversation's chat theme (colour / wallpaper / effect).
+          child: AppearanceBackdrop(
+            decorate: false,
+            appearance:
+                ref.watch(chatAppearanceProvider(widget.username)).valueOrNull ??
+                    Appearance.plain,
+            child: history.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (_, __) => Center(
               child: TextButton(
@@ -790,6 +816,7 @@ class _DmThreadState extends ConsumerState<DmThread> {
                 },
               );
             },
+          ),
           ),
         ),
         if (_replyingTo != null)

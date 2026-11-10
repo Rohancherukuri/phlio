@@ -108,6 +108,7 @@ class AvatarState {
     this.songPath,
     this.songStart = 0,
     this.songEnd = 0,
+    this.streamSong,
   });
 
   final String? filePath;
@@ -118,6 +119,10 @@ class AvatarState {
   final String? songPath;
   final double songStart;
   final double songEnd;
+
+  /// A Phlio Stream track as the profile song:
+  /// `{title, artist, url, image_url, ref}`. Wins over [songPath].
+  final Map<String, dynamic>? streamSong;
 
   bool get hasAvatar => filePath != null;
   bool get hasSong => songPath != null;
@@ -131,13 +136,17 @@ class AvatarState {
     String? songPath,
     double? songStart,
     double? songEnd,
+    Map<String, dynamic>? streamSong,
+    bool clearStream = false,
+    bool clearSongPath = false,
   }) =>
       AvatarState(
         filePath: clearFile ? null : (filePath ?? this.filePath),
         filterIndex: filterIndex ?? this.filterIndex,
-        songPath: songPath ?? this.songPath,
+        songPath: clearSongPath ? null : (songPath ?? this.songPath),
         songStart: songStart ?? this.songStart,
         songEnd: songEnd ?? this.songEnd,
+        streamSong: clearStream ? null : (streamSong ?? this.streamSong),
       );
 }
 
@@ -190,6 +199,7 @@ class AvatarController extends Notifier<AvatarState> {
         songPath: songPath,
         songStart: (json['song_start'] as num?)?.toDouble() ?? 0,
         songEnd: (json['song_end'] as num?)?.toDouble() ?? 0,
+        streamSong: (json['stream_song'] as Map?)?.cast<String, dynamic>(),
       );
     } catch (_) {
       // Corrupt/missing prefs: keep the empty avatar.
@@ -205,6 +215,7 @@ class AvatarController extends Notifier<AvatarState> {
         'song_path': state.songPath,
         'song_start': state.songStart,
         'song_end': state.songEnd,
+        'stream_song': state.streamSong,
       }));
     } catch (_) {}
   }
@@ -295,7 +306,7 @@ class AvatarController extends Notifier<AvatarState> {
     final saved = File(
         '${dir.path}/song_${DateTime.now().millisecondsSinceEpoch}_${file.name}');
     await File(file.path!).copy(saved.path);
-    state = state.copyWith(songPath: saved.path);
+    state = state.copyWith(songPath: saved.path, clearStream: true);
     await _persist();
     // Swap any old song file out (best effort).
     return saved.path;
@@ -304,6 +315,19 @@ class AvatarController extends Notifier<AvatarState> {
   /// Saves the selected 60-second (or shorter) section of the profile song.
   Future<void> setSongSection(double start, double end) async {
     state = state.copyWith(songStart: start, songEnd: end);
+    await _persist();
+  }
+
+  /// Uses a Phlio Stream track as the profile song.
+  Future<void> setStreamSong(Map<String, dynamic> song) async {
+    state = state.copyWith(streamSong: song);
+    await _persist();
+  }
+
+  /// Back to the default Phlio song.
+  Future<void> resetSong() async {
+    state = state.copyWith(
+        clearStream: true, clearSongPath: true, songStart: 0, songEnd: 0);
     await _persist();
   }
 

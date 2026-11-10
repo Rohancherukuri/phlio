@@ -11,6 +11,7 @@ import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_fox.dart';
 import '../../domain/entities/agent_message_entity.dart';
+import 'agent_attachments.dart';
 import 'agent_plan_card.dart';
 
 class AgentMessageBubble extends StatelessWidget {
@@ -29,13 +30,20 @@ class AgentMessageBubble extends StatelessWidget {
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            const PhlioFox(size: 32),
+            const FoxyAvatar(size: 32),
             const SizedBox(width: PhlioSpacing.sm),
           ],
           Flexible(
             child: Column(
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
+                if (message.attachments.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(
+                        bottom: message.text.isEmpty ? 0 : PhlioSpacing.xs),
+                    child: AgentAttachmentsView(attachments: message.attachments),
+                  ),
+                if (message.text.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: PhlioSpacing.lg, vertical: PhlioSpacing.md),
                   decoration: BoxDecoration(

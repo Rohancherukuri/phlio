@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../shared/pay/phlio_currency.dart';
+
 @immutable
 class WalletEntity {
   const WalletEntity({
@@ -14,13 +16,7 @@ class WalletEntity {
   final String upiHandle;
   final List<TransactionEntity> recentTransactions;
 
-  String get displayBalance {
-    final value = balanceMinorUnits / 100;
-    final text = value % 1 == 0
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(2);
-    return '₹$text';
-  }
+  String get displayBalance => currencyByCode(currency).format(balanceMinorUnits);
 }
 
 @immutable
@@ -47,11 +43,8 @@ class TransactionEntity {
 
   bool get isReceive => type == 'receive';
 
-  String get displayAmount {
-    final value = amountMinorUnits / 100;
-    final text = value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
-    return '${isReceive ? '+' : '−'}₹$text';
-  }
+  String get displayAmount => currencyByCode(currency)
+      .format(amountMinorUnits, signed: true, negative: !isReceive);
 }
 
 @immutable
@@ -85,5 +78,5 @@ class SplitEntity {
   final List<SplitParticipantEntity> participants;
   final DateTime createdAt;
 
-  String get displayTotal => '₹${(totalMinorUnits / 100).toStringAsFixed(0)}';
+  String get displayTotal => currencyByCode(currency).format(totalMinorUnits);
 }

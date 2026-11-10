@@ -20,6 +20,15 @@ from app.core.seed import seed_memory_backend
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _reset_credential_guards():
+    """Sign-in lockouts are process-wide; give every test a clean slate."""
+    from app.infrastructure.security import guard
+
+    guard.login_guard.clear()
+    guard.two_factor_guard.clear()
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(

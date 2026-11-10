@@ -1,0 +1,9 @@
+[package]
+name = "phlio-guard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Brute-force throttling for Phlio sign-in and 2FA (in-memory, thread-safe)."
+
+[dependencies]
+log = "0.4"

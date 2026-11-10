@@ -8,6 +8,7 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../../data/datasources/messaging_api.dart';
 import '../controllers/messaging_controller.dart';
 import '../widgets/dm_thread.dart';
+import '../../../../shared/appearance/chat_theme_sheet.dart';
 
 /// Private conversation with media, voice/video calls and message reactions.
 /// Profile Chat uses its own public creator channel.
@@ -94,6 +95,10 @@ class _DmScreenState extends ConsumerState<DmScreen> {
               icon: const Icon(Icons.videocam_outlined),
               onPressed:
                   peer == null || _calling ? null : () => _call(true, name)),
+          IconButton(
+              tooltip: 'Chat theme',
+              icon: const Icon(Icons.palette_outlined),
+              onPressed: () => showChatThemeSheet(context, widget.username)),
           IconButton(
               tooltip: 'Search messages',
               icon: const Icon(Icons.search_rounded),

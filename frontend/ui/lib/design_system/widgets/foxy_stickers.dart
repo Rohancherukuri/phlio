@@ -1,6 +1,7 @@
 // Foxy stickers everywhere: one id scheme, one renderer, one picker.
 //
 // Ids a sticker can carry (in comments, moments, DMs, Rooms, creator chat):
+//   foxy2:<act>            the rigged Foxy (FoxyPuppet) — e.g. foxy2:wave
 //   foxy:<outfit>:<mood>   animated Foxy (Rive) — e.g. foxy:wizard:think
 //   emoji_foxy_* / sticker_foxy_* / costume_* / text_*   Foxy pack PNGs
 //   happy, wave, …         the original sticker set (PhlioStickers)
@@ -14,8 +15,77 @@ import '../../shared/giphy/giphy_picker.dart';
 import '../colors.dart';
 import '../typography.dart';
 import 'foxy_pack.dart';
+import 'foxy_puppet.dart';
 import 'foxy_rive.dart';
 import 'phlio_fox.dart';
+
+typedef FoxyPuppetSticker = ({FoxyAct act, String label});
+
+/// The Foxy sticker pack: the rigged mascot, fully animated (each sticker
+/// loops its act, and hops when tapped in a chat bubble). Ids are
+/// `foxy2:<act>`; keep in sync with `FOXY_PUPPET_CATALOG` in
+/// backend/app/domains/stickers/__init__.py.
+abstract final class FoxyPuppetStickers {
+  static const prefix = 'foxy2:';
+
+  static const List<FoxyPuppetSticker> catalog = [
+    (act: FoxyAct.wave, label: 'Hey!'),
+    (act: FoxyAct.love, label: 'Love you'),
+    (act: FoxyAct.hooray, label: 'Hooray!'),
+    (act: FoxyAct.clap, label: 'Bravo'),
+    (act: FoxyAct.happy, label: 'So happy'),
+    (act: FoxyAct.cheer, label: "Let's go"),
+    (act: FoxyAct.think, label: 'Hmm…'),
+    (act: FoxyAct.peek, label: 'Not looking'),
+    (act: FoxyAct.oops, label: 'Oops'),
+    (act: FoxyAct.sad, label: 'Aww'),
+    (act: FoxyAct.phone, label: 'Call me'),
+    (act: FoxyAct.chill, label: 'Chillin'),
+    (act: FoxyAct.ready, label: 'Ready!'),
+    (act: FoxyAct.run, label: 'On my way'),
+    (act: FoxyAct.talk, label: 'Chatty'),
+    (act: FoxyAct.sleep, label: 'Good night'),
+  ];
+
+  static String idOf(FoxyAct act) => '$prefix${act.name}';
+
+  static List<String> get ids => [for (final s in catalog) idOf(s.act)];
+
+  /// Parses `foxy2:<act>`; null for anything else.
+  static FoxyAct? parse(String id) {
+    if (!id.startsWith(prefix)) return null;
+    final name = id.substring(prefix.length);
+    for (final act in FoxyAct.values) {
+      if (act.name == name) return act;
+    }
+    return null;
+  }
+
+  /// A pack item (label + a still) for code that only knows [FoxyPack].
+  static FoxyPackItem? item(String id) {
+    final act = parse(id);
+    if (act == null) return null;
+    return (
+      id: id,
+      label: labelOf(id),
+      assetPath: switch (act) {
+        FoxyAct.sleep => 'assets/images/foxy/foxy_sleepy.png',
+        FoxyAct.think => 'assets/images/foxy/foxy_curious.png',
+        FoxyAct.love || FoxyAct.happy => 'assets/images/foxy/foxy_happy.png',
+        _ => 'assets/images/foxy/foxy_hello.png',
+      },
+      kind: FoxyReactionKind.sticker,
+    );
+  }
+
+  static String labelOf(String id) {
+    final act = parse(id);
+    for (final s in catalog) {
+      if (s.act == act) return s.label;
+    }
+    return 'Foxy';
+  }
+}
 
 typedef FoxyAnimatedSticker = ({FoxyOutfit outfit, FoxyMood mood, String label});
 
@@ -121,6 +191,23 @@ class FoxyStickerView extends StatelessWidget {
       return SizedBox(
           width: size, height: size, child: GiphyReferenceView(reference: id));
     }
+    final puppet = FoxyPuppetStickers.parse(id);
+    if (puppet != null) {
+      return Semantics(
+        label: FoxyPuppetStickers.labelOf(id),
+        image: true,
+        excludeSemantics: true,
+        child: SizedBox.square(
+          dimension: size,
+          child: FoxyPuppet(
+            act: puppet,
+            size: size,
+            entrance: false,
+            tapToHop: interactive,
+          ),
+        ),
+      );
+    }
     final animated = FoxyAnimatedStickers.parse(id);
     if (animated != null) {
       // The artboard keeps air around Foxy for hops and props; zoom in a
@@ -210,6 +297,7 @@ class _FoxyStickerSheet extends StatefulWidget {
 class _FoxyStickerSheetState extends State<_FoxyStickerSheet> {
   late final List<(String, List<String>)> _sections = [
     if (_recentStickers.isNotEmpty) ('Recent', List.of(_recentStickers)),
+    ('Foxy', FoxyPuppetStickers.ids),
     ('Moves', [for (final item in FoxyPack.moves) item.id]),
     (
       'Animated',
@@ -356,7 +444,9 @@ class _StickerTileState extends State<_StickerTile> {
 
   String get _label =>
       FoxyPack.resolve(widget.id)?.label ??
-      (widget.id.startsWith('giphy:') ? 'GIPHY' : 'Foxy');
+      (widget.id.startsWith('giphy:')
+          ? 'GIPHY'
+          : FoxyPuppetStickers.labelOf(widget.id));
 
   @override
   Widget build(BuildContext context) {

@@ -17,6 +17,7 @@ abstract interface class AuthRepository {
     required List<String> interests,
     String? dateOfBirth,
     String? phoneNumber,
+    String? country,
   });
 
   Future<Result<(UserEntity, AuthTokensEntity)>> login({
@@ -25,6 +26,13 @@ abstract interface class AuthRepository {
   });
 
   Future<Result<UserEntity>> getCurrentUser();
+
+  /// The profile saved on this device for the current session (no network),
+  /// so the app can open instantly at launch; null when there is none.
+  Future<UserEntity?> cachedUser();
+
+  /// Saves [user] as the current session's profile (see [cachedUser]).
+  Future<void> rememberUser(UserEntity user);
 
   /// Clears any locally-persisted session. Always succeeds locally — there
   /// is no server-side "logout" endpoint in this build stage since access

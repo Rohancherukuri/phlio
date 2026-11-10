@@ -618,7 +618,9 @@ abstract final class FoxyPack {
   /// Resolves a backend value id ("costume_wizard", "anim_heart", …) to its
   /// bundled asset, or null when unknown (renderer falls back gracefully).
   static FoxyPackItem? resolve(String id) =>
-      _byId[id] ?? FoxyAnimatedStickers.item(id);
+      _byId[id] ??
+      FoxyAnimatedStickers.item(id) ??
+      FoxyPuppetStickers.item(id);
 
   static FoxyPackItem? find(FoxyReactionKind kind, String id) {
     final item = _byId[id];
@@ -642,7 +644,8 @@ class FoxyReactionChipContent extends StatelessWidget {
       // Plain unicode emoji reaction.
       return Text(value, style: TextStyle(fontSize: size * 0.95, height: 1.0));
     }
-    if (value.startsWith(FoxyAnimatedStickers.prefix)) {
+    if (value.startsWith(FoxyAnimatedStickers.prefix) ||
+        value.startsWith(FoxyPuppetStickers.prefix)) {
       return FoxyStickerView(id: value, size: size * 1.35);
     }
     final item = FoxyPack.resolve(value);

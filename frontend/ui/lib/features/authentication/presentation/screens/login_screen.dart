@@ -18,6 +18,12 @@ import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/foxy_puppet.dart';
 import '../../../../design_system/widgets/phlio_button.dart';
 import '../../../onboarding/presentation/widgets/onboarding_kit.dart';
+import 'package:country_picker/country_picker.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../../../core/di/service_locator.dart';
+import '../../../../core/network/api_client.dart';
+import '../auth_flows.dart';
 import '../controllers/auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -38,6 +44,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _greeting = true;
   bool _talking = false;
   String? _error;
+
+  /// Which social sign-in is running ('google' / 'apple'), for its spinner.
+  String? _socialBusy;
   int _oops = 0;
   int _confetti = 0;
   Timer? _greetTimer;
@@ -69,7 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   FoxyAct get _act {
     if (_success) return FoxyAct.cheer;
     if (_submitting) return FoxyAct.think;
-    if (_error != null) return FoxyAct.sad;
+    if (_error != null) return FoxyAct.oops;
     if (_passwordFocus.hasFocus || _password.text.isNotEmpty) {
       if (_obscure && _passwordFocus.hasFocus) return FoxyAct.peek;
     }
@@ -103,33 +112,85 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _submitting = true;
       _error = null;
     });
-    final result = await ref.read(authControllerProvider.notifier).login(
-          identifier: _identifier.text.trim(),
-          password: _password.text,
-        );
+    await _handle(
+        await AuthFlows.password(_identifier.text.trim(), _password.text));
+  }
+
+  /// Google / Apple: same ending as a password sign-in.
+  Future<void> _socialSignIn(
+      Future<SignInOutcome> Function() flow, String which) async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _socialBusy = which;
+      _error = null;
+    });
+    await _handle(await flow());
+  }
+
+  /// Finishes any sign-in: the two-factor step if needed, then in.
+  Future<void> _handle(SignInOutcome outcome) async {
     if (!mounted) return;
-    result.when(
-      success: (_) {
+    if (outcome is NeedsTwoFactor) {
+      final done = await showTwoFactorPrompt(context, outcome);
+      if (!mounted) return;
+      outcome = done ?? const SignInCancelled();
+    }
+    switch (outcome) {
+      case SignedIn(:final user, :final isNewUser):
+        ref.read(authControllerProvider.notifier).activateAccount(user);
         HapticFeedback.heavyImpact();
         setState(() {
           _success = true;
           _submitting = false;
+          _socialBusy = null;
           _confetti++;
         });
+        if (isNewUser) await _askCountry();
         // Let the celebration land, then in.
         Future.delayed(const Duration(milliseconds: 1100), () {
-          if (mounted) context.go('/home');
+          if (mounted) context.go(isNewUser ? '/tour' : '/home');
         });
-      },
-      failure: (failure) {
+      case SignInFailed(:final message):
         HapticFeedback.mediumImpact();
         setState(() {
           _submitting = false;
-          _error = failure.message;
+          _socialBusy = null;
+          _error = message;
           _oops++;
         });
+      default:
+        setState(() {
+          _submitting = false;
+          _socialBusy = null;
+        });
+    }
+  }
+
+  /// New Google / Apple accounts pick their country (it sets the Pay
+  /// currency), like the sign-up form asks.
+  Future<void> _askCountry() async {
+    String? code;
+    final closed = Completer<void>();
+    showCountryPicker(
+      context: context,
+      countryListTheme: CountryListThemeData(
+        backgroundColor: PhlioColors.surface,
+        textStyle: PhlioTypography.body.copyWith(color: PhlioColors.textPrimary),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      onSelect: (country) => code = country.countryCode,
+      onClosed: () {
+        if (!closed.isCompleted) closed.complete();
       },
     );
+    await closed.future;
+    if (code == null) return;
+    try {
+      await getIt<ApiClient>()
+          .dio
+          .put('/auth/me/country', data: {'country': code});
+    } catch (_) {}
   }
 
   void _forgotPassword() {
@@ -260,6 +321,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   label: 'Forgot password?',
                                   onTap: _forgotPassword),
                             ),
+                            const SizedBox(height: 10),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 380),
+                              child: _orDivider(),
+                            ),
+                            const SizedBox(height: 12),
+                            StaggerIn(
+                              delay: const Duration(milliseconds: 400),
+                              child: Row(children: [
+                                Expanded(
+                                  child: _SocialButton(
+                                    label: 'Google',
+                                    logo: SvgPicture.string(_googleG,
+                                        width: 20, height: 20),
+                                    light: true,
+                                    busy: _socialBusy == 'google',
+                                    onPressed: _submitting
+                                        ? null
+                                        : () => _socialSignIn(AuthFlows.google, 'google'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _SocialButton(
+                                    label: 'Apple',
+                                    logo: const Icon(Icons.apple,
+                                        size: 22, color: Colors.white),
+                                    light: false,
+                                    busy: _socialBusy == 'apple',
+                                    onPressed: _submitting
+                                        ? null
+                                        : () => _socialSignIn(AuthFlows.apple, 'apple'),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                            const SizedBox(height: 18),
                             const Spacer(flex: 3),
                             StaggerIn(
                               delay: const Duration(milliseconds: 420),
@@ -291,6 +389,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
   }
+
+  Widget _orDivider() => Row(children: [
+        const Expanded(child: Divider(color: PhlioColors.border)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text('or continue with',
+              style: PhlioTypography.caption
+                  .copyWith(color: PhlioColors.textMuted)),
+        ),
+        const Expanded(child: Divider(color: PhlioColors.border)),
+      ]);
 
   Widget _foxyRow(bool keyboard) {
     final size = keyboard ? 104.0 : 150.0;
@@ -327,3 +436,62 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 }
+
+/// "Continue with Google / Apple": white (Google) or black (Apple) pill.
+class _SocialButton extends StatelessWidget {
+  const _SocialButton({
+    required this.label,
+    required this.logo,
+    required this.light,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final String label;
+  final Widget logo;
+  final bool light, busy;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = light ? const Color(0xFF1F1F1F) : Colors.white;
+    return Semantics(
+      button: true,
+      label: 'Continue with $label',
+      child: Material(
+        color: light ? Colors.white : Colors.black,
+        shape: StadiumBorder(
+            side: BorderSide(
+                color: light ? Colors.transparent : PhlioColors.border)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            height: 50,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (busy)
+                SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: fg))
+              else
+                logo,
+              const SizedBox(width: 10),
+              Text(label,
+                  style: PhlioTypography.bodyStrong.copyWith(color: fg)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Google's standard multicolour "G" for the sign-in button (per Google's
+/// sign-in branding guidelines).
+const _googleG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+</svg>''';

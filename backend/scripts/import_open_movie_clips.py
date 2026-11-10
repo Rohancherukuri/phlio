@@ -42,7 +42,11 @@ FILMS = [
     dict(slug="sintel", title="Sintel", count=20, start=45, end=760, year=2010,
          urls=["https://download.blender.org/demo/movies/Sintel.2010.720p.mkv",
                "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.720p.mkv",
-               "http://ftp.halifax.rwth-aachen.de/blender/demo/movies/Sintel.2010.720p.mkv"],
+               "http://ftp.halifax.rwth-aachen.de/blender/demo/movies/Sintel.2010.720p.mkv",
+               # Original render (MP4): different encode, so a bad copy of the MKV doesn't block us.
+               "http://mirrorblender.top-ix.org/movies/sintel-1280-surround.mp4",
+               "http://peach.themazzone.com/durian/movies/sintel-1280-surround.mp4"],
+         min_minutes=13,
          license="CC BY 3.0", license_url="https://creativecommons.org/licenses/by/3.0/",
          credit="Sintel — (c) copyright Blender Foundation | durian.blender.org · CC BY 3.0",
          tags=["sintel", "animation", "openmovie", "blender"],
@@ -97,11 +101,45 @@ FILMS = [
 ]
 
 
+def healthy(path, min_seconds):
+    """A source/clip ffprobe can read, with video, at least `min_seconds` long."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type",
+                              "-of", "json", str(path)], capture_output=True, text=True, check=True, timeout=60)
+        data = json.loads(out.stdout)
+        return (any(s.get("codec_type") == "video" for s in data.get("streams", []))
+                and float(data["format"]["duration"]) >= min_seconds)
+    except (subprocess.SubprocessError, ValueError, KeyError, OSError):
+        return False
+
+
+def readable_to_the_end(path, minimum):
+    """A truncated download keeps its full duration in the header, so decode
+    one frame near the end to be sure the whole file is there."""
+    import tempfile
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
+                             capture_output=True, text=True, check=True, timeout=60)
+        position = max(minimum * 0.9, float(json.loads(out.stdout)["format"]["duration"]) * 0.92)
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = Path(tmp) / "end.jpg"
+            subprocess.run(["ffmpeg", "-nostdin", "-v", "fatal", "-y", "-ss", f"{position:.1f}", "-i", str(path),
+                            "-frames:v", "1", "-an", str(frame)], check=True, timeout=120)
+            return frame.exists() and frame.stat().st_size > 1000
+    except (subprocess.SubprocessError, ValueError, KeyError, OSError):
+        return False
+
+
 def download(film):
     SOURCE_DIR.mkdir(parents=True, exist_ok=True)
-    existing = [p for p in SOURCE_DIR.glob(film["slug"] + "-source.*") if p.stat().st_size > 10_000_000]
-    if existing:
-        return existing[0]
+    minimum = film.get("min_minutes", 5) * 60
+    for p in sorted(SOURCE_DIR.glob(film["slug"] + "-source.*")):
+        if p.suffix == ".part":
+            continue
+        if healthy(p, minimum) and readable_to_the_end(p, minimum):
+            return p
+        print(f"  {p.name} is damaged or incomplete; downloading it again", flush=True)
+        p.unlink(missing_ok=True)
     # Tears of Steel was already fetched by import_licensed_social.
     if film["slug"] == "tears":
         old = media_root_path(settings) / "licensed_social" / "tears-of-steel-source.mov"
@@ -118,7 +156,10 @@ def download(film):
                     for chunk in response.iter_bytes(1024 * 1024):
                         out.write(chunk)
             partial.replace(target)
-            return target
+            if healthy(target, minimum) and readable_to_the_end(target, minimum):
+                return target
+            print(f"  {url} gave a damaged or incomplete file; trying the next mirror", flush=True)
+            target.unlink(missing_ok=True)
         except (httpx.HTTPError, OSError) as exc:
             print(f"  failed ({exc}); trying the next mirror", flush=True)
             partial.unlink(missing_ok=True)
@@ -133,12 +174,23 @@ def probe(path):
 
 
 def cut(source, target, start, seconds):
-    # Centre crop to 9:16 at 960 tall; keep audio.
+    """Centre crop to 9:16 at 960 tall. Tolerates damaged audio packets (some
+    mirrors' AC-3 tracks have them): decode errors are skipped, and if the
+    clip still comes out broken it is cut again without sound. Returns
+    whether a playable clip was written."""
     vf = "scale=-2:960,crop=540:960"
-    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-ss", f"{start:.2f}", "-i", str(source),
-                    "-t", str(seconds), "-vf", vf, "-r", "30", "-c:v", "libx264", "-preset", "veryfast",
-                    "-crf", "24", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-                    "-movflags", "+faststart", str(target)], check=True, timeout=300)
+    base = ["ffmpeg", "-nostdin", "-v", "fatal", "-y", "-err_detect", "ignore_err", "-ss", f"{start:.2f}",
+            "-i", str(source), "-t", str(seconds), "-vf", vf, "-r", "30", "-c:v", "libx264",
+            "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p"]
+    for audio in (["-c:a", "aac", "-b:a", "128k", "-ac", "2"], ["-an"]):
+        try:
+            subprocess.run(base + audio + ["-movflags", "+faststart", str(target)], check=True, timeout=300)
+        except (subprocess.SubprocessError, OSError):
+            pass
+        if healthy(target, seconds - 1.5):
+            return True
+        target.unlink(missing_ok=True)
+    return False
 
 
 async def engage(c, obj, posted, members, rng, now):
@@ -233,13 +285,26 @@ async def main(do_reset=False):
                 name = f"{film['slug']}-{n:02}"
                 target, cover = root / f"{name}.mp4", root / f"{name}-cover.jpg"
                 print(f"{film['title']} {n + 1}/{film['count']}", flush=True)
-                if not target.exists():
-                    cut(source, target, start, seconds)
+                # Re-cut clips a failed earlier run left broken.
+                if target.exists() and not healthy(target, seconds - 1.5):
+                    target.unlink()
+                    cover.unlink(missing_ok=True)
+                if not target.exists() and not cut(source, target, start, seconds):
+                    print(f"  skipped {name}: could not cut a playable clip", flush=True)
+                    continue
                 if not cover.exists():
                     try:
                         make_thumbnail(target, cover, seconds, fingerprints, offset=rng.randint(2, 9))
                     except ValueError:  # every bright frame looks like an earlier cover; allow a repeat
-                        make_thumbnail(target, cover, seconds, None, offset=rng.randint(2, 9))
+                        try:
+                            make_thumbnail(target, cover, seconds, None, offset=rng.randint(2, 9))
+                        except (ValueError, subprocess.SubprocessError):
+                            pass
+                    except subprocess.SubprocessError:
+                        pass
+                if not cover.exists():
+                    print(f"  skipped {name}: no usable cover frame", flush=True)
+                    continue
                 creator = creators[int(hashlib.sha256((ref + "owner").encode()).hexdigest(), 16) % len(creators)]
                 caption = film["captions"][n % len(film["captions"])]
                 posted = now - dt.timedelta(days=rng.uniform(0.5, 35), minutes=rng.randint(0, 600))

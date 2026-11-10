@@ -44,6 +44,7 @@ def _row_to_user(row: dict) -> User:
         is_creator=row.get("is_creator", False),
         is_test_user=row.get("is_test_user", False),
         phone_number=row.get("phone_number"),
+        country=row.get("country"),
         date_of_birth=dt.date.fromisoformat(row["date_of_birth"]) if row.get("date_of_birth") else None,
     )
 
@@ -62,6 +63,7 @@ def _user_to_row(user: User) -> dict:
         "is_creator": user.is_creator,
         "is_test_user": user.is_test_user,
         "phone_number": user.phone_number,
+        "country": user.country,
         "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
     }
 

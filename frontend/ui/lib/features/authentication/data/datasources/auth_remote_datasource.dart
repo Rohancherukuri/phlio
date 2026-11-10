@@ -21,6 +21,7 @@ class AuthRemoteDataSource {
     required List<String> interests,
     String? dateOfBirth,
     String? phoneNumber,
+    String? country,
   }) async {
     final response = await _apiClient.dio.post(
       '/auth/register',
@@ -32,6 +33,7 @@ class AuthRemoteDataSource {
         'interests': interests,
         if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
         if (phoneNumber != null) 'phone_number': phoneNumber,
+        if (country != null) 'country': country,
       },
     );
     return AuthResponseModel.fromJson(response.data as Map<String, dynamic>);
@@ -46,8 +48,12 @@ class AuthRemoteDataSource {
     return AuthResponseModel.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<UserModel> getCurrentUser() async {
+  Future<UserModel> getCurrentUser() async =>
+      UserModel.fromJson(await getCurrentUserJson());
+
+  /// The raw `/auth/me` JSON (kept so the profile can be cached for boot).
+  Future<Map<String, dynamic>> getCurrentUserJson() async {
     final response = await _apiClient.dio.get('/auth/me');
-    return UserModel.fromJson(response.data as Map<String, dynamic>);
+    return response.data as Map<String, dynamic>;
   }
 }

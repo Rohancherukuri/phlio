@@ -112,6 +112,13 @@ class ObjectStore:
             partial.replace(path)
         return True
 
+    def delete(self, key: str) -> None:
+        """Deletes ``key`` (no error if it doesn't exist)."""
+        url, headers = self._headers("DELETE", key, payload_hash=_EMPTY_SHA256)
+        response = self._http.delete(url, headers=headers)
+        if response.status_code not in (200, 204, 404):
+            response.raise_for_status()
+
     def head(self, key: str) -> int | None:
         """Size of ``key`` in bytes, or None when it doesn't exist."""
         url, headers = self._headers("HEAD", key, payload_hash=_EMPTY_SHA256)

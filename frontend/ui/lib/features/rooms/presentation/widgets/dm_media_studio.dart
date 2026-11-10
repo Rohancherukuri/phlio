@@ -50,12 +50,14 @@ import 'studio/studio_panels.dart';
 import 'studio/studio_publish.dart';
 import 'studio/studio_sheets.dart';
 import 'studio/studio_timeline.dart';
+import 'studio_templates.dart';
 
 const _bg = Color(0xFF07090E);
 const _violet = PhlioColors.brandViolet;
 
 enum _Panel {
   none,
+  templates,
   speed,
   volume,
   filters,
@@ -97,6 +99,9 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
 
   // Playback.
   double t = 0;
+
+  /// Template applied from the Templates panel (null = none).
+  String? _template;
   bool playing = false;
   late final Ticker _ticker;
   Duration _last = Duration.zero;
@@ -2308,8 +2313,11 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
           onTap();
         },
         radius: 34,
-        child: SizedBox(
-          width: 66,
+        // Long labels ("Aspect ratio") get a wider slot so they don't run
+        // into the next tool.
+        child: Container(
+          width: math.max(66.0, label.length * 6.6 + 14),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(icon, color: on ? _violet : Colors.white, size: 23),
             const SizedBox(height: 5),
@@ -2551,8 +2559,10 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
         }),
       ];
     } else {
-      // CapCut's main toolbar.
+      // CapCut's main toolbar (Templates first, like CapCut / OpenCut presets).
       tools = [
+        _tool(Icons.dashboard_customize_outlined, 'Templates', () => _open(_Panel.templates),
+            on: _template != null),
         _tool(Icons.content_cut_rounded, 'Edit', () {
           final c = _target;
           if (c != null) _select(StudioSelection(StudioSelectKind.clip, c.id));
@@ -2948,6 +2958,29 @@ class _StudioState extends State<DmMediaStudio> with TickerProviderStateMixin {
               ),
             const SizedBox(height: 6),
           ]),
+        );
+      case _Panel.templates:
+        return StudioPanel(
+          title: 'Templates',
+          height: 236,
+          onDone: done,
+          child: StudioTemplatesPanel(
+            thumb: c == null ? const ColoredBox(color: Color(0xFF2A2350)) : _thumb(c),
+            selected: _template,
+            onPick: (tpl) {
+              remember();
+              setState(() {
+                applyStudioTemplate(p, tpl);
+                _template = tpl?.id;
+                t = 0;
+              });
+              _seekPreview();
+              if (tpl != null) {
+                _play();
+                toast('${tpl.name} applied · everything stays editable');
+              }
+            },
+          ),
         );
       case _Panel.ratio:
         return StudioPanel(

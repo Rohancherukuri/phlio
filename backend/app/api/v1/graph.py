@@ -1,5 +1,6 @@
 """Product APIs for the shared graph; no raw query language crosses this boundary."""
 
+import math
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,6 +8,8 @@ from pydantic import AwareDatetime, BaseModel, Field
 
 from app.api.deps import get_agent_tools, get_container, get_current_user
 from app.core.container import Container
+from app.domains.graph.service import key
+from app.domains.graph.store import now
 from app.domains.identity.entities import User
 
 router = APIRouter(tags=["social graph"])
@@ -287,3 +290,118 @@ async def find_friends(q: str = Query(default="", max_length=100),
     peers = await c.identity_repository.search_users(q.strip().lstrip("@"), 30)
     return [c.graph.profile(peer) for peer in peers
             if peer.id != user.id and not await c.graph.blocked(user.id, peer.id)]
+
+
+# -- Discover people (Instagram's "Suggested for you") -------------------------
+
+
+def _first(display):
+    return (display or "").split(" ")[0] or display
+
+
+@router.get("/social/suggestions")
+async def suggestions(
+    for_user: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    c: Container = Depends(get_container),
+):
+    """People to follow, best first.
+
+    Without `for_user` (your own profile, "Discover people"): people followed
+    by the people you follow (the more of them, the higher), people who
+    follow you that you don't follow back, friends of friends, then popular
+    accounts. With `for_user` (someone else's profile, "Suggested for you"):
+    accounts like theirs — who they follow and who their followers follow —
+    still ranked up by mutuals with you.
+    Never suggests you, people you already follow, blocked accounts or
+    anyone you dismissed.
+    """
+    me = user.id
+    follows = await c.graph.store.rows("follows")
+    out_of: dict[str, set[str]] = {}
+    into: dict[str, set[str]] = {}
+    for edge in follows:
+        a, b = str(edge["in"]).removeprefix("user:"), str(edge["out"]).removeprefix("user:")
+        out_of.setdefault(a, set()).add(b)
+        into.setdefault(b, set()).add(a)
+    friends: dict[str, set[str]] = {}
+    for edge in await c.graph.store.rows("friend", {"status": "accepted"}):
+        a, b = str(edge["in"]).removeprefix("user:"), str(edge["out"]).removeprefix("user:")
+        friends.setdefault(a, set()).add(b)
+        friends.setdefault(b, set()).add(a)
+    blocked = {str(r["out"]).removeprefix("user:") for r in await c.graph.store.rows("block", {"in": "user:" + me})}
+    blocked |= {str(r["in"]).removeprefix("user:") for r in await c.graph.store.rows("block", {"out": "user:" + me})}
+    hidden = {r.get("target") for r in await c.graph.store.rows("suggestion_hidden", {"owner": me})}
+
+    following = out_of.get(me, set())
+    known = following | friends.get(me, set())
+    score: dict[str, float] = {}
+    via: dict[str, set[str]] = {}   # mutuals: people you know who follow them
+    follows_you: set[str] = set()
+
+    def add(uid, points):
+        score[uid] = score.get(uid, 0) + points
+
+    target = None
+    if for_user:
+        target = await c.graph.user(for_user)
+        for uid in out_of.get(target.id, set()):
+            add(uid, 3)
+        for fan in into.get(target.id, set()):
+            for uid in out_of.get(fan, set()):
+                add(uid, 0.5)
+    for person in known:
+        for uid in out_of.get(person, set()) | friends.get(person, set()):
+            add(uid, 2 if target else 3)
+            if person in into.get(uid, set()) or uid in friends.get(person, set()):
+                via.setdefault(uid, set()).add(person)
+    for fan in into.get(me, set()):
+        add(fan, 4)
+        follows_you.add(fan)
+    # Popular accounts keep the list full for brand-new users.
+    for uid, fans in into.items():
+        add(uid, math.log1p(len(fans)) * 0.6)
+
+    exclude = {me} | following | blocked | hidden
+    if target:
+        exclude.add(target.id)
+    ranked = sorted((uid for uid in score if uid not in exclude), key=lambda u: -score[u])
+
+    people = {p.id: p for p in await c.identity_repository.get_many(ranked[: limit * 2])}
+    mutual_ids = {m for uid in ranked[: limit * 2] for m in sorted(via.get(uid, set()))[:3]}
+    mutual_people = {p.id: p for p in await c.identity_repository.get_many(list(mutual_ids))}
+    items = []
+    for uid in ranked:
+        person = people.get(uid)
+        if person is None:
+            continue
+        mutuals = [mutual_people[m] for m in sorted(via.get(uid, set())) if m in mutual_people][:3]
+        count = len(via.get(uid, set()))
+        if uid in follows_you:
+            reason = "Follows you"
+        elif count == 1 and mutuals:
+            reason = f"Followed by {mutuals[0].username}"
+        elif count > 1 and mutuals:
+            reason = f"Followed by {mutuals[0].username} + {count - 1} more"
+        elif target and uid in out_of.get(target.id, set()):
+            reason = f"Followed by {target.username}"
+        else:
+            reason = "Popular on Phlio" if len(into.get(uid, set())) >= 5 else "Suggested for you"
+        items.append(dict(c.graph.profile(person), bio=getattr(person, "bio", "") or "",
+                          is_creator=getattr(person, "is_creator", False),
+                          reason=reason, mutual_count=count,
+                          mutuals=[c.graph.profile(m) for m in mutuals],
+                          followers_count=len(into.get(uid, set()))))
+        if len(items) >= limit:
+            break
+    return {"items": items}
+
+
+@router.post("/social/suggestions/{target}/dismiss", status_code=204)
+async def dismiss_suggestion(target: str, user: User = Depends(get_current_user),
+                             c: Container = Depends(get_container)):
+    """The ✕ on a suggestion card: don't suggest this person again."""
+    peer = await c.graph.user(target)
+    await c.graph.store.put(key("suggestion_hidden", user.id, peer.id),
+                            dict(owner=user.id, target=peer.id, created_at=now()))

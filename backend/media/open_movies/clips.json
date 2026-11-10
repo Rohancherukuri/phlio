@@ -1,0 +1,542 @@
+[
+  {
+    "id": "open_clip_sintel_00",
+    "film": "Sintel",
+    "start": 50.54,
+    "seconds": 28,
+    "creator": "demo_001",
+    "caption": "the dragon chase in Sintel still gives me chills 🐉",
+    "file": "sintel-00.mp4"
+  },
+  {
+    "id": "open_clip_sintel_01",
+    "film": "Sintel",
+    "start": 90.71,
+    "seconds": 17,
+    "creator": "demo_014",
+    "caption": "Sintel's rooftop scene, pure atmosphere",
+    "file": "sintel-01.mp4"
+  },
+  {
+    "id": "open_clip_sintel_02",
+    "film": "Sintel",
+    "start": 123.01,
+    "seconds": 12,
+    "creator": "demo_008",
+    "caption": "this snow sequence is a whole mood ❄️",
+    "file": "sintel-02.mp4"
+  },
+  {
+    "id": "open_clip_sintel_03",
+    "film": "Sintel",
+    "start": 157.74,
+    "seconds": 30,
+    "creator": "demo_014",
+    "caption": "nobody talks about the lighting in Sintel enough",
+    "file": "sintel-03.mp4"
+  },
+  {
+    "id": "open_clip_sintel_04",
+    "film": "Sintel",
+    "start": 194.76,
+    "seconds": 20,
+    "creator": "demo_012",
+    "caption": "Scales the baby dragon 🥹",
+    "file": "sintel-04.mp4"
+  },
+  {
+    "id": "open_clip_sintel_05",
+    "film": "Sintel",
+    "start": 229.6,
+    "seconds": 28,
+    "creator": "demo_016",
+    "caption": "the market scene, so much detail in the background",
+    "file": "sintel-05.mp4"
+  },
+  {
+    "id": "open_clip_sintel_06",
+    "film": "Sintel",
+    "start": 271.19,
+    "seconds": 23,
+    "creator": "demo_017",
+    "caption": "that moment when she finds the cave",
+    "file": "sintel-06.mp4"
+  },
+  {
+    "id": "open_clip_sintel_07",
+    "film": "Sintel",
+    "start": 297.94,
+    "seconds": 20,
+    "creator": "demo_013",
+    "caption": "Sintel's fight choreography goes hard",
+    "file": "sintel-07.mp4"
+  },
+  {
+    "id": "open_clip_sintel_08",
+    "film": "Sintel",
+    "start": 333.27,
+    "seconds": 24,
+    "creator": "demo_012",
+    "caption": "rewatching Sintel and this cut hits different",
+    "file": "sintel-08.mp4"
+  },
+  {
+    "id": "open_clip_sintel_09",
+    "film": "Sintel",
+    "start": 379.95,
+    "seconds": 16,
+    "creator": "demo_011",
+    "caption": "the score in this part 🎻",
+    "file": "sintel-09.mp4"
+  },
+  {
+    "id": "open_clip_sintel_10",
+    "film": "Sintel",
+    "start": 414.32,
+    "seconds": 22,
+    "creator": "demo_012",
+    "caption": "frame by frame this film is a painting",
+    "file": "sintel-10.mp4"
+  },
+  {
+    "id": "open_clip_sintel_11",
+    "film": "Sintel",
+    "start": 438.7,
+    "seconds": 29,
+    "creator": "demo_000",
+    "caption": "the shaman scene is so underrated",
+    "file": "sintel-11.mp4"
+  },
+  {
+    "id": "open_clip_sintel_12",
+    "film": "Sintel",
+    "start": 477.06,
+    "seconds": 28,
+    "creator": "demo_010",
+    "caption": "Sintel walking through the storm 🌪️",
+    "file": "sintel-12.mp4"
+  },
+  {
+    "id": "open_clip_sintel_13",
+    "film": "Sintel",
+    "start": 514.68,
+    "seconds": 28,
+    "creator": "demo_005",
+    "caption": "animation study: Sintel's hair sim",
+    "file": "sintel-13.mp4"
+  },
+  {
+    "id": "open_clip_sintel_14",
+    "film": "Sintel",
+    "start": 547.09,
+    "seconds": 19,
+    "creator": "demo_001",
+    "caption": "this transition is so clean",
+    "file": "sintel-14.mp4"
+  },
+  {
+    "id": "open_clip_sintel_15",
+    "film": "Sintel",
+    "start": 587.75,
+    "seconds": 20,
+    "creator": "demo_011",
+    "caption": "the bamboo forest sequence 🎋",
+    "file": "sintel-15.mp4"
+  },
+  {
+    "id": "open_clip_sintel_16",
+    "film": "Sintel",
+    "start": 638.4,
+    "seconds": 12,
+    "creator": "demo_009",
+    "caption": "Sintel's ending wrecked me ngl",
+    "file": "sintel-16.mp4"
+  },
+  {
+    "id": "open_clip_sintel_17",
+    "film": "Sintel",
+    "start": 655.13,
+    "seconds": 22,
+    "creator": "demo_013",
+    "caption": "the colour palette in this shot",
+    "file": "sintel-17.mp4"
+  },
+  {
+    "id": "open_clip_sintel_18",
+    "film": "Sintel",
+    "start": 690.68,
+    "seconds": 24,
+    "creator": "demo_012",
+    "caption": "made in Blender, free to watch, still elite",
+    "file": "sintel-18.mp4"
+  },
+  {
+    "id": "open_clip_sintel_19",
+    "film": "Sintel",
+    "start": 732.18,
+    "seconds": 16,
+    "creator": "demo_006",
+    "caption": "15 seconds of Sintel to fix your day",
+    "file": "sintel-19.mp4"
+  },
+  {
+    "id": "open_clip_bbb_00",
+    "film": "Big Buck Bunny",
+    "start": 35.35,
+    "seconds": 16,
+    "creator": "demo_001",
+    "caption": "Big Buck Bunny waking up is literally me on Mondays 🐰",
+    "file": "bbb-00.mp4"
+  },
+  {
+    "id": "open_clip_bbb_01",
+    "film": "Big Buck Bunny",
+    "start": 60.48,
+    "seconds": 19,
+    "creator": "demo_011",
+    "caption": "the butterfly scene 🦋 so wholesome",
+    "file": "bbb-01.mp4"
+  },
+  {
+    "id": "open_clip_bbb_02",
+    "film": "Big Buck Bunny",
+    "start": 84.2,
+    "seconds": 22,
+    "creator": "demo_011",
+    "caption": "these three troublemakers 😂",
+    "file": "bbb-02.mp4"
+  },
+  {
+    "id": "open_clip_bbb_03",
+    "film": "Big Buck Bunny",
+    "start": 106.63,
+    "seconds": 27,
+    "creator": "demo_017",
+    "caption": "Bunny's revenge arc starts here",
+    "file": "bbb-03.mp4"
+  },
+  {
+    "id": "open_clip_bbb_04",
+    "film": "Big Buck Bunny",
+    "start": 132.19,
+    "seconds": 29,
+    "creator": "demo_001",
+    "caption": "the fur rendering in 2008?? insane",
+    "file": "bbb-04.mp4"
+  },
+  {
+    "id": "open_clip_bbb_05",
+    "film": "Big Buck Bunny",
+    "start": 168.42,
+    "seconds": 13,
+    "creator": "demo_015",
+    "caption": "comfort cartoon unlocked",
+    "file": "bbb-05.mp4"
+  },
+  {
+    "id": "open_clip_bbb_06",
+    "film": "Big Buck Bunny",
+    "start": 184.65,
+    "seconds": 18,
+    "creator": "demo_016",
+    "caption": "the squirrel's face in this part 😭",
+    "file": "bbb-06.mp4"
+  },
+  {
+    "id": "open_clip_bbb_07",
+    "film": "Big Buck Bunny",
+    "start": 211.53,
+    "seconds": 22,
+    "creator": "demo_009",
+    "caption": "Big Buck Bunny traps, engineering level 100",
+    "file": "bbb-07.mp4"
+  },
+  {
+    "id": "open_clip_bbb_08",
+    "film": "Big Buck Bunny",
+    "start": 236.0,
+    "seconds": 23,
+    "creator": "demo_015",
+    "caption": "this forest looks so soft",
+    "file": "bbb-08.mp4"
+  },
+  {
+    "id": "open_clip_bbb_09",
+    "film": "Big Buck Bunny",
+    "start": 261.07,
+    "seconds": 23,
+    "creator": "demo_001",
+    "caption": "the timing on this gag is perfect",
+    "file": "bbb-09.mp4"
+  },
+  {
+    "id": "open_clip_bbb_10",
+    "film": "Big Buck Bunny",
+    "start": 285.31,
+    "seconds": 26,
+    "creator": "demo_000",
+    "caption": "showed this to my little cousin and she lost it",
+    "file": "bbb-10.mp4"
+  },
+  {
+    "id": "open_clip_bbb_11",
+    "film": "Big Buck Bunny",
+    "start": 311.38,
+    "seconds": 27,
+    "creator": "demo_017",
+    "caption": "peak open-source animation",
+    "file": "bbb-11.mp4"
+  },
+  {
+    "id": "open_clip_bbb_12",
+    "film": "Big Buck Bunny",
+    "start": 337.34,
+    "seconds": 21,
+    "creator": "demo_019",
+    "caption": "the flying squirrel bit 🐿️",
+    "file": "bbb-12.mp4"
+  },
+  {
+    "id": "open_clip_bbb_13",
+    "film": "Big Buck Bunny",
+    "start": 365.54,
+    "seconds": 15,
+    "creator": "demo_006",
+    "caption": "Bunny smelling the flower 🌸",
+    "file": "bbb-13.mp4"
+  },
+  {
+    "id": "open_clip_bbb_14",
+    "film": "Big Buck Bunny",
+    "start": 389.42,
+    "seconds": 16,
+    "creator": "demo_003",
+    "caption": "this apple moment lol",
+    "file": "bbb-14.mp4"
+  },
+  {
+    "id": "open_clip_bbb_15",
+    "film": "Big Buck Bunny",
+    "start": 412.87,
+    "seconds": 20,
+    "creator": "demo_019",
+    "caption": "the colours in this film are so warm",
+    "file": "bbb-15.mp4"
+  },
+  {
+    "id": "open_clip_bbb_16",
+    "film": "Big Buck Bunny",
+    "start": 443.72,
+    "seconds": 15,
+    "creator": "demo_015",
+    "caption": "plotting the trap, every frame is a joke",
+    "file": "bbb-16.mp4"
+  },
+  {
+    "id": "open_clip_bbb_17",
+    "film": "Big Buck Bunny",
+    "start": 468.1,
+    "seconds": 14,
+    "creator": "demo_012",
+    "caption": "the chinchilla deserved better",
+    "file": "bbb-17.mp4"
+  },
+  {
+    "id": "open_clip_bbb_18",
+    "film": "Big Buck Bunny",
+    "start": 489.91,
+    "seconds": 28,
+    "creator": "demo_018",
+    "caption": "Big Buck Bunny never gets old",
+    "file": "bbb-18.mp4"
+  },
+  {
+    "id": "open_clip_bbb_19",
+    "film": "Big Buck Bunny",
+    "start": 514.74,
+    "seconds": 26,
+    "creator": "demo_015",
+    "caption": "best 10 minutes on the internet",
+    "file": "bbb-19.mp4"
+  },
+  {
+    "id": "open_clip_elephants_00",
+    "film": "Elephants Dream",
+    "start": 46.71,
+    "seconds": 29,
+    "creator": "demo_010",
+    "caption": "Elephants Dream is so surreal, the first open movie ever 🐘",
+    "file": "elephants-00.mp4"
+  },
+  {
+    "id": "open_clip_elephants_01",
+    "film": "Elephants Dream",
+    "start": 117.6,
+    "seconds": 21,
+    "creator": "demo_015",
+    "caption": "this machine world is wild",
+    "file": "elephants-01.mp4"
+  },
+  {
+    "id": "open_clip_elephants_02",
+    "film": "Elephants Dream",
+    "start": 172.01,
+    "seconds": 19,
+    "creator": "demo_019",
+    "caption": "the cable room scene 🔌",
+    "file": "elephants-02.mp4"
+  },
+  {
+    "id": "open_clip_elephants_03",
+    "film": "Elephants Dream",
+    "start": 221.75,
+    "seconds": 25,
+    "creator": "demo_007",
+    "caption": "Proog and Emo, the original duo",
+    "file": "elephants-03.mp4"
+  },
+  {
+    "id": "open_clip_elephants_04",
+    "film": "Elephants Dream",
+    "start": 261.81,
+    "seconds": 15,
+    "creator": "demo_015",
+    "caption": "2006 and they made this with open tools",
+    "file": "elephants-04.mp4"
+  },
+  {
+    "id": "open_clip_elephants_05",
+    "film": "Elephants Dream",
+    "start": 329.98,
+    "seconds": 26,
+    "creator": "demo_015",
+    "caption": "the audio design in this part is creepy good",
+    "file": "elephants-05.mp4"
+  },
+  {
+    "id": "open_clip_elephants_06",
+    "film": "Elephants Dream",
+    "start": 408.51,
+    "seconds": 12,
+    "creator": "demo_008",
+    "caption": "the telephone sequence 📞",
+    "file": "elephants-06.mp4"
+  },
+  {
+    "id": "open_clip_elephants_07",
+    "film": "Elephants Dream",
+    "start": 463.74,
+    "seconds": 16,
+    "creator": "demo_012",
+    "caption": "this film feels like a fever dream (complimentary)",
+    "file": "elephants-07.mp4"
+  },
+  {
+    "id": "open_clip_elephants_08",
+    "film": "Elephants Dream",
+    "start": 515.26,
+    "seconds": 13,
+    "creator": "demo_017",
+    "caption": "the bird scene, still beautiful",
+    "file": "elephants-08.mp4"
+  },
+  {
+    "id": "open_clip_elephants_09",
+    "film": "Elephants Dream",
+    "start": 552.83,
+    "seconds": 27,
+    "creator": "demo_006",
+    "caption": "every frame looks like concept art",
+    "file": "elephants-09.mp4"
+  },
+  {
+    "id": "open_clip_tears_00",
+    "film": "Tears of Steel",
+    "start": 93.31,
+    "seconds": 25,
+    "creator": "demo_017",
+    "caption": "Tears of Steel, the bridge scene 🌉",
+    "file": "tears-00.mp4"
+  },
+  {
+    "id": "open_clip_tears_01",
+    "film": "Tears of Steel",
+    "start": 142.51,
+    "seconds": 26,
+    "creator": "demo_008",
+    "caption": "the robots in this one 🤖",
+    "file": "tears-01.mp4"
+  },
+  {
+    "id": "open_clip_tears_02",
+    "film": "Tears of Steel",
+    "start": 210.39,
+    "seconds": 25,
+    "creator": "demo_019",
+    "caption": "Amsterdam but make it sci-fi",
+    "file": "tears-02.mp4"
+  },
+  {
+    "id": "open_clip_tears_03",
+    "film": "Tears of Steel",
+    "start": 253.47,
+    "seconds": 27,
+    "creator": "demo_017",
+    "caption": "this VFX shot is so clean",
+    "file": "tears-03.mp4"
+  },
+  {
+    "id": "open_clip_tears_04",
+    "film": "Tears of Steel",
+    "start": 302.56,
+    "seconds": 25,
+    "creator": "demo_007",
+    "caption": "the dome fight sequence",
+    "file": "tears-04.mp4"
+  },
+  {
+    "id": "open_clip_tears_05",
+    "film": "Tears of Steel",
+    "start": 387.5,
+    "seconds": 21,
+    "creator": "demo_017",
+    "caption": "Celia and Thom, the breakup that started a war",
+    "file": "tears-05.mp4"
+  },
+  {
+    "id": "open_clip_tears_06",
+    "film": "Tears of Steel",
+    "start": 434.27,
+    "seconds": 22,
+    "creator": "demo_001",
+    "caption": "the practical sets + CG blend here",
+    "file": "tears-06.mp4"
+  },
+  {
+    "id": "open_clip_tears_07",
+    "film": "Tears of Steel",
+    "start": 495.62,
+    "seconds": 30,
+    "creator": "demo_015",
+    "caption": "Tears of Steel's colour grade is everything",
+    "file": "tears-07.mp4"
+  },
+  {
+    "id": "open_clip_tears_08",
+    "film": "Tears of Steel",
+    "start": 532.52,
+    "seconds": 20,
+    "creator": "demo_003",
+    "caption": "this shot is my wallpaper now",
+    "file": "tears-08.mp4"
+  },
+  {
+    "id": "open_clip_tears_09",
+    "film": "Tears of Steel",
+    "start": 595.9,
+    "seconds": 19,
+    "creator": "demo_013",
+    "caption": "open-source VFX hitting hard",
+    "file": "tears-09.mp4"
+  }
+]

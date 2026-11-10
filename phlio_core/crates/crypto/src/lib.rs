@@ -12,6 +12,7 @@
 use hmac::{Hmac, Mac};
 use phlio_common::{PhlioError, PhlioResult};
 use rand::RngCore;
+use sha1::Sha1;
 use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -68,6 +69,132 @@ pub fn generate_id(prefix: &str) -> String {
     let id = format!("{prefix}_{}", hex::encode(bytes));
     log::trace!("crypto.id_generated prefix={prefix}");
     id
+}
+
+// ---------------------------------------------------------------------------
+// TOTP (RFC 6238) — the second factor behind Settings → Two-factor auth.
+// ---------------------------------------------------------------------------
+
+/// Seconds per TOTP time step (RFC 6238 default, what authenticator apps use).
+pub const TOTP_STEP_SECS: u64 = 30;
+/// Digits per code.
+pub const TOTP_DIGITS: u32 = 6;
+
+/// Decodes an RFC 4648 base32 string (case-insensitive, padding and spaces
+/// optional) — the format authenticator apps show and `otpauth://` URIs carry.
+pub fn base32_decode(input: &str) -> PhlioResult<Vec<u8>> {
+    let mut out = Vec::with_capacity(input.len() * 5 / 8);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for ch in input.bytes() {
+        let value = match ch {
+            b'A'..=b'Z' => ch - b'A',
+            b'a'..=b'z' => ch - b'a',
+            b'2'..=b'7' => ch - b'2' + 26,
+            b'=' | b' ' | b'-' => continue,
+            _ => return Err(PhlioError::new("invalid_secret", "secret is not valid base32")),
+        } as u32;
+        buffer = (buffer << 5) | value;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    if out.is_empty() {
+        return Err(PhlioError::new("invalid_secret", "secret is empty"));
+    }
+    Ok(out)
+}
+
+/// The 6-digit code for one time step (HOTP over HMAC-SHA1, RFC 4226 §5.3).
+pub fn totp_code(key: &[u8], step: u64) -> PhlioResult<String> {
+    let mut mac = Hmac::<Sha1>::new_from_slice(key)
+        .map_err(|_| PhlioError::new("invalid_key", "TOTP key has invalid length"))?;
+    mac.update(&step.to_be_bytes());
+    let digest = mac.finalize().into_bytes();
+    let offset = (digest[digest.len() - 1] & 0x0f) as usize;
+    let value = u32::from_be_bytes([
+        digest[offset] & 0x7f,
+        digest[offset + 1],
+        digest[offset + 2],
+        digest[offset + 3],
+    ]);
+    Ok(format!("{:0width$}", value % 10u32.pow(TOTP_DIGITS), width = TOTP_DIGITS as usize))
+}
+
+/// Returns the time step `code` belongs to — the current one, or one step
+/// either side to tolerate clock drift — or `None` when it matches none.
+///
+/// Every candidate is compared in constant time and all three are always
+/// checked, so response timing does not reveal which window (if any) matched.
+/// Callers must store the returned step and reject it next time (replay guard).
+pub fn totp_matching_step(secret_b32: &str, code: &str, unix_now: u64) -> PhlioResult<Option<u64>> {
+    let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+    if code.len() != TOTP_DIGITS as usize || !code.bytes().all(|b| b.is_ascii_digit()) {
+        return Ok(None);
+    }
+    let key = base32_decode(secret_b32)?;
+    let current = unix_now / TOTP_STEP_SECS;
+    let mut found = None;
+    for step in [current, current.saturating_sub(1), current + 1] {
+        let candidate = totp_code(&key, step)?;
+        if constant_time_eq(candidate.as_bytes(), code.as_bytes()) && found.is_none() {
+            found = Some(step);
+        }
+    }
+    Ok(found)
+}
+
+/// Compares two byte strings without short-circuiting on the first
+/// difference (length is not secret, so it may return early on that).
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Lowercase hex SHA-256 — used for hashing backup codes and refresh tokens
+/// before they are stored, so a database leak never exposes usable secrets.
+pub fn sha256_hex(data: &[u8]) -> String {
+    use sha2::Digest;
+    hex::encode(Sha256::digest(data))
+}
+
+#[cfg(test)]
+mod totp_tests {
+    use super::*;
+
+    // RFC 6238 Appendix B test vector (SHA-1, seed "12345678901234567890").
+    const RFC_SECRET: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+    #[test]
+    fn rfc6238_vectors() {
+        let key = base32_decode(RFC_SECRET).unwrap();
+        assert_eq!(key, b"12345678901234567890");
+        // T = 59s → 94287082 (8 digits) → last 6 digits "287082".
+        assert_eq!(totp_code(&key, 59 / 30).unwrap(), "287082");
+        assert_eq!(totp_code(&key, 1111111109 / 30).unwrap(), "081804");
+        assert_eq!(totp_code(&key, 2000000000 / 30).unwrap(), "279037");
+    }
+
+    #[test]
+    fn matching_step_accepts_drift_and_rejects_garbage() {
+        let now = 1111111109;
+        assert_eq!(totp_matching_step(RFC_SECRET, "081 804", now).unwrap(), Some(now / 30));
+        assert_eq!(totp_matching_step(RFC_SECRET, "081804", now + 30).unwrap(), Some(now / 30));
+        assert_eq!(totp_matching_step(RFC_SECRET, "000000", now).unwrap(), None);
+        assert_eq!(totp_matching_step(RFC_SECRET, "12ab56", now).unwrap(), None);
+        assert!(totp_matching_step("!!!", "123456", now).is_err());
+    }
+
+    #[test]
+    fn constant_time_eq_works() {
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"ab"));
+    }
 }
 
 #[cfg(test)]

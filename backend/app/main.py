@@ -32,6 +32,7 @@ from app.core.logging import configure_logging
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
+from app.middleware.security import BodySizeLimitMiddleware, SecurityHeadersMiddleware, add_compression
 
 # Logging is configured at import time (before `create_app()` runs) so
 # even the earliest startup log lines — settings validation, container
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI):
     worker = asyncio.create_task(deliver_outbox(container))
     # Backs up state and new uploads to object storage (no-op when not configured).
     state_sync = asyncio.create_task(media_sync.run(settings, settings.state_sync_interval))
+    # Free hosting: stop the service from falling asleep (no-op unless KEEP_AWAKE=true).
+    from app.infrastructure import keep_awake
+    awake = asyncio.create_task(keep_awake.run(container, settings.keep_awake_interval))
     from app.domains.graph.news import run as refresh_news
     news_worker = asyncio.create_task(refresh_news(container)) if settings.news_ingestion_enabled else None
     # Development: make sure Phlio Book has its catalogue (sample services +
@@ -94,6 +98,9 @@ async def lifespan(app: FastAPI):
         worker.cancel()
         with suppress(asyncio.CancelledError):
             await worker
+        awake.cancel()
+        with suppress(asyncio.CancelledError):
+            await awake
         # Cancelling makes the sync do one final backup before shutdown.
         state_sync.cancel()
         with suppress(asyncio.CancelledError):
@@ -136,8 +143,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=settings.app_name,
         description="Phlio backend API — identity, social, rooms, shop, and the Phlio Agent.",
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        # API docs are off in production unless API_DOCS_ENABLED=true: they
+        # map every endpoint and schema for anyone probing the server.
+        docs_url="/docs" if settings.docs_enabled else None,
+        redoc_url="/redoc" if settings.docs_enabled else None,
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
         lifespan=lifespan,
     )
 
@@ -146,14 +156,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Order matters: middleware runs outside-in on the way in, inside-out on
     # the way out. Request ID must be assigned before RequestLogging runs so
     # the access-log line (and everything it triggers) can be tagged with it.
+    # Innermost first: gzip wraps the routes, then the body cap, logging,
+    # request id, security headers (so even errors and 413s carry them), and
+    # CORS outermost so preflight requests are answered before anything else.
+    add_compression(app)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_json_body_bytes)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, hsts=settings.is_production,
+                       api_prefix=settings.api_v1_prefix)
+    origins = settings.cors_origins_list
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_origins=origins,
+        # The app authenticates with bearer tokens, never cookies, so
+        # credentialed CORS is only needed for an explicit origin list; with
+        # "*" it would let any website make authenticated browser requests.
+        allow_credentials="*" not in origins,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        max_age=600,
     )
 
     register_exception_handlers(app)

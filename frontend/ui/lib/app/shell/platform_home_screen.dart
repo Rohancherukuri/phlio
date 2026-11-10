@@ -31,16 +31,42 @@ class PlatformHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<PlatformHomeScreen> createState() => _PlatformHomeScreenState();
 }
 
-class _PlatformHomeScreenState extends ConsumerState<PlatformHomeScreen> {
+class _PlatformHomeScreenState extends ConsumerState<PlatformHomeScreen>
+    with SingleTickerProviderStateMixin {
   final visited = <int>{};
+
+  // Platform switch: the new home fades up into place (the tray card is
+  // collapsing into the nav above it at the same time).
+  late final AnimationController _enter = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+    value: 1,
+  );
+  late final Animation<double> _curve =
+      CurvedAnimation(parent: _enter, curve: Curves.easeOutCubic);
+
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final platform = ref.watch(currentPlatformProvider);
+    ref.listen(currentPlatformProvider, (previous, next) {
+      if (previous == next) return;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _enter.value = 1;
+      } else {
+        _enter.forward(from: 0);
+      }
+    });
     visited.add(platform.index);
 
     // IndexedStack keeps every platform home alive (state + scroll) across
     // switches. Ordinal order matches the enum declaration order.
-    return IndexedStack(
+    final stack = IndexedStack(
       index: platform.index,
       children: [
         for (final entry in const <Widget>[
@@ -57,6 +83,22 @@ class _PlatformHomeScreenState extends ConsumerState<PlatformHomeScreen> {
               ? TickerMode(enabled: platform.index == entry.$1, child: entry.$2)
               : const SizedBox.shrink()
       ],
+    );
+    return AnimatedBuilder(
+      animation: _curve,
+      builder: (context, child) {
+        final t = _curve.value;
+        // Same widget shape at rest (opacity 1, no offset) so the platform
+        // homes are never re-parented and keep their state.
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 16 * (1 - t)),
+            child: Transform.scale(scale: 0.985 + 0.015 * t, child: child),
+          ),
+        );
+      },
+      child: stack,
     );
   }
 }
