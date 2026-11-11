@@ -1,0 +1,7 @@
+{
+  "API_BASE_URL": "https://phlio-backend.onrender.com/api/v1",
+  "GOOGLE_SERVER_CLIENT_ID": "597129978468-6f9f271e4s5tue0ue8hd3fih63kdglu8.apps.googleusercontent.com",
+  "GOOGLE_ANDROID_CLIENT_ID": "597129978468-h62ebk4356qf5pq0dbu6e9ns4au4hvsr.apps.googleusercontent.com",
+  "GOOGLE_IOS_CLIENT_ID": "597129978468-mt2d7kgh8ucujl758fq35rn2kh5m71j3.apps.googleusercontent.com",
+  "APPLE_SERVICE_ID": "com.rohan.phlio.signin"
+}
