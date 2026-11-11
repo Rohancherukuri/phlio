@@ -68,6 +68,11 @@ services:
         sync: false # https://pub-<id>.r2.dev
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Audius (Phlio Stream music): https://api.audius.co/plans → Create API Key.
+      - key: AUDIUS_API_KEY
+        sync: false
+      - key: AUDIUS_BEARER_TOKEN
+        sync: false # secret: server only, never in the app
       # -- Sign in with Google / Apple (comma-separated client ids) --
       - key: GOOGLE_CLIENT_IDS
         sync: false # Google web client id (+ iOS client id)

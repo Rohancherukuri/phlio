@@ -21,6 +21,7 @@ import 'music_models.dart';
 import 'music_player.dart';
 import 'open_music_api.dart' show openAudiusArtist;
 import 'phlio_code_sheet.dart';
+import 'similar_songs.dart' show openSimilarSongs;
 
 // -- theme -------------------------------------------------------------------------
 
@@ -488,6 +489,8 @@ Future<void> showSongMenu(BuildContext context, WidgetRef ref, Track t, {VoidCal
               store.isFavorite(t.id) ? 'Remove from favourites' : 'Add to favourites', () => store.toggleFavorite(t.id)),
           _menu(sheet, Icons.edit_rounded, 'Tag editor', () => openTagEditor(context, ref, t)),
           _menu(sheet, Icons.qr_code_2_rounded, 'Phlio Code', () => showPhlioCodeSheet(context, t)),
+          if (!t.isDevice || t.artist.isNotEmpty)
+            _menu(sheet, Icons.auto_awesome_rounded, 'Similar songs', () => openSimilarSongs(context, t)),
           if (t.isAudius && (t.artistId ?? '').isNotEmpty)
             _menu(sheet, Icons.person_search_rounded, 'Go to artist', () => openAudiusArtist(context, t.artistId!)),
           _menu(sheet, Icons.info_outline_rounded, 'Details', () => _details(context, t, store)),

@@ -63,7 +63,13 @@ from app.api.v1 import realtime
 api_router.include_router(realtime.router)
 from app.api.v1 import playlists
 api_router.include_router(playlists.router)
-from app.api.v1 import music
+from app.api.v1 import anime
+api_router.include_router(anime.router)
+from app.api.v1 import similar
+api_router.include_router(similar.router)
+from app.api.v1 import audius, music
+# Audius first: its /music/audius/* routes must win over music.py's routes.
+api_router.include_router(audius.router)
 api_router.include_router(music.router)
 
 from app.api.v1 import pay_gateway

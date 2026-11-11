@@ -13,6 +13,7 @@ import 'music_home.dart' show MusicSearchBar, MusicSettingsScreen;
 import 'music_ui.dart';
 import 'now_playing.dart';
 import 'open_music_api.dart';
+import 'similar_songs.dart' show openLyricsSearch;
 
 /// Explore for music and podcasts: search + scanner on top, Audius charts
 /// below, the mini player docked at the bottom.
@@ -50,6 +51,11 @@ class MusicExploreScreen extends ConsumerWidget {
                       icon: Icon(Icons.movie_outlined, color: pal.text),
                       onPressed: onSwitchToVideo,
                     ),
+                  IconButton(
+                    tooltip: 'Search by lyrics',
+                    icon: Icon(Icons.lyrics_outlined, color: pal.text),
+                    onPressed: () => openLyricsSearch(context),
+                  ),
                   IconButton(
                     tooltip: 'Music settings',
                     icon: Icon(Icons.tune_rounded, color: pal.text),
