@@ -349,7 +349,11 @@ class _SpaceRecordingScreenState extends State<SpaceRecordingScreen>
                       },
                       child: Text('$_error Try again'))
                 else
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  // Scales down instead of overflowing on narrow phones or
+                  // with large system text (the speed label grows with it).
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
                     SizedBox(
                       width: 56,
                       child: TextButton(
@@ -414,8 +418,9 @@ class _SpaceRecordingScreenState extends State<SpaceRecordingScreen>
                             alignment: Alignment.center,
                             transform: Matrix4.rotationY(math.pi),
                             child: const Icon(Icons.replay_rounded))),
+                    // Balances the speed button so play stays centred.
                     const SizedBox(width: 66),
-                  ]),
+                  ])),
               ]),
             ),
           ]),
