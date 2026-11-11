@@ -43,10 +43,12 @@ services:
         sync: false
       - key: SURREAL_PASSWORD
         sync: false
+      # Set on the dashboard to the names publish_local_data imported into
+      # (SURREAL_CLOUD_NAMESPACE / SURREAL_CLOUD_DATABASE in .env.publish).
       - key: SURREAL_NAMESPACE
-        value: phlio
+        sync: false
       - key: SURREAL_DATABASE
-        value: phlio_graph_dev
+        sync: false
       # Same file names as local, so the uploaded copies are found on boot.
       - key: MESSAGING_DATABASE
         value: data/phlio_graph_dev_messages.sqlite3
@@ -78,3 +80,32 @@ services:
         sync: false # Google web client id (+ iOS client id)
       - key: APPLE_CLIENT_IDS
         sync: false # iOS bundle id, Apple Services ID
+      # Google sign-in may also be given under the app's names (merged in).
+      - key: GOOGLE_SERVER_CLIENT_ID
+        sync: false
+      - key: GOOGLE_IOS_CLIENT_ID
+        sync: false
+      - key: APPLE_IOS_BUNDLE_ID
+        sync: false
+      - key: APPLE_SERVICE_ID
+        sync: false
+      - key: ANDROID_PACKAGE_NAME
+        value: com.example.phlio
+      # -- LiveKit Cloud (calls, Spaces) --
+      - key: LIVEKIT_URL
+        sync: false # wss://<project>.livekit.cloud
+      - key: LIVEKIT_API_URL
+        sync: false # https://<project>.livekit.cloud
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      # -- Other integrations --
+      - key: GIPHY_API_KEY
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CALLBACK_URL
+        sync: false # the redirect URL registered in the Spotify developer dashboard (https)
+      - key: ANILIST_ENDPOINT
+        value: https://graphql.anilist.co
