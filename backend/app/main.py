@@ -10,6 +10,7 @@ demo seed data, then exposes the `app` object uvicorn serves.
 
 from __future__ import annotations
 
+import base64
 import logging
 import asyncio
 import os
@@ -197,6 +198,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/media", MediaFiles(directory=media_root_path(settings), fallback=settings.media_public_url),
               name="media")
+
+    # 1x1 transparent PNG. The app points image widgets here when a record has
+    # no image (AppConfig.mediaUrl("")), so they render nothing instead of
+    # requesting the bare origin and throwing NetworkImageLoadException (404).
+    blank_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=")
+
+    @app.get("/blank.png", include_in_schema=False)
+    async def blank_image() -> Response:
+        return Response(blank_png, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

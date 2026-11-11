@@ -31,6 +31,16 @@ abstract final class AppConfig {
     return base.replaceAll(RegExp(r'/api/v1$'), '');
   }
 
-  static String mediaUrl(String relativeUrl) =>
-      relativeUrl.startsWith('http') ? relativeUrl : '$apiOrigin$relativeUrl';
+  /// A 1×1 transparent PNG served by the backend (`GET /blank.png`), used
+  /// when a record has no image so image widgets show nothing instead of
+  /// requesting the bare origin (which 404s and throws in the image cache).
+  static String get blankImageUrl => '$apiOrigin/blank.png';
+
+  /// Absolute URL for a media path from the API. Blank paths map to
+  /// [blankImageUrl].
+  static String mediaUrl(String relativeUrl) {
+    final url = relativeUrl.trim();
+    if (url.isEmpty || url == '/') return blankImageUrl;
+    return url.startsWith('http') ? url : '$apiOrigin$url';
+  }
 }
