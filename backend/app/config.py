@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +42,30 @@ class Settings(BaseSettings):
     # A client ID alone does not enable account linking or music playback.
     spotify_client_id: str = Field(default="", repr=False)
     music_database: str = 'data/music.sqlite3'
+    # Audius (Phlio Stream catalogue, app/api/v1/audius.py). Create a key at
+    # https://api.audius.co/plans: the API key is public, the bearer token is
+    # secret (server only). Both optional; without them requests are anonymous.
+    audius_api_key: str = ""
+    audius_bearer_token: str = Field(default="", repr=False)
+    audius_app_name: str = "Phlio"
+    audius_api_url: str = "https://api.audius.co/v1"
+    audius_fallback_url: str = "https://discoveryprovider.audius.co/v1"
+    # Lyrics for "similar songs" / lyrics search (app/domains/stream/lyrics.py).
+    lrclib_url: str = "https://lrclib.net"
+    # Anime listings (app/api/v1/anime.py). Env: ANILIST_ENDPOINT.
+    anilist_endpoint: str = "https://graphql.anilist.co"
+
+    @field_validator("audius_api_key", "audius_bearer_token", mode="before")
+    @classmethod
+    def _drop_placeholders(cls, value):
+        """Treat template values ("...", "<your key>", "changeme") as not set,
+        so a half-filled .env doesn't send a bogus credential (Audius would
+        answer 401 instead of serving the request anonymously)."""
+        text = str(value or "").strip().strip('"').strip("'")
+        lowered = text.lower()
+        if not text or set(text) <= {".", "…", "*", "x", "X", "-"} or lowered.startswith(("<", "your", "change", "todo")):
+            return ""
+        return text
     spotify_callback_url: str = Field(
         default="",
         validation_alias=AliasChoices("SPOTIFY_CALLBACK_URL", "SPOTIFY_REDIRECT_URI"),

@@ -100,7 +100,33 @@ def state_bucket() -> ObjectStore:
                  "media bucket, which anyone can read through MEDIA_PUBLIC_URL.")
     if name == os.environ.get("OBJECT_STORE_BUCKET", "").strip():
         sys.exit("OBJECT_STORE_STATE_BUCKET must be a different bucket from OBJECT_STORE_BUCKET.")
-    return bucket(name)
+    store = bucket(name)
+    _check_writable(store)
+    return store
+
+
+def _check_writable(store: ObjectStore) -> None:
+    """Writes and deletes a tiny probe object, so a missing permission fails before any work."""
+    probe = "_state/.write-check"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "probe"
+        path.write_bytes(b"ok")
+        try:
+            store.put_file(probe, path, "text/plain")
+            store.delete(probe)
+        except httpx.HTTPStatusError as error:
+            store.close()
+            code = error.response.status_code
+            if code in (401, 403):
+                sys.exit(
+                    f"\nR2 refused to write to the bucket '{store.bucket}' ({code}). The API token in "
+                    "OBJECT_STORE_ACCESS_KEY / OBJECT_STORE_SECRET_KEY has no access to it.\n"
+                    "Cloudflare → R2 → Manage API tokens → edit the token → Permissions: Object Read & Write, "
+                    f"and under 'Apply to specific buckets only' also tick '{store.bucket}' "
+                    "(or choose 'Apply to all buckets in this account'). Save, then run this again.")
+            if code == 404:
+                sys.exit(f"\nThe bucket '{store.bucket}' doesn't exist on this R2 account. Check the name.")
+            raise
 
 
 def human(n: float) -> str:

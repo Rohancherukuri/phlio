@@ -4,6 +4,7 @@ import 'package:dio/dio.dart' show DioException;
 import 'playlists_screen.dart';
 import '../../features/profile/presentation/widgets/snap_audience.dart';
 import 'stream_screen.dart';
+import 'stream_similar.dart' show MoreLikeThis;
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'dart:ui' show FontFeature;
 import 'social_comments_sheet.dart';
@@ -1687,6 +1688,9 @@ class ContentDetailScreen extends ConsumerWidget {
                       label: const Text('Play')),
                 const SizedBox(height: 8),
                 EngagementRow(path: path),
+                if (item['platform'] == 'stream' &&
+                    !['Music', 'Podcasts'].contains(streamCategory(item)))
+                  MoreLikeThis(titleRef: '${item['ref']}'),
                 if (path.startsWith('social/')) ...[
                   const SizedBox(height: 24),
                   ContentDiscussion(contentId: path),

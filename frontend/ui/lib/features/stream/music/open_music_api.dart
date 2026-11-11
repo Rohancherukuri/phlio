@@ -2,8 +2,13 @@
 //
 // Audius (audius.co) is a decentralised, open-source music platform with a
 // free public REST API: trending charts, search, artists, playlists and
-// full-length streams of tracks artists have made streamable. No API key is
-// needed, but every call says which app it comes from (app_name=Phlio).
+// full-length streams of tracks artists have made streamable.
+//
+// Calls go through the Phlio backend (`/api/v1/music/audius/...`, see
+// backend/app/api/v1/audius.py), which holds Phlio's Audius API key and
+// secret bearer token, caches charts for every user, and resolves stream
+// URLs. If the backend can't answer (older server, offline backend), the
+// client falls back to the public Audius API directly with app_name=Phlio.
 //
 // Audius tracks behave like any other track in the player: they queue,
 // shuffle, favourite, go into playlists, get Phlio Codes and lyrics (LRCLIB).
@@ -14,6 +19,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/config/app_config.dart';
+import '../../../core/di/service_locator.dart';
+import '../../../core/network/api_client.dart';
 import 'music_library.dart' show formatDuration;
 import 'music_models.dart';
 import 'music_player.dart';
@@ -84,13 +92,29 @@ String? _pic(Object? sizes, {bool big = false}) {
   return null;
 }
 
-/// Thin client with host fallback.
+/// Audius client: through the Phlio backend first, then Audius directly.
 class AudiusApi {
   AudiusApi() : _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 8), receiveTimeout: const Duration(seconds: 15)));
   final Dio _dio;
   String? _host;
 
+  /// Whether the last catalogue call was answered by the Phlio backend; new
+  /// tracks then stream through it as well (see [streamUrl]).
+  bool _viaPhlio = true;
+
   Future<dynamic> _get(String path, [Map<String, dynamic>? query]) async {
+    try {
+      final res = await getIt<ApiClient>().dio.get<dynamic>('/music/audius$path', queryParameters: query);
+      _viaPhlio = true;
+      final body = res.data;
+      return body is Map ? body['data'] : body;
+    } on DioException catch (e) {
+      // A genuine "not found" is final; anything else (older server without
+      // the proxy, backend asleep or down) falls back to Audius directly.
+      final message = e.response?.data is Map ? '${(e.response!.data as Map)['detail'] ?? ''}' : '';
+      if (e.response?.statusCode == 404 && message.contains('Audius')) rethrow;
+    }
+    _viaPhlio = false;
     final params = {...?query, 'app_name': _appName};
     Object? last;
     for (final host in [if (_host != null) _host!, ..._hosts.where((h) => h != _host)]) {
@@ -106,8 +130,11 @@ class AudiusApi {
     throw last ?? StateError('Audius unavailable');
   }
 
-  /// Full-length stream URL for a track (redirects to an Audius content node).
-  String streamUrl(String trackId) => '${_host ?? _hosts.first}/tracks/$trackId/stream?app_name=$_appName';
+  /// Full-length stream URL for a track. Both forms redirect to the audio on
+  /// an Audius content node; the Phlio one adds Phlio's credentials.
+  String streamUrl(String trackId) => _viaPhlio
+      ? '${AppConfig.apiBaseUrl}/music/audius/stream/$trackId'
+      : '${_host ?? _hosts.first}/tracks/$trackId/stream?app_name=$_appName';
 
   /// Maps an Audius track JSON object to a [Track] (`aud_<id>`, source `audius`).
   Track toTrack(Map j) {

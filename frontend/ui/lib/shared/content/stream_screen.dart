@@ -7,6 +7,8 @@ import '../../app/config/app_config.dart';
 import '../../features/social/presentation/controllers/video_library.dart';
 import '../../features/social/presentation/controllers/video_playback_controller.dart';
 import 'content_surface.dart';
+import 'stream_similar.dart' show StorySearchResults;
+import '../../features/stream/anime/anime_screens.dart';
 import '../../features/stream/music/music_explore.dart';
 import '../../features/stream/music/music_home.dart';
 import '../../features/stream/music/music_library.dart' show trackFromStreamItem;
@@ -342,7 +344,11 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
             ),
           ),
           Expanded(
-            child: ref.watch(catalogProvider('stream')).when(
+            // Anime comes from AniList (genres, charts, search, details with
+            // official trailers and where-to-watch links).
+            child: !audioMode && category == 'Anime'
+                ? AnimeBrowser(query: search.text)
+                : ref.watch(catalogProvider('stream')).when(
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
                   error: (_, __) => Center(
@@ -376,7 +382,11 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.only(bottom: 24),
                         children: [
-                          if (items.isEmpty)
+                          // Titles whose story matches the words typed
+                          // (similarity over synopses, not just titles).
+                          if (!audioMode && search.text.trim().length >= 3)
+                            StorySearchResults(query: search.text.trim()),
+                          if (items.isEmpty && search.text.trim().length < 3)
                             const Padding(
                               padding: EdgeInsets.all(32),
                               child: Text(
@@ -493,6 +503,11 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                                       (item) => streamCategory(item) == name,
                                     )
                                     .toList(),
+                              ),
+                            if (!audioMode && category == 'All')
+                              const AnimeShelf(
+                                title: 'Anime · Trending on AniList',
+                                list: 'trending',
                               ),
                           ],
                         ],
