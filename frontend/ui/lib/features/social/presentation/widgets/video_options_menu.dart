@@ -19,6 +19,8 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../controllers/video_library.dart';
 import '../controllers/video_playback_controller.dart';
 import 'content_owner_menu.dart';
+import 'memberships.dart';
+import '../../../../shared/fact_checks/fact_checks.dart';
 
 enum _VideoAction {
   cast,
@@ -30,6 +32,8 @@ enum _VideoAction {
   notInterested,
   hideCreator,
   report,
+  addContext,
+  membersOnly,
   edit,
   delete,
 }
@@ -90,9 +94,17 @@ class VideoOptionsButton extends ConsumerWidget {
           item(_VideoAction.hideCreator, Icons.person_off_outlined,
               "Don't recommend creator"),
           item(_VideoAction.report, Icons.outlined_flag_rounded, 'Report'),
+          item(_VideoAction.addContext, Icons.note_add_outlined,
+              'Add context (fact check)'),
         ],
         if (own) ...[
           const PopupMenuDivider(),
+          item(
+              _VideoAction.membersOnly,
+              Icons.workspace_premium_outlined,
+              video.membersOnly
+                  ? 'Make visible to everyone'
+                  : 'Make members only'),
           item(_VideoAction.edit, Icons.edit_outlined, 'Edit title'),
           item(_VideoAction.delete, Icons.delete_outline_rounded, 'Delete',
               color: PhlioColors.danger),
@@ -153,6 +165,14 @@ class VideoOptionsButton extends ConsumerWidget {
           await dio.post('/social/clips/$_ref/report',
               data: {'reason': reason});
           say('Thanks — our team will review this video');
+        case _VideoAction.addContext:
+          if (!context.mounted) return;
+          await showAddFactCheck(context, _path);
+        case _VideoAction.membersOnly:
+          if (!context.mounted) return;
+          final changed =
+              await setVideoMembersOnly(context, video.id, !video.membersOnly);
+          if (changed != null) ref.invalidate(socialVideoCatalogProvider);
         case _VideoAction.edit:
         case _VideoAction.delete:
           if (!context.mounted) return;

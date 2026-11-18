@@ -90,3 +90,9 @@ api_router.include_router(shop_tracking.router)
 # Place names (Google Maps Platform, server-side key).
 from app.api.v1 import places
 api_router.include_router(places.router)
+# Community fact checks (Community Notes-style).
+from app.api.v1 import fact_checks
+api_router.include_router(fact_checks.router)
+# Creator memberships (members-only videos, Razorpay test checkout).
+from app.api.v1 import memberships
+api_router.include_router(memberships.router)

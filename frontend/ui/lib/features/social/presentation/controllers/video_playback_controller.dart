@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import '../../../../app/config/app_config.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import 'video_library.dart';
+import '../widgets/memberships.dart' show membershipGate;
 
 enum SocialPlayerMode { hidden, expanded, fullscreen, floating }
 
@@ -88,6 +89,12 @@ class VideoPlaybackController extends ChangeNotifier {
 
   Future<void> open(PlayableVideo source,
       {bool force = false, Duration? position, bool autoplay = true}) async {
+    // Locked members-only video: offer the Join sheet instead (the server
+    // sent no playback URL).
+    if (source.locked) {
+      membershipGate.value = source;
+      return;
+    }
     if (video?.id != source.id) {
       qualityUrl = null;
       qualityLabel = 'Auto';

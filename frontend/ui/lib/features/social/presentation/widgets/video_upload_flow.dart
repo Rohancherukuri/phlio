@@ -32,6 +32,7 @@ import '../../../../shared/music/song_picker.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../controllers/video_library.dart';
+import 'memberships.dart';
 
 /// Entry point used by the Create sheet ("New video" / "New clip").
 Future<void> openVideoUpload(BuildContext context, {String kind = 'video'}) =>
@@ -920,6 +921,7 @@ class _UploadDetailsScreenState extends ConsumerState<UploadDetailsScreen> {
   PlayableVideo? related;
   final playlists = <String, String>{}; // id → name
   bool paidPromotion = false, uploading = false;
+  bool membersOnly = false; // only the creator's members can watch
   double progress = 0;
 
   @override
@@ -1177,6 +1179,30 @@ class _UploadDetailsScreenState extends ConsumerState<UploadDetailsScreen> {
     return value;
   }
 
+  /// Members only needs a membership plan; offer to set one up first.
+  Future<void> _setMembersOnly(bool value) async {
+    if (!value) {
+      setState(() => membersOnly = false);
+      return;
+    }
+    bool ready = false;
+    try {
+      final plan = (await getIt<ApiClient>().dio.get('/memberships/plan')).data
+          as Map;
+      ready = plan['enabled'] == true;
+    } catch (_) {}
+    if (!ready && mounted) {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const MembershipSettingsScreen()));
+      try {
+        final plan = (await getIt<ApiClient>().dio.get('/memberships/plan'))
+            .data as Map;
+        ready = plan['enabled'] == true;
+      } catch (_) {}
+    }
+    if (mounted) setState(() => membersOnly = ready);
+  }
+
   Future<void> _paidPromotion() async {
     final value = await Navigator.of(context).push<bool>(MaterialPageRoute(
         builder: (_) => _PaidPromotionPage(initial: paidPromotion)));
@@ -1204,6 +1230,7 @@ class _UploadDetailsScreenState extends ConsumerState<UploadDetailsScreen> {
           if (location != null) 'location': location,
           if (related != null) 'related_video': related!.id,
           'paid_promotion': paidPromotion.toString(),
+          'members_only': membersOnly.toString(),
           if (playlists.isNotEmpty) 'playlist_ids': playlists.keys.join(','),
         },
         onProgress: (sent, total) {
@@ -1400,6 +1427,17 @@ class _UploadDetailsScreenState extends ConsumerState<UploadDetailsScreen> {
                   title: 'Paid promotion & brands',
                   subtitle: paidPromotion ? 'Includes paid promotion' : null,
                   onTap: _paidPromotion),
+              _row(
+                  icon: const Icon(Icons.workspace_premium_rounded,
+                      size: 30, color: kMemberGold),
+                  title: 'Members only',
+                  subtitle: membersOnly
+                      ? 'Only your members can watch'
+                      : 'Everyone can watch',
+                  trailing: Switch(
+                      value: membersOnly,
+                      onChanged: (v) => _setMembersOnly(v)),
+                  onTap: () => _setMembersOnly(!membersOnly)),
               const SizedBox(height: 12),
             ]),
           ),

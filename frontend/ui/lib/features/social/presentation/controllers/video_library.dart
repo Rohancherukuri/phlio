@@ -27,7 +27,15 @@ class PlayableVideo {
     this.description = '',
     this.tags = const [],
     this.location,
+    this.membersOnly = false,
+    this.locked = false,
+    this.membership,
   });
+
+  /// Members-only video; [locked] when you aren't a member (no url, the
+  /// server withholds it). [membership] is the creator's plan (price).
+  final bool membersOnly, locked;
+  final Map<String, dynamic>? membership;
 
   /// Long-form description and place from the Add details page.
   final String description;
@@ -62,7 +70,10 @@ class PlayableVideo {
       createdAt: createdAt,
       description: description,
       tags: tags,
-      location: location);
+      location: location,
+      membersOnly: membersOnly,
+      locked: locked,
+      membership: membership);
   final String? localPath, creatorName, avatarUrl, songTitle, songArtist;
   factory PlayableVideo.fromJson(Map json) => PlayableVideo(
         sources: (json['sources'] as List? ?? [])
@@ -85,6 +96,11 @@ class PlayableVideo {
         description: json['description'] as String? ?? '',
         tags: (json['tags'] as List? ?? []).whereType<String>().toList(),
         location: json['location'] as String?,
+        membersOnly: json['members_only'] == true,
+        locked: json['locked'] == true,
+        membership: json['membership'] is Map
+            ? Map<String, dynamic>.from(json['membership'] as Map)
+            : null,
       );
 }
 
@@ -154,7 +170,11 @@ class SocialVideoApi {
 
 final socialVideoApiProvider =
     Provider((ref) => SocialVideoApi(getIt<ApiClient>().dio));
+/// Bumped after joining a creator's membership so locked videos refetch.
+final membershipChangedProvider = StateProvider<int>((ref) => 0);
+
 final socialVideoCatalogProvider = FutureProvider.autoDispose((ref) {
+  ref.watch(membershipChangedProvider);
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
   final refresh =
       Timer.periodic(const Duration(minutes: 1), (_) => ref.invalidateSelf());

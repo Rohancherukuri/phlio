@@ -94,7 +94,13 @@ async def presentation(c, obj):
             "SELECT * FROM videos WHERE id=?", (obj["domain_ref"],)
         ).fetchone()
         if video:
-            result.update(media_url=video["url"], image_url=video["thumbnail_url"], kind=video["kind"])
+            result.update(image_url=video["thumbnail_url"], kind=video["kind"])
+            # Members-only videos never expose their file here (no viewer to
+            # check); members play them through /social/videos.
+            if details.get("members_only"):
+                result["members_only"] = True
+            else:
+                result["media_url"] = video["url"]
     if obj["object_type"] == "social.post":
         post = await c.social_repository.get_post(obj["domain_ref"])
         if post:

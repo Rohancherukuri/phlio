@@ -1,3 +1,4 @@
+import '../widgets/memberships.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -390,6 +391,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ),
                             ),
                             const SizedBox(width: PhlioSpacing.sm),
+                            // Join the creator's membership (if offered).
+                            CreatorJoinButton(username: profile.handle),
                             // Suggested for you (accounts like this one).
                             DiscoverToggleButton(
                               open: _discover,

@@ -6,6 +6,8 @@ import '../../core/storage/token_storage.dart';
 import '../../design_system/colors.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/social/presentation/screens/social_graph_screen.dart';
+import '../../features/social/presentation/widgets/memberships.dart';
+import '../../shared/fact_checks/fact_checks.dart';
 import '../../shared/content/content_surface.dart';
 import '../../shared/content/playlists_screen.dart';
 import 'account_switcher.dart';
@@ -153,6 +155,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         subtitle: 'Organize saved videos',
         icon: Icons.playlist_play,
         tap: () => showPlaylists(context, 'stream')
+      ),
+      (
+        section: 'For creators',
+        title: 'Membership',
+        subtitle: 'Members-only videos and your monthly price',
+        icon: Icons.workspace_premium_outlined,
+        tap: () => page(const MembershipSettingsScreen())
+      ),
+      (
+        section: 'For creators',
+        title: 'Rate community notes',
+        subtitle: 'Help decide which fact checks are shown',
+        icon: Icons.groups_2_outlined,
+        tap: () => page(const FactCheckQueueScreen())
       ),
       (
         section: 'Who can see your activity',
