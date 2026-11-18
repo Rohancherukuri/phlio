@@ -1,6 +1,7 @@
 from app.api.v1.snap_audience import SnapAudience, validate_audience, can_view
 """Cross-platform engagement, discovery and permission-checked sharing."""
 
+import asyncio
 import hashlib
 import logging
 import random
@@ -125,21 +126,33 @@ async def discover(
     rows = sorted(rows, key=lambda r: r["id"])
     if cursor:
         rows = [r for r in rows if r["id"] > cursor]
-    items = []
-    last = None
-    for row in rows:
-        last = row["id"]
-        # Generated demo catalogs are retained for old shares/history, but no
-        # longer appear beside sourced listings in public discovery.
-        if platform != 'social' and row.get('demo') and not row.get('source_url'):
-            continue
+    # Generated demo catalogs are retained for old shares/history, but no
+    # longer appear beside sourced listings in public discovery.
+    candidates = [row for row in rows
+                  if platform == 'social' or not (row.get('demo') and not row.get('source_url'))]
+
+    async def present(row):
         try:
             obj = await c.graph.object_for(user.id, row.get('object_id') or key('phlio_object', platform, row['domain_ref']))
         except HTTPException:
-            continue
-        items.append(await presentation(c, obj))
-        if len(items) == limit:
-            break
+            return None
+        return await presentation(c, obj)
+
+    # Each item needs a few database reads; against a hosted database every
+    # read is a network round trip, so resolve a batch of items concurrently
+    # (order kept) instead of one after another.
+    items, last, index, batch = [], None, 0, 16
+    while index < len(candidates) and len(items) < limit:
+        chunk = candidates[index:index + batch]
+        index += len(chunk)
+        for row, item in zip(chunk, await asyncio.gather(*(present(row) for row in chunk))):
+            if len(items) == limit:
+                break
+            last = row["id"]
+            if item is not None:
+                items.append(item)
+    if len(items) < limit:
+        last = rows[-1]["id"] if rows else None
     return dict(items=items, next_cursor=last if len(items) == limit else None)
 
 
@@ -215,10 +228,16 @@ async def engagement(platform: str, ref: str, user=Depends(get_current_user), c=
         activities = await c.graph.store.rows("activity", {"out": obj["id"], "verb": "liked"})
         await c.cache.put(cache_key, activities)
     # Reauthorize cached candidates on every read, including policy expiry.
-    for activity in activities:
-        if activity["in"] == "user:" + user.id:
-            mine = True
-        signal = await c.graph.signal(user.id, activity)
+    # The checks are independent reads, so run them concurrently (a hosted
+    # database makes each one a network round trip); results keep their order.
+    mine = any(activity["in"] == "user:" + user.id for activity in activities)
+    sem = asyncio.Semaphore(16)
+
+    async def check(activity):
+        async with sem:
+            return await c.graph.signal(user.id, activity)
+
+    for signal in await asyncio.gather(*(check(a) for a in activities)):
         if signal and signal["actor"]:
             actors[signal["actor"]["id"]] = signal["actor"]
     count = _visible_total(user.id, activities, blocked)

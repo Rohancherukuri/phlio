@@ -19,7 +19,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.api.deps import get_container, get_current_user, get_identity_service
 from app.core.container import Container
 from app.domains.identity.entities import User
-from app.common.exceptions import UnauthorizedError
+from app.common.exceptions import NotFoundError, UnauthorizedError
 from app.domains.identity.service import IdentityService
 from app.infrastructure.security import guard
 from app.infrastructure.security.guard import client_ip
@@ -177,7 +177,10 @@ async def refresh(body: RefreshRequest, container: Container = Depends(get_conta
     user_id = decode_token(body.refresh_token, "refresh", container.settings)
     # Confirms the user still exists (e.g. hasn't been deleted) before
     # minting a fresh access token.
-    await container.identity_service.get_user_or_raise(user_id)
+    try:
+        await container.identity_service.get_user_or_raise(user_id)
+    except NotFoundError:
+        raise UnauthorizedError("This account no longer exists. Sign in again.") from None
     tokens = issue_token_pair(user_id, container.settings)
     return TokenResponse.from_token_pair(tokens)
 

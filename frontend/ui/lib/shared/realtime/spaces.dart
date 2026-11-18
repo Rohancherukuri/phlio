@@ -93,7 +93,28 @@ class SpacesBar extends ConsumerWidget {
     final spaces = (ref.watch(liveSpacesProvider).valueOrNull ?? const [])
         .where((s) => !hidden.contains(s['id']))
         .toList();
-    if (spaces.isEmpty) return const SizedBox.shrink();
+    if (spaces.isEmpty) {
+      // No live Spaces right now: still offer the hub (recordings, scheduled
+      // Spaces, start your own) where the feed asks for "See all".
+      if (!seeAll) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(children: [
+          const Icon(Icons.graphic_eq_rounded, size: 18, color: PhlioColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('No live Spaces right now',
+                style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SpacesHubScreen())),
+            style: TextButton.styleFrom(foregroundColor: PhlioColors.brandPeach),
+            child: const Text('See all Spaces'),
+          ),
+        ]),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
