@@ -24,12 +24,13 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
-import '../../../../shared/music/stream_song_picker.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../data/datasources/messaging_api.dart';
 import 'note_bubble.dart';
 import 'note_bubble_editor.dart';
+import 'note_music_picker.dart';
+import 'note_place_picker.dart';
 
 /// `(mine, items)` from the server; refreshed when the inbox refreshes.
 final statusNotesProvider = FutureProvider.autoDispose<(Map?, List<Map>)>((ref) async {
@@ -156,7 +157,7 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
       if (mounted) setState(() => playing = false);
     });
     // Like Instagram, a note's song starts playing when you open it.
-    if (widget.note['music'] != null) _togglePlay();
+    if (widget.note['music'] != null && !_spotify) _togglePlay();
   }
 
   @override
@@ -166,9 +167,16 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
     super.dispose();
   }
 
+  bool get _spotify => (widget.note['music'] as Map?)?['source'] == 'spotify';
+
   Future<void> _togglePlay() async {
     final music = widget.note['music'] as Map?;
     if (music == null) return;
+    if (_spotify) {
+      // Spotify audio stays in Spotify: open the track there.
+      await launchUrl(Uri.parse('${music['url']}'), mode: LaunchMode.externalApplication);
+      return;
+    }
     try {
       if (playing) {
         await _player.pause();
@@ -263,11 +271,17 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
                   : const Icon(Icons.music_note_rounded),
               title: Text('${music['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('${music['artist'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: IconButton(
-                tooltip: playing ? 'Pause' : 'Play',
-                icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded, size: 34),
-                onPressed: _togglePlay,
-              ),
+              trailing: _spotify
+                  ? TextButton.icon(
+                      onPressed: _togglePlay,
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16, color: kSpotifyGreen),
+                      label: const Text('Spotify', style: TextStyle(color: kSpotifyGreen)),
+                    )
+                  : IconButton(
+                      tooltip: playing ? 'Pause' : 'Play',
+                      icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded, size: 34),
+                      onPressed: _togglePlay,
+                    ),
             ),
           ),
         if (place != null)
@@ -378,7 +392,7 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
   }
 
   Future<void> _pickSong() async {
-    final song = await showStreamSongPicker(context);
+    final song = await pickNoteMusic(context);
     if (song != null && mounted) setState(() => music = song);
   }
 
@@ -413,57 +427,9 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     }
   }
 
-  /// Areas nearby first (neighbourhoods, localities), then spots (cafes,
-  /// malls, temples…), each with its distance.
   Future<void> _choosePlace() async {
-    try {
-      final pos = await currentPosition();
-      final lat = pos.latitude, lng = pos.longitude;
-      final results = await Future.wait([
-        nearbyAreas(lat, lng).catchError((Object _) => <Place>[]),
-        nearbyPlaces(lat, lng, radius: 800, limit: 15).catchError((Object _) => <Place>[]),
-      ]);
-      final areas = results[0], spots = results[1];
-      if (!mounted) return;
-      Widget row(BuildContext sheet, Place p, IconData icon) => ListTile(
-            leading: Icon(icon),
-            title: Text(p.name),
-            subtitle: Text(
-              [formatDistance(distanceMetres(lat, lng, p.lat, p.lng)), if (p.kind != null && p.kind!.isNotEmpty) p.kind!]
-                  .join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: place?['name'] == p.name ? const Icon(Icons.check_rounded, color: Color(0xFF3897F0)) : null,
-            onTap: () => Navigator.pop(sheet, p),
-          );
-      final chosen = await showModalBottomSheet<Place>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        backgroundColor: PhlioColors.surface,
-        builder: (sheet) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          builder: (_, scroll) => ListView(controller: scroll, children: [
-            if (areas.isNotEmpty) ...[
-              const ListTile(dense: true, title: Text('Areas', style: TextStyle(fontWeight: FontWeight.w800))),
-              for (final a in areas) row(sheet, a, Icons.location_city_rounded),
-            ],
-            if (spots.isNotEmpty) ...[
-              const ListTile(dense: true, title: Text('Spots nearby', style: TextStyle(fontWeight: FontWeight.w800))),
-              for (final p in spots) row(sheet, p, Icons.location_on_outlined),
-            ],
-            if (areas.isEmpty && spots.isEmpty)
-              const ListTile(title: Text('Couldn\'t load places nearby. Check your connection and try again.')),
-          ]),
-        ),
-      );
-      if (chosen != null && mounted) _setPlace(chosen);
-    } on LocationProblem catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    } catch (_) {}
+    final chosen = await pickNotePlace(context, selected: place?['name'] as String?);
+    if (chosen != null && mounted) _setPlace(chosen);
   }
 
   void _setPlace(Place p) => setState(() => place = {
@@ -525,6 +491,7 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
             'url': music!['url'],
             if (music!['image_url'] != null) 'image_url': music!['image_url'],
             if (music!['ref'] != null) 'ref': music!['ref'],
+            'source': music!['source'] ?? 'stream',
           },
         if (gif != null) 'gif': {'url': gif!['url'], 'title': gif!['title'] ?? 'GIF'},
         if (place != null) 'location': place,

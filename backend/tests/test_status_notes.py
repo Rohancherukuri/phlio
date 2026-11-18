@@ -89,3 +89,26 @@ async def test_bubble_style_and_coarse_location(client: AsyncClient) -> None:
     assert bad.status_code == 422
     bad = await client.post("/api/v1/social/notes", headers=kiara, json={"text": "x", "color": "red"})
     assert bad.status_code == 422
+
+
+async def test_music_sources(client: AsyncClient) -> None:
+    kiara = await login(client, "artbykiara")
+    spotify = {"title": "Song", "artist": "A", "url": "https://open.spotify.com/track/abc123", "source": "spotify"}
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={"music": spotify})
+    assert r.status_code == 201 and r.json()["music"]["source"] == "spotify"
+    fake = {**spotify, "url": "https://evil.example/x"}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": fake})).status_code == 422
+
+    up = await client.post("/api/v1/social/notes/audio", headers=kiara,
+                           files={"file": ("my_song.mp3", b"ID3fake-audio", "audio/mpeg")})
+    if up.status_code == 422:  # ffprobe present and rejected the fake bytes: fine
+        return
+    assert up.status_code == 201, up.text
+    music = up.json()
+    assert music["source"] == "local" and music["url"].startswith("/media/post_uploads/note_")
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={"music": music})
+    assert r.status_code == 201 and r.json()["music"]["title"] == "my song"
+    sneaky = {**music, "url": "/media/post_uploads/other.mp3"}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": sneaky})).status_code == 422
+    bad = await client.post("/api/v1/social/notes/audio", headers=kiara, files={"file": ("x.exe", b"MZ", "application/x-msdownload")})
+    assert bad.status_code == 422
