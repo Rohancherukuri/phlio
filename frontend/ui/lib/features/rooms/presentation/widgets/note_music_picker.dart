@@ -16,84 +16,22 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../design_system/colors.dart';
-import '../../../../shared/music/song_picker.dart';
-import '../../../../shared/music/stream_song_picker.dart';
+import 'note_song_picker.dart';
 
 const kSpotifyGreen = Color(0xFF1DB954);
 
 /// Song formats the server accepts (backend AUDIO_TYPES).
 const kSongExtensions = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac', 'opus'];
 
-Future<Map<String, dynamic>?> pickNoteMusic(BuildContext context) async {
-  final source = await showModalBottomSheet<String>(
-    context: context,
-    showDragHandle: true,
-    backgroundColor: PhlioColors.surface,
-    builder: (sheet) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Add music', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        _SourceTile(
-          color: PhlioColors.brandPink,
-          icon: Icons.graphic_eq_rounded,
-          title: 'Phlio Stream',
-          subtitle: 'Songs from the Phlio catalogue — play right in the app',
-          onTap: () => Navigator.pop(sheet, 'stream'),
-        ),
-        _SourceTile(
-          color: kSpotifyGreen,
-          icon: Icons.album_rounded,
-          title: 'Spotify',
-          subtitle: 'Search Spotify — friends open the song in Spotify',
-          onTap: () => Navigator.pop(sheet, 'spotify'),
-        ),
-        _SourceTile(
-          color: const Color(0xFF4CC9F0),
-          icon: Icons.phone_android_rounded,
-          title: 'From your phone',
-          subtitle: 'MP3, M4A, AAC, WAV, OGG, FLAC or OPUS (up to 15 MB)',
-          onTap: () => Navigator.pop(sheet, 'local'),
-        ),
-        const SizedBox(height: 8),
-      ]),
-    ),
-  );
-  if (source == null || !context.mounted) return null;
-  switch (source) {
-    case 'stream':
-      final song = await showStreamSongPicker(context);
-      return song == null ? null : {...song, 'source': 'stream'};
-    case 'spotify':
-      final song = await showSongPicker(context);
-      if (song == null) return null;
-      final url = '${song['url'] ?? ''}';
-      if (song['source'] != 'spotify' || !url.startsWith('https://open.spotify.com/track/')) {
-        // The shared picker also offers original (uploaded) audio; for notes
-        // we only accept Spotify tracks from this entry point.
-        if (context.mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Pick a song from Spotify search.')));
-        }
-        return null;
-      }
-      return {
-        'title': song['title'],
-        'artist': song['artist'] ?? '',
-        'url': url,
-        if (song['image_url'] != null) 'image_url': song['image_url'],
-        'ref': 'spotify:${song['id']}',
-        'source': 'spotify',
-      };
-    default:
-      return _uploadFromPhone(context);
-  }
-}
+/// Opens the Instagram-style picker (Phlio Stream, Spotify, your phone),
+/// then the "New song" clip picker. Returns the song with clip_start and
+/// clip_length, or null.
+Future<Map<String, dynamic>?> pickNoteMusic(BuildContext context) => showNoteSongPicker(context);
 
 /// Picks a song file. Nothing is uploaded yet: the note keeps the file
 /// (`path` / `bytes`) and [uploadNoteSong] sends it when you tap Share, so
 /// picking works even offline and you can change your mind for free.
-Future<Map<String, dynamic>?> _uploadFromPhone(BuildContext context) async {
+Future<Map<String, dynamic>?> pickSongFile(BuildContext context) async {
   // Only song files show up in the picker.
   final picked = await FilePicker.pickFiles(
     type: FileType.custom,
@@ -140,7 +78,9 @@ Future<Map<String, dynamic>> uploadNoteSong(Map music, {void Function(double)? o
       data: FormData.fromMap({'file': multipart}),
       onSendProgress: (sent, total) => onProgress?.call(total > 0 ? sent / total : 0),
     );
-    return {...Map<String, dynamic>.from(res.data as Map), 'title': music['title']};
+    final keep = {...music}..removeWhere((k, _) => k == 'path' || k == 'bytes' || k == 'file_name');
+    // Server url/source + what was chosen here (title, clip).
+    return {...keep, ...Map<String, dynamic>.from(res.data as Map), 'title': music['title']};
   } on DioException catch (e) {
     if (e.response?.statusCode == 404) {
       throw 'Your Phlio server doesn\'t have Notes yet — deploy the latest backend, then share again.';
@@ -149,27 +89,4 @@ Future<Map<String, dynamic>> uploadNoteSong(Map music, {void Function(double)? o
     if (e.response == null) throw 'You seem to be offline. Try again.';
     throw detail is String ? detail : 'Could not upload this song. Try another file.';
   }
-}
-
-class _SourceTile extends StatelessWidget {
-  const _SourceTile({
-    required this.color,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-  final Color color;
-  final IconData icon;
-  final String title, subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-        leading: CircleAvatar(backgroundColor: color.withValues(alpha: 0.18), child: Icon(icon, color: color)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(subtitle, style: const TextStyle(color: PhlioColors.textMuted, fontSize: 12.5)),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: onTap,
-      );
 }

@@ -26,6 +26,7 @@ import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
 import '../../../../shared/location/device_places.dart';
+import '../../../../shared/location/google_places.dart';
 import '../../../../shared/location/server_places.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
@@ -153,11 +154,20 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
   late bool liked = widget.note['liked_by_me'] == true;
   bool playing = false, sending = false;
 
+  double get _clipStart => ((widget.note['music'] as Map?)?['clip_start'] as num?)?.toDouble() ?? 0;
+  double get _clipLength => ((widget.note['music'] as Map?)?['clip_length'] as num?)?.toDouble() ?? 30;
+
   @override
   void initState() {
     super.initState();
     _player.onPlayerComplete.listen((_) {
       if (mounted) setState(() => playing = false);
+    });
+    // Play only the chosen clip, on a loop.
+    _player.onPositionChanged.listen((p) {
+      if (playing && p.inMilliseconds / 1000 >= _clipStart + _clipLength) {
+        _player.seek(Duration(milliseconds: (_clipStart * 1000).round()));
+      }
     });
     // Like Instagram, a note's song starts playing when you open it.
     if (widget.note['music'] != null && !_spotify) _togglePlay();
@@ -184,7 +194,8 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
       if (playing) {
         await _player.pause();
       } else {
-        await _player.play(UrlSource(AppConfig.mediaUrl('${music['url']}')));
+        await _player.play(UrlSource(AppConfig.mediaUrl('${music['url']}')),
+            position: Duration(milliseconds: (_clipStart * 1000).round()));
       }
       if (mounted) setState(() => playing = !playing);
     } catch (_) {}
@@ -417,7 +428,10 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
       final pos = await currentPosition();
       // The neighbourhood name people use ("KPHB Colony"), in English,
       // not whatever building or road happens to be under the GPS fix.
-      final google = await deviceAreas(pos.latitude, pos.longitude) ?? await serverAreas(pos.latitude, pos.longitude);
+      final nearby = await googleNearby(pos.latitude, pos.longitude);
+      final google = (nearby != null && nearby.areas.isNotEmpty ? nearby.areas : null) ??
+          await deviceAreas(pos.latitude, pos.longitude) ??
+          await serverAreas(pos.latitude, pos.longitude);
       final here = (google != null && google.isNotEmpty ? google.first : null) ??
           await areaName(pos.latitude, pos.longitude) ??
           await reverseGeocode(pos.latitude, pos.longitude);
@@ -510,6 +524,9 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
             if (music!['image_url'] != null) 'image_url': music!['image_url'],
             if (music!['ref'] != null) 'ref': music!['ref'],
             'source': music!['source'] ?? 'stream',
+            if (music!['clip_start'] != null) 'clip_start': music!['clip_start'],
+            if (music!['clip_length'] != null) 'clip_length': music!['clip_length'],
+            if (music!['explicit'] == true) 'explicit': true,
           },
         if (gif != null) 'gif': {'url': gif!['url'], 'title': gif!['title'] ?? 'GIF'},
         if (place != null) 'location': place,

@@ -55,6 +55,10 @@ class NoteSong(BaseModel):
     image_url: str | None = Field(default=None, max_length=500)
     ref: str | None = Field(default=None, max_length=120)
     source: Literal["stream", "spotify", "local"] = "stream"
+    # The part of the song that plays (chosen in the app's "New song" sheet).
+    clip_start: float = Field(default=0, ge=0, le=7200)
+    clip_length: int = Field(default=30, ge=5, le=30)
+    explicit: bool = False
 
     @field_validator("url", "image_url")
     @classmethod

@@ -112,3 +112,13 @@ async def test_music_sources(client: AsyncClient) -> None:
     assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": sneaky})).status_code == 422
     bad = await client.post("/api/v1/social/notes/audio", headers=kiara, files={"file": ("x.exe", b"MZ", "application/x-msdownload")})
     assert bad.status_code == 422
+
+
+async def test_song_clip(client: AsyncClient) -> None:
+    kiara = await login(client, "artbykiara")
+    song = {**SONG, "clip_start": 42.5, "clip_length": 15, "explicit": True}
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={"music": song})
+    assert r.status_code == 201
+    assert r.json()["music"]["clip_start"] == 42.5 and r.json()["music"]["clip_length"] == 15
+    too_long = {**SONG, "clip_length": 60}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": too_long})).status_code == 422

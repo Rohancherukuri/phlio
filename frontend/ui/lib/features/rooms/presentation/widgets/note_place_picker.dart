@@ -1,8 +1,8 @@
 // Location picker for notes (Instagram-style): opens straight away with a
 // search box, "Where you are" (your neighbourhood), Areas nearby and Spots
 // nearby with distance and address; typing searches places around you.
-// Area names come from the phone's geocoder (Google's data on Android),
-// then Phlio's server, then OpenStreetMap.
+// Area names come from Google Places around you (the area most nearby
+// places share), then the phone's geocoder, Phlio's server, OpenStreetMap.
 
 import 'dart:async';
 
@@ -12,6 +12,7 @@ import '../../../../design_system/colors.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
 import '../../../../shared/location/device_places.dart';
+import '../../../../shared/location/google_places.dart';
 import '../../../../shared/location/server_places.dart';
 
 Future<Place?> pickNotePlace(BuildContext context, {String? selected}) => showModalBottomSheet<Place>(
@@ -61,35 +62,48 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
       final pos = await currentPosition();
       lat = pos.latitude;
       lng = pos.longitude;
-      // Each list fills in as soon as it arrives. Google first; OSM if the
-      // server can't answer.
-      unawaited(() async {
-        // The phone's geocoder (Google data on Android) first, then
-        // Phlio's server (Google Maps Platform), then OpenStreetMap.
-        final device = await deviceAreas(lat!, lng!);
-        final server = device == null ? await serverAreas(lat!, lng!) : null;
-        final google = device ?? server;
-        if (google != null && google.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              // Attribution is needed for Places results from the server.
-              fromGoogle = server != null;
-              here = google.first;
-              areas = google.skip(1).toList();
-            });
-          }
-          return;
+      // 1. Google Places around you: the area most nearby places share,
+      //    plus the places themselves.
+      final google = await googleNearby(lat!, lng!);
+      if (google != null && (google.areas.isNotEmpty || google.spots.isNotEmpty)) {
+        if (mounted) {
+          setState(() {
+            fromGoogle = true;
+            here = google.areas.isEmpty ? null : google.areas.first;
+            areas = google.areas.skip(1).toList();
+            spots = google.spots;
+          });
         }
+        if (here != null) return;
+      }
+      // 2. The phone's geocoder, Phlio's server, then OpenStreetMap.
+      final device = await deviceAreas(lat!, lng!);
+      final server = device == null ? await serverAreas(lat!, lng!) : null;
+      final named = device ?? server;
+      if (named != null && named.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            here = named.first;
+            if (areas.isEmpty) areas = named.skip(1).toList();
+          });
+        }
+      } else {
         final p = await areaName(lat!, lng!);
-        if (mounted) setState(() => here = p);
         final a = await nearbyAreas(lat!, lng!).catchError((Object _) => <Place>[]);
-        if (mounted) setState(() => areas = a);
-      }());
-      final google = await serverNearby(lat!, lng!, radius: 1000);
-      final s = google != null && google.isNotEmpty
-          ? google
-          : await nearbyPlaces(lat!, lng!, radius: 1000, limit: 25).catchError((Object _) => <Place>[]);
-      if (mounted) setState(() => spots = s);
+        if (mounted) {
+          setState(() {
+            here = p;
+            areas = a;
+          });
+        }
+      }
+      if (spots.isEmpty) {
+        final fromServer = await serverNearby(lat!, lng!, radius: 1000);
+        final s = fromServer != null && fromServer.isNotEmpty
+            ? fromServer
+            : await nearbyPlaces(lat!, lng!, radius: 1000, limit: 25).catchError((Object _) => <Place>[]);
+        if (mounted) setState(() => spots = s);
+      }
     } on LocationProblem catch (e) {
       if (mounted) setState(() => problem = e.toString());
     } catch (_) {
@@ -113,7 +127,9 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       final id = ++_query;
       try {
-        final found = await serverSearch(q, lat: lat, lng: lng) ?? await searchPlaces(q, lat: lat, lng: lng, box: .25);
+        final found = await googleSearch(q, lat: lat, lng: lng) ??
+            await serverSearch(q, lat: lat, lng: lng) ??
+            await searchPlaces(q, lat: lat, lng: lng, box: .25);
         if (lat != null) {
           found.sort((a, b) => distanceMetres(lat!, lng!, a.lat, a.lng).compareTo(distanceMetres(lat!, lng!, b.lat, b.lng)));
         }
