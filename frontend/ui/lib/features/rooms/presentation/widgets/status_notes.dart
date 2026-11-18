@@ -10,6 +10,7 @@
 // (note_bubble_editor.dart). Backend: /api/v1/social/notes.
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:dio/dio.dart' show DioException;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,7 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
+import '../../../../shared/location/device_places.dart';
 import '../../../../shared/location/server_places.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
@@ -415,7 +417,7 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
       final pos = await currentPosition();
       // The neighbourhood name people use ("KPHB Colony"), in English,
       // not whatever building or road happens to be under the GPS fix.
-      final google = await serverAreas(pos.latitude, pos.longitude);
+      final google = await deviceAreas(pos.latitude, pos.longitude) ?? await serverAreas(pos.latitude, pos.longitude);
       final here = (google != null && google.isNotEmpty ? google.first : null) ??
           await areaName(pos.latitude, pos.longitude) ??
           await reverseGeocode(pos.latitude, pos.longitude);
@@ -485,6 +487,18 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     if (!_ready || busy) return;
     setState(() => busy = true);
     try {
+      // A song from the phone goes up first, then the note.
+      if (needsUpload(music)) {
+        try {
+          music = await uploadNoteSong(music!);
+        } catch (message) {
+          if (mounted) {
+            setState(() => busy = false);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$message')));
+          }
+          return;
+        }
+      }
       await getIt<ApiClient>().dio.post<dynamic>('/social/notes', data: {
         'text': _text.text.trim(),
         'audience': audience,
@@ -504,6 +518,14 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
       });
       ref.invalidate(statusNotesProvider);
       if (mounted) Navigator.pop(context);
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(() => busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.response?.statusCode == 404
+                ? 'Your Phlio server doesn\'t have Notes yet — deploy the latest backend, then share again.'
+                : 'Could not share your note. Try again.')));
+      }
     } catch (_) {
       if (mounted) {
         setState(() => busy = false);

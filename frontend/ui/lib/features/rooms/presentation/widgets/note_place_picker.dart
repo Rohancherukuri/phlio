@@ -1,8 +1,8 @@
 // Location picker for notes (Instagram-style): opens straight away with a
 // search box, "Where you are" (your neighbourhood), Areas nearby and Spots
 // nearby with distance and address; typing searches places around you.
-// Names come from Google Maps (via Phlio's server) and fall back to
-// OpenStreetMap when that isn't available.
+// Area names come from the phone's geocoder (Google's data on Android),
+// then Phlio's server, then OpenStreetMap.
 
 import 'dart:async';
 
@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../../../design_system/colors.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
+import '../../../../shared/location/device_places.dart';
 import '../../../../shared/location/server_places.dart';
 
 Future<Place?> pickNotePlace(BuildContext context, {String? selected}) => showModalBottomSheet<Place>(
@@ -63,11 +64,16 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
       // Each list fills in as soon as it arrives. Google first; OSM if the
       // server can't answer.
       unawaited(() async {
-        final google = await serverAreas(lat!, lng!);
+        // The phone's geocoder (Google data on Android) first, then
+        // Phlio's server (Google Maps Platform), then OpenStreetMap.
+        final device = await deviceAreas(lat!, lng!);
+        final server = device == null ? await serverAreas(lat!, lng!) : null;
+        final google = device ?? server;
         if (google != null && google.isNotEmpty) {
           if (mounted) {
             setState(() {
-              fromGoogle = true;
+              // Attribution is needed for Places results from the server.
+              fromGoogle = server != null;
               here = google.first;
               areas = google.skip(1).toList();
             });

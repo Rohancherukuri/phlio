@@ -6,10 +6,12 @@
 // * Phlio Stream — the in-app catalogue; plays inside Phlio.
 // * Spotify — search via the Spotify connection (shared/music/song_picker);
 //   we keep only the track link and artwork, viewers open it in Spotify.
-// * Your phone — an audio file uploaded to POST /social/notes/audio.
+// * Your phone — a song file; uploaded to POST /social/notes/audio when the
+//   note is shared (see uploadNoteSong).
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/di/service_locator.dart';
@@ -88,12 +90,15 @@ Future<Map<String, dynamic>?> pickNoteMusic(BuildContext context) async {
   }
 }
 
+/// Picks a song file. Nothing is uploaded yet: the note keeps the file
+/// (`path` / `bytes`) and [uploadNoteSong] sends it when you tap Share, so
+/// picking works even offline and you can change your mind for free.
 Future<Map<String, dynamic>?> _uploadFromPhone(BuildContext context) async {
   // Only song files show up in the picker.
   final picked = await FilePicker.pickFiles(
     type: FileType.custom,
     allowedExtensions: kSongExtensions,
-    withData: false,
+    withData: kIsWeb,
   );
   final file = picked?.files.singleOrNull;
   if (file == null || !context.mounted) return null;
@@ -107,52 +112,42 @@ Future<Map<String, dynamic>?> _uploadFromPhone(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose a song under 15 MB.')));
     return null;
   }
-  final progress = ValueNotifier<double>(0);
-  final navigator = Navigator.of(context, rootNavigator: true);
-  // Small blocking dialog while the file uploads.
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    useRootNavigator: true,
-    builder: (_) => AlertDialog(
-      backgroundColor: PhlioColors.surface,
-      content: ValueListenableBuilder<double>(
-        valueListenable: progress,
-        builder: (_, value, __) => Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Uploading ${file.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 14),
-          LinearProgressIndicator(value: value == 0 ? null : value),
-        ]),
-      ),
-    ),
-  );
+  final stem = file.name.substring(0, file.name.length - ext.length - 1).replaceAll('_', ' ').trim();
+  return {
+    'title': stem.isEmpty ? 'Original audio' : (stem.length > 120 ? stem.substring(0, 120) : stem),
+    'artist': 'From your phone',
+    'url': '',
+    'source': 'local',
+    'file_name': file.name,
+    if (file.path != null) 'path': file.path,
+    if (file.bytes != null) 'bytes': file.bytes,
+  };
+}
+
+/// True when [music] is a phone song that hasn't been uploaded yet.
+bool needsUpload(Map? music) => music != null && music['source'] == 'local' && '${music['url'] ?? ''}'.isEmpty;
+
+/// Uploads a phone song picked with [pickNoteMusic]; returns the server's
+/// music object, or throws a message to show.
+Future<Map<String, dynamic>> uploadNoteSong(Map music, {void Function(double)? onProgress}) async {
+  final name = '${music['file_name'] ?? 'song.mp3'}';
+  final multipart = music['path'] != null
+      ? await MultipartFile.fromFile('${music['path']}', filename: name)
+      : MultipartFile.fromBytes((music['bytes'] as List<int>?) ?? const [], filename: name);
   try {
-    final multipart = file.path != null
-        ? await MultipartFile.fromFile(file.path!, filename: file.name)
-        : MultipartFile.fromBytes(file.bytes ?? const [], filename: file.name);
     final res = await getIt<ApiClient>().dio.post<dynamic>(
       '/social/notes/audio',
       data: FormData.fromMap({'file': multipart}),
-      onSendProgress: (sent, total) => progress.value = total > 0 ? sent / total : 0,
+      onSendProgress: (sent, total) => onProgress?.call(total > 0 ? sent / total : 0),
     );
-    navigator.pop();
-    return Map<String, dynamic>.from(res.data as Map);
-  } catch (e) {
-    navigator.pop();
-    if (context.mounted) {
-      final status = e is DioException ? e.response?.statusCode : null;
-      final detail = e is DioException && e.response?.data is Map ? (e.response!.data as Map)['detail'] : null;
-      final message = status == 404
-          // The server the app talks to doesn't have this feature yet.
-          ? 'Song uploads aren\'t on the server yet. Deploy the latest backend and try again.'
-          : detail is String && detail != 'Not Found'
-              ? detail
-              : 'Could not upload this song. Try another file.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    return {...Map<String, dynamic>.from(res.data as Map), 'title': music['title']};
+  } on DioException catch (e) {
+    if (e.response?.statusCode == 404) {
+      throw 'Your Phlio server doesn\'t have Notes yet — deploy the latest backend, then share again.';
     }
-    return null;
-  } finally {
-    progress.dispose();
+    final detail = e.response?.data is Map ? (e.response!.data as Map)['detail'] : null;
+    if (e.response == null) throw 'You seem to be offline. Try again.';
+    throw detail is String ? detail : 'Could not upload this song. Try another file.';
   }
 }
 
