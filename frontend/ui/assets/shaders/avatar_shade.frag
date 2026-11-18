@@ -1,56 +1,58 @@
-// Phlio avatar shading: gives the flat avatar parts (face, hair, clothes)
-// a soft 2.5D, toon-lit look. Each part is filled with this shader; the
-// part's bounding box stands in for a rounded 3D surface, so the normal is
-// taken from an ellipsoid fitted to the box and lit by a key light from the
-// upper left, quantised into soft toon bands, with a rim light and (for
-// hair) an anisotropic sheen band.
+// Phlio avatar post-process (ImageFilter over the rendered 3D figure):
+// smooths the polygon edges (the triangles are drawn without
+// anti-aliasing), adds a soft ink outline around the silhouette like a
+// cel-shaded game character, a faint inner edge line and a little extra
+// saturation. Sampler 0 is the rendered figure (premultiplied alpha).
 #include <flutter/runtime_effect.glsl>
 
 precision highp float;
 
-uniform vec4 uRect;    // 0-3  part bounds (x, y, w, h) in canvas pixels
-uniform vec3 uColor;   // 4-6  base colour (0-1)
-uniform float uKind;   // 7    0 skin, 1 hair, 2 cloth, 3 flat (no shading)
-uniform float uTime;   // 8    seconds (sheen drift)
-uniform vec3 uRim;     // 9-11 rim light colour
+uniform vec2 uSize;     // 0-1 pixels
+uniform float uWidth;   // 2   outline width in pixels
+uniform vec3 uInk;      // 3-5 outline colour
+uniform float uOutline; // 6   outline strength 0-1
+
+uniform sampler2D uTexture;
 
 out vec4 fragColor;
 
+vec4 tap(vec2 uv) { return texture(uTexture, clamp(uv, vec2(0.0), vec2(1.0))); }
+
 void main() {
   vec2 frag = FlutterFragCoord().xy;
-  vec2 uv = (frag - uRect.xy) / max(uRect.zw, vec2(1.0));
-  vec2 p = uv * 2.0 - 1.0;                  // -1..1 across the part
-  float r2 = dot(p * vec2(0.92, 0.95), p * vec2(0.92, 0.95));
-  vec3 n = normalize(vec3(p.x * 0.85, p.y * 0.85, sqrt(max(0.06, 1.0 - min(r2, 0.94)))));
-  vec3 light = normalize(vec3(-0.45, -0.6, 0.75));
-  float diff = max(dot(n, light), 0.0);
-  int kind = int(uKind + 0.5);
+  vec2 uv = frag / uSize;
+  vec2 px = 1.0 / uSize;
+  vec4 c = tap(uv);
 
-  vec3 base = uColor;
-  vec3 col;
-  if (kind == 3) {
-    col = base;
-  } else {
-    // Soft toon bands: shadow / mid / lit.
-    float band = smoothstep(0.18, 0.30, diff) * 0.55 + smoothstep(0.62, 0.74, diff) * 0.45;
-    vec3 shadow = base * vec3(0.70, 0.66, 0.76);          // cool shadow
-    vec3 lit = min(base * 1.12 + vec3(0.03, 0.025, 0.0), vec3(1.0));
-    col = mix(shadow, lit, band);
-    // Subsurface warmth on skin, near the edges.
-    if (kind == 0) col += vec3(0.06, 0.015, 0.0) * smoothstep(0.4, 0.95, r2);
-    // Rim light on the shadow side.
-    float rim = pow(1.0 - n.z, 2.6) * smoothstep(0.0, 0.6, p.x + 0.2);
-    col = mix(col, uRim, clamp(rim * 0.55, 0.0, 0.55));
-    if (kind == 1) {
-      // Hair sheen: a bright band that drifts slowly.
-      float y = uv.y + 0.03 * sin(uTime * 0.8 + uv.x * 6.0);
-      float sheen = exp(-pow((y - 0.32) * 9.0, 2.0)) * (0.5 + 0.5 * n.z);
-      col += vec3(0.22) * sheen;
-    }
-    if (kind == 2) {
-      // Fabric: faint vertical weave.
-      col *= 0.97 + 0.03 * sin(frag.x * 1.7);
-    }
+  // Edge-aware smoothing (cheap FXAA-like): blend toward the neighbours
+  // where the colour changes sharply.
+  vec4 n = tap(uv + vec2(0.0, -px.y));
+  vec4 s = tap(uv + vec2(0.0, px.y));
+  vec4 e = tap(uv + vec2(px.x, 0.0));
+  vec4 w = tap(uv + vec2(-px.x, 0.0));
+  vec4 avg = (n + s + e + w) * 0.25;
+  float lumC = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+  float lumA = dot(avg.rgb, vec3(0.299, 0.587, 0.114));
+  float edge = clamp(abs(lumC - lumA) * 4.0 + abs(c.a - avg.a) * 2.0, 0.0, 1.0);
+  c = mix(c, (c + avg) * 0.5, edge * 0.6);
+
+  // Silhouette outline: the strongest alpha within uWidth pixels.
+  float reach = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float a = 6.2831853 * float(i) / 12.0;
+    vec2 o = vec2(cos(a), sin(a)) * uWidth * px;
+    reach = max(reach, tap(uv + o).a);
   }
-  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+  float outline = clamp(reach - c.a, 0.0, 1.0) * uOutline;
+
+  // Inner edge: slightly darker just inside the silhouette.
+  float inner = clamp(c.a - min(min(n.a, s.a), min(e.a, w.a)), 0.0, 1.0);
+  c.rgb *= 1.0 - inner * 0.25;
+
+  // A touch more saturation.
+  float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+  c.rgb = mix(vec3(l) * c.a, c.rgb, 1.12);
+
+  vec4 ink = vec4(uInk * outline, outline);
+  fragColor = c + ink * (1.0 - c.a);
 }

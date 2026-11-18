@@ -88,9 +88,14 @@ async def test_avatar_config(client: AsyncClient, auth_headers: dict) -> None:
            "top_color": "#F5636B", "accessory": "bindi"}
     saved = await client.put("/api/v1/social/avatar", headers=auth_headers, json=cfg)
     assert saved.status_code == 200 and saved.json()["avatar"]["face"] == "oval"
+    assert saved.json()["avatar"]["background"] == "studio" and saved.json()["avatar"]["pants_color"] == "#2A3554"
     theirs = await client.get("/api/v1/social/avatar/u/arjun", headers=auth_headers)
     assert theirs.json()["avatar"]["hair"] == "curly"
-    assert (await client.put("/api/v1/social/avatar", headers=auth_headers, json={"hair": "mohawk"})).status_code == 422
+    styled = await client.put("/api/v1/social/avatar", headers=auth_headers, json={
+        **cfg, "hair": "swept", "beard": "van_dyke", "glasses": "round_tint", "top": "suit", "accessory": "cape",
+        "accent_color": "#F08A2E", "eyes": "sharp", "brows": "angry", "mouth": "cool", "face": "angular"})
+    assert styled.status_code == 200, styled.text
+    assert (await client.put("/api/v1/social/avatar", headers=auth_headers, json={"hair": "dreadlocks_xl"})).status_code == 422
     assert (await client.put("/api/v1/social/avatar", headers=auth_headers, json={"skin": "red"})).status_code == 422
 
 
@@ -100,7 +105,7 @@ async def test_avatar_snap_decoration(client: AsyncClient, auth_headers: dict) -
                           files={"file": ("s.png", png(), "image/png")}, data={"decorations": json.dumps(deco)})
     assert r.status_code == 201, r.text
     assert r.json()["decorations"][0]["data"]["avatar"]["hair"] == "afro"
-    bad = [{"type": "avatar", "data": {"avatar": {"hair": "mohawk"}}}]
+    bad = [{"type": "avatar", "data": {"avatar": {"hair": "dreadlocks_xl"}}}]
     r = await client.post("/api/v1/social/memories", headers=auth_headers,
                           files={"file": ("s.png", png(), "image/png")}, data={"decorations": json.dumps(bad)})
     assert r.status_code == 422

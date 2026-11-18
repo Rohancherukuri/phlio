@@ -1,7 +1,9 @@
-// Build your Phlio avatar (like Bitmoji): a live, shader-lit preview on top
-// and a tab per part underneath — Skin, Face, Hair, Eyes, Brows, Mouth,
-// Beard, Glasses, Outfit, Extras, Background. Save stores it on your
-// account; it then shows up as the Avatar sticker in Moments and snaps.
+// Build your Phlio avatar (like Bitmoji), in 3D: a live, low-poly,
+// toon-shaded preview on top (drag to spin it, double-tap to reset) and a
+// tab per part underneath — Skin, Face, Hair, Eyes, Brows, Mouth, Beard,
+// Glasses, Outfit, Extras, Background, plus Emotes (coming soon). Save
+// stores the look on your account; it then shows up as the Avatar sticker
+// in Moments and snaps.
 
 import 'dart:math' as math;
 
@@ -22,31 +24,37 @@ class AvatarBuilderScreen extends ConsumerStatefulWidget {
 }
 
 class _Tab {
-  const _Tab(this.label, this.icon, {this.option, this.color, this.palette});
+  const _Tab(this.label, this.icon, {this.option, this.colors = const [], this.framing = AvatarFraming.head});
   final String label;
   final IconData icon;
   final String? option; // key in avatarOptions
-  final String? color; // colour key
-  final List<Color>? palette;
+  final List<(String, String, List<Color>)> colors; // (key, label, palette)
+  final AvatarFraming framing; // how option previews are framed
 }
 
 const _tabs = [
-  _Tab('Skin', Icons.face_rounded, color: 'skin', palette: avatarSkinTones),
+  _Tab('Skin', Icons.face_rounded, colors: [('skin', 'Skin tone', avatarSkinTones)], framing: AvatarFraming.bust),
   _Tab('Face', Icons.face_6_rounded, option: 'face'),
-  _Tab('Hair', Icons.content_cut_rounded, option: 'hair', color: 'hair_color', palette: avatarHairColors),
-  _Tab('Eyes', Icons.visibility_rounded, option: 'eyes', color: 'eye_color', palette: avatarEyeColors),
+  _Tab('Hair', Icons.content_cut_rounded, option: 'hair', colors: [('hair_color', 'Hair colour', avatarHairColors)]),
+  _Tab('Eyes', Icons.visibility_rounded, option: 'eyes', colors: [('eye_color', 'Eye colour', avatarEyeColors)]),
   _Tab('Brows', Icons.remove_rounded, option: 'brows'),
   _Tab('Mouth', Icons.sentiment_satisfied_rounded, option: 'mouth'),
   _Tab('Beard', Icons.face_retouching_natural_rounded, option: 'beard'),
   _Tab('Glasses', Icons.visibility_outlined, option: 'glasses'),
-  _Tab('Outfit', Icons.checkroom_rounded, option: 'top', color: 'top_color', palette: avatarClothColors),
-  _Tab('Extras', Icons.auto_awesome_rounded, option: 'accessory'),
-  _Tab('Background', Icons.wallpaper_rounded, option: 'background'),
+  _Tab('Outfit', Icons.checkroom_rounded,
+      option: 'top',
+      framing: AvatarFraming.full,
+      colors: [
+        ('top_color', 'Main colour', avatarClothColors),
+        ('accent_color', 'Accent', avatarClothColors),
+        ('pants_color', 'Trousers', avatarClothColors),
+      ]),
+  _Tab('Extras', Icons.auto_awesome_rounded, option: 'accessory', framing: AvatarFraming.bust),
+  _Tab('Background', Icons.wallpaper_rounded, option: 'background', framing: AvatarFraming.full),
+  _Tab('Emotes', Icons.emoji_emotions_outlined),
 ];
 
-String _label(String v) => v == 'none'
-    ? 'None'
-    : v.split('_').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ');
+String _label(String v) => v == 'none' ? 'None' : v.split('_').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ');
 
 class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
   AvatarConfig? cfg;
@@ -74,12 +82,20 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
     T pick<T>(List<T> l) => l[r.nextInt(l.length)];
     for (final e in avatarOptions.entries) {
       if (e.key == 'background') continue;
+      // Keep extras and beards less frequent so shuffles look natural.
+      if ((e.key == 'accessory' || e.key == 'beard' || e.key == 'glasses') && r.nextDouble() < .5) {
+        next = next.copyWith(e.key, 'none');
+        continue;
+      }
       next = next.copyWith(e.key, pick(e.value));
     }
     next = next
         .copyWith('skin', hexOf(pick(avatarSkinTones)))
-        .copyWith('hair_color', hexOf(pick(avatarHairColors.take(7).toList())))
-        .copyWith('top_color', hexOf(pick(avatarClothColors)));
+        .copyWith('hair_color', hexOf(pick(avatarHairColors.take(8).toList())))
+        .copyWith('eye_color', hexOf(pick(avatarEyeColors)))
+        .copyWith('top_color', hexOf(pick(avatarClothColors)))
+        .copyWith('accent_color', hexOf(pick(avatarClothColors)))
+        .copyWith('pants_color', hexOf(pick(avatarClothColors)));
     HapticFeedback.mediumImpact();
     setState(() => cfg = next);
   }
@@ -95,6 +111,15 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
         setState(() => saving = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save your avatar. Try again.')));
       }
+    }
+  }
+
+  void _openTab(int i) {
+    setState(() => tab = i);
+    if (_tabs[i].label == 'Emotes') {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Emotes are coming soon')));
     }
   }
 
@@ -123,8 +148,19 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(children: [
               Expanded(
-                flex: 5,
-                child: Center(child: AvatarFigure(config: c, size: 230)),
+                flex: 6,
+                child: LayoutBuilder(builder: (context, box) {
+                  final size = math.min(box.maxWidth * .92, box.maxHeight * 6 / 7 * .96);
+                  return Center(
+                    child: Stack(alignment: Alignment.bottomCenter, children: [
+                      AvatarFigure(config: c, size: size, interactive: true),
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Text('Drag to spin', style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+                      ),
+                    ]),
+                  );
+                }),
               ),
               SizedBox(
                 height: 64,
@@ -136,10 +172,10 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
                     final t = _tabs[i];
                     final on = i == tab;
                     return GestureDetector(
-                      onTap: () => setState(() => tab = i),
+                      onTap: () => _openTab(i),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
-                        width: 68,
+                        width: 70,
                         margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
                         decoration: BoxDecoration(
                           color: on ? const Color(0xFF8D78FF) : const Color(0xFF1C212B),
@@ -155,43 +191,60 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
                   },
                 ),
               ),
-              Expanded(flex: 4, child: _panel(c, _tabs[tab])),
+              Expanded(flex: 5, child: _panel(c, _tabs[tab])),
             ]),
     );
   }
 
   Widget _panel(AvatarConfig c, _Tab t) {
-    return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 20), children: [
-      if (t.palette != null) ...[
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final color in t.palette!)
-            GestureDetector(
-              onTap: () => _set(t.color!, hexOf(color)),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: c.s(t.color!).toUpperCase() == hexOf(color) ? Colors.white : Colors.white24,
-                      width: c.s(t.color!).toUpperCase() == hexOf(color) ? 3 : 1),
+    if (t.label == 'Emotes') {
+      return const Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.emoji_emotions_outlined, color: Color(0xFF8D78FF), size: 48),
+          SizedBox(height: 10),
+          Text('Emotes are coming soon', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+          SizedBox(height: 4),
+          Text('Waves, dances and reactions for your avatar.', style: TextStyle(color: Colors.white60)),
+        ]),
+      );
+    }
+    return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 24), children: [
+      for (final (key, label, palette) in t.colors) ...[
+        Text(label, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, fontSize: 12.5)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 44,
+          child: ListView(scrollDirection: Axis.horizontal, children: [
+            for (final color in palette)
+              GestureDetector(
+                onTap: () => _set(key, hexOf(color)),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: c.s(key).toUpperCase() == hexOf(color) ? Colors.white : Colors.white24,
+                        width: c.s(key).toUpperCase() == hexOf(color) ? 3 : 1),
+                  ),
                 ),
               ),
-            ),
-        ]),
-        const SizedBox(height: 14),
+          ]),
+        ),
+        const SizedBox(height: 12),
       ],
       if (t.label == 'Skin') ...[
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          value: c.blush,
+          value: c.flag('blush'),
           onChanged: (v) => _set('blush', v),
           title: const Text('Blush', style: TextStyle(color: Colors.white)),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          value: c.freckles,
+          value: c.flag('freckles'),
           onChanged: (v) => _set('freckles', v),
           title: const Text('Freckles', style: TextStyle(color: Colors.white)),
         ),
@@ -203,7 +256,7 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 10,
           crossAxisSpacing: 10,
-          childAspectRatio: .78,
+          childAspectRatio: .74,
           children: [
             for (final value in avatarOptions[t.option]!)
               GestureDetector(
@@ -212,23 +265,28 @@ class _AvatarBuilderScreenState extends ConsumerState<AvatarBuilderScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1C212B),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: c.s(t.option!) == value ? const Color(0xFF8D78FF) : Colors.transparent, width: 2.5),
+                    border: Border.all(color: c.s(t.option!) == value ? const Color(0xFF8D78FF) : Colors.transparent, width: 2.5),
                   ),
                   child: Column(children: [
-                    // A small, still preview with this choice.
+                    // A small, still 3D preview with this choice.
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: FittedBox(
                           child: AvatarFigure(
-                              config: c.copyWith(t.option!, value), size: 90, animate: false, background: t.option == 'background'),
+                            config: c.copyWith(t.option!, value),
+                            size: 96,
+                            animate: false,
+                            background: t.option == 'background',
+                            framing: t.framing,
+                          ),
                         ),
                       ),
                     ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(_label(value), style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
+                      child: Text(_label(value),
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
                     ),
                   ]),
                 ),
