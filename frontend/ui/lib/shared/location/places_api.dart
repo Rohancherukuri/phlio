@@ -86,7 +86,7 @@ String _address(Map a) {
 Future<Place?> reverseGeocode(double lat, double lng) async {
   try {
     final res = await _http.get('https://nominatim.openstreetmap.org/reverse',
-        queryParameters: {'lat': lat, 'lon': lng, 'format': 'jsonv2', 'addressdetails': 1, 'zoom': 18});
+        queryParameters: {'lat': lat, 'lon': lng, 'format': 'jsonv2', 'addressdetails': 1, 'zoom': 18, 'accept-language': 'en'});
     final j = res.data as Map;
     final a = (j['address'] as Map?) ?? const {};
     final name = (j['name'] as String?)?.isNotEmpty == true
@@ -136,7 +136,8 @@ Future<List<Place>> nearbyPlaces(double lat, double lng, {int radius = 500, int 
   final seen = <String>{};
   for (final e in await overpassElements(query)) {
     final tags = (e['tags'] as Map?) ?? const {};
-    final name = tags['name'] as String?;
+    // English name when OSM has one (signs here are often in Telugu/Hindi too).
+    final name = (tags['name:en'] ?? tags['name']) as String?;
     final c = (e['center'] as Map?) ?? e;
     if (name == null || c['lat'] == null || !seen.add(name.toLowerCase())) continue;
     final street = [tags['addr:housenumber'], tags['addr:street'], tags['addr:city'], tags['addr:postcode']]
@@ -152,6 +153,48 @@ Future<List<Place>> nearbyPlaces(double lat, double lng, {int radius = 500, int 
   }
   places.sort((a, b) => distanceMetres(lat, lng, a.lat, a.lng).compareTo(distanceMetres(lat, lng, b.lat, b.lng)));
   return places.take(limit).toList();
+}
+
+/// Neighbourhood and locality names around a point, nearest first — the
+/// names people actually use for an area ("KPHB Colony", "Madhapur"),
+/// from OpenStreetMap place nodes. Notes use these, like Instagram does.
+Future<List<Place>> nearbyAreas(double lat, double lng, {int radius = 2500, int limit = 8}) async {
+  final query = '[out:json][timeout:15];'
+      'node(around:$radius,$lat,$lng)[place~"^(neighbourhood|suburb|quarter|locality|village|hamlet|town)\$"][name];'
+      'out 60;';
+  final areas = <Place>[];
+  final seen = <String>{};
+  for (final e in await overpassElements(query)) {
+    final tags = (e['tags'] as Map?) ?? const {};
+    final name = ((tags['name:en'] ?? tags['name']) as String?)?.trim();
+    if (name == null || name.isEmpty || e['lat'] == null || !seen.add(name.toLowerCase())) continue;
+    areas.add(Place(
+      lat: (e['lat'] as num).toDouble(),
+      lng: (e['lon'] as num).toDouble(),
+      name: name,
+      address: '${tags['is_in'] ?? tags['addr:city'] ?? ''}',
+      kind: '${tags['place'] ?? 'area'}',
+    ));
+  }
+  areas.sort((a, b) => distanceMetres(lat, lng, a.lat, a.lng).compareTo(distanceMetres(lat, lng, b.lat, b.lng)));
+  return areas.take(limit).toList();
+}
+
+/// The area name for a point: the nearest neighbourhood / suburb place in
+/// OpenStreetMap, else Nominatim's neighbourhood or suburb for the point.
+Future<Place?> areaName(double lat, double lng) async {
+  try {
+    final areas = await nearbyAreas(lat, lng, radius: 1800, limit: 1).timeout(const Duration(seconds: 8));
+    if (areas.isNotEmpty) return Place(lat: lat, lng: lng, name: areas.first.name, address: areas.first.address, kind: 'area');
+  } catch (_) {}
+  try {
+    final res = await _http.get('https://nominatim.openstreetmap.org/reverse',
+        queryParameters: {'lat': lat, 'lon': lng, 'format': 'jsonv2', 'addressdetails': 1, 'zoom': 16, 'accept-language': 'en'});
+    final a = ((res.data as Map)['address'] as Map?) ?? const {};
+    final name = a['neighbourhood'] ?? a['quarter'] ?? a['suburb'] ?? a['city_district'] ?? a['city'] ?? a['town'];
+    if (name is String && name.isNotEmpty) return Place(lat: lat, lng: lng, name: name, address: _address(a), kind: 'area');
+  } catch (_) {}
+  return null;
 }
 
 /// Great-circle distance in metres.
