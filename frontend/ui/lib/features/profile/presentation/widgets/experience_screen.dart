@@ -288,7 +288,7 @@ class _ExperienceIntroState extends ConsumerState<ExperienceIntroScreen> with Ti
             ),
             child: ClipRect(
               child: photo != null
-                  ? MemoryPhoto('${photo['image_url']}', filter: photo['filter'] as String?)
+                  ? MemoryPhoto('${photo['image_url']}', filter: photo['filter'] as String?, filterSpec: photo['filter_spec'])
                   : _placeholder(i),
             ),
           ),
@@ -624,7 +624,7 @@ class _MineRow extends StatelessWidget {
                   height: 52,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: MemoryPhoto('${m['image_url']}', isVideo: m['media_kind'] == 'video', filter: m['filter'] as String?),
+                    child: MemoryPhoto('${m['image_url']}', isVideo: m['media_kind'] == 'video', filter: m['filter'] as String?, filterSpec: m['filter_spec']),
                   ),
                 ),
               ),

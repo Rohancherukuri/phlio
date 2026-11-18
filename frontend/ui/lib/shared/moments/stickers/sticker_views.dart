@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 import '../../../app/config/app_config.dart';
 import '../../../design_system/colors.dart';
 import '../../../design_system/widgets/phlio_fox.dart';
+import '../../avatar/avatar_figure.dart';
 import '../../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 import '../templates/template_canvas.dart' show BackdropShader, templateFont;
 import 'sticker_model.dart';
@@ -120,7 +121,10 @@ class MomentStickerView extends StatelessWidget {
       StickerType.music => _MusicCard(d, style: style),
       StickerType.photo || StickerType.frame || StickerType.cutout => _PhotoSticker(s),
       StickerType.gif => _GifSticker('${d['url']}', framed: d['kind'] == 'gif'),
-      StickerType.avatar => _AvatarSticker(name: '${d['name'] ?? 'You'}'),
+      StickerType.avatar => d['avatar'] is Map
+          // Your Phlio avatar (shader-lit, breathing and blinking).
+          ? AvatarFigure(config: AvatarConfig(Map<String, dynamic>.from(d['avatar'] as Map)), size: 140, background: false)
+          : _AvatarSticker(name: '${d['name'] ?? 'You'}'),
       StickerType.poll => _PollCard(s, response: response, actions: actions),
       StickerType.question => _QuestionCard(s, actions: actions, response: response),
       StickerType.slider => _SliderCard(s, response: response, actions: actions),

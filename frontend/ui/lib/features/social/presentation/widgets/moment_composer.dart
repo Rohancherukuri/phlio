@@ -32,6 +32,8 @@ import '../../../../design_system/widgets/foxy_stickers.dart';
 import '../../../../design_system/widgets/phlio_fox.dart';
 import '../../../../shared/media/phlio_look_data.dart';
 import '../../../../shared/media/phlio_look_view.dart';
+import '../../../../shared/media/smart_filter_editor.dart';
+import '../../../../shared/media/smart_filters.dart';
 import '../../../../shared/moments/moments.dart';
 import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart';
@@ -137,6 +139,8 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   int gradient = 0;
   String filter = 'normal'; // look id (shared/media/phlio_look_data.dart)
   String effect = 'none'; // GPU effect id
+  // Snapchat-style info filters (time, weather, place…), kept as data.
+  FilterSpec smart = FilterSpec();
   bool _capturing = false; // flattening a photo: bake the look, keep the effect live
   double lookStrength = 1;
   bool commentsOff = false, saveToHighlights = false, aiLabel = false;
@@ -450,6 +454,17 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
 
   /// Instagram-style sheet: Filters (looks with a strength slider) and
   /// Effects, both previewed live on your photo/video with the GPU shader.
+  /// Snapchat-style smart filters: info overlays drawn live, saved as data.
+  Future<void> smartFilters() async {
+    if (!hasContent) {
+      _say('Add a photo or video first.');
+      return;
+    }
+    final edited = await openSmartFilterEditor(context,
+        media: _background(), initial: smart);
+    if (edited != null && mounted) setState(() => smart = edited);
+  }
+
   Future<void> effects() async {
     final thumb = SizedBox.expand(
       child: mediaPath != null && !isVideo
@@ -671,6 +686,13 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               if (_music != null) 'music': jsonEncode(_music),
               // Photos: the look is baked into the PNG; the effect plays live.
               'filter': isVideo ? joinMomentFilter(filter, effect) : joinMomentFilter('normal', effect),
+              if (smart.overlays.isNotEmpty)
+                'filter_spec': jsonEncode((FilterSpec(
+                  look: isVideo ? filter : 'normal',
+                  effect: effect == 'none' ? null : effect,
+                  strength: lookStrength.clamp(0.0, 1.0),
+                  overlays: smart.overlays,
+                )).toJson()),
               'highlight': saveToHighlights ? 'Highlights' : '',
               'ai_label': aiLabel.toString(),
             }),
@@ -892,6 +914,12 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: false
       ),
       (
+        label: 'Filters',
+        icon: const Icon(Icons.filter_vintage_outlined),
+        onTap: smartFilters,
+        on: smart.overlays.isNotEmpty
+      ),
+      (
         label: 'Music',
         icon: const Icon(Icons.music_note_outlined),
         onTap: music,
@@ -997,6 +1025,9 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                             for (final layer in layers) _layer(layer, canvas),
                           ]),
                         ),
+                        // Smart filters stay data (editable after posting),
+                        // so they're drawn over the canvas, not baked in.
+                        SmartFilterLayer(spec: smart),
                         if (flash != null)
                           IgnorePointer(
                             child: Center(

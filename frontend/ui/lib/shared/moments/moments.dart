@@ -9,6 +9,8 @@
 //    bars, tap / hold / swipe, replies (unless turned off) and owner tools.
 //  * [MomentHighlightsRow] — highlight circles on a profile.
 
+import '../media/smart_filter_editor.dart';
+import '../media/smart_filters.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -890,6 +892,10 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
               title: const Text('Viewers'),
               onTap: () => Navigator.pop(sheet, 'viewers')),
           ListTile(
+              leading: const Icon(Icons.filter_vintage_outlined),
+              title: const Text('Edit filters'),
+              onTap: () => Navigator.pop(sheet, 'filters')),
+          ListTile(
               leading: const Icon(Icons.delete_outline_rounded,
                   color: PhlioColors.danger),
               title: const Text('Delete moment',
@@ -912,6 +918,25 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
         await dio.delete('/social/moments/${_mid(item)}/highlight');
         ref.invalidate(momentHighlightsProvider);
         _say('Removed from highlights');
+      } else if (action == 'filters') {
+        // Change the smart filters (and, for videos, the look) after posting.
+        final current = FilterSpec.fromJson(item['filter_spec']) ??
+            (() {
+              final (look, effect) = splitMomentFilter(item['filter'] as String?);
+              return FilterSpec(look: look, effect: effect == 'none' ? null : effect);
+            })();
+        final edited = await openSmartFilterEditor(context,
+            media: _MomentMedia(item: {...item, 'filter_spec': null}, video: null), initial: current);
+        if (edited != null) {
+          final res = await dio.put('/social/filters/moments/${_mid(item)}', data: {'spec': edited.toJson()});
+          final data = res.data as Map;
+          setState(() {
+            item['filter'] = data['filter'];
+            item['filter_spec'] = data['filter_spec'];
+          });
+          refreshMoments(ref);
+          _say('Filters updated');
+        }
       } else if (action == 'viewers') {
         final data = (await dio.get('/social/moments/${_mid(item)}/viewers'))
             .data as Map;
@@ -1515,7 +1540,11 @@ class _MomentMedia extends StatelessWidget {
                 color: Colors.white38, size: 48)),
       );
     }
-    return PhlioLook(look: look, effect: effect, child: child);
+    final looked = PhlioLook(look: look, effect: effect, child: child);
+    // Smart filters (time, weather, place…) are stored as data and drawn live.
+    final smart = FilterSpec.fromJson(item['filter_spec']);
+    if (smart == null || smart.overlays.isEmpty) return looked;
+    return Stack(fit: StackFit.expand, children: [looked, SmartFilterLayer(spec: smart)]);
   }
 }
 

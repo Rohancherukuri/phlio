@@ -32,6 +32,8 @@ import '../../../features/stream/music/open_music_api.dart' show audiusSearchPro
 import '../../../core/di/service_locator.dart';
 import '../../../core/network/api_client.dart';
 import '../../giphy/giphy_picker.dart';
+import '../../avatar/avatar_builder.dart';
+import '../../avatar/avatar_figure.dart';
 import 'sticker_model.dart';
 import 'sticker_views.dart';
 
@@ -134,8 +136,17 @@ class _TrayState extends ConsumerState<_Tray> {
       final shape = await _pickCutoutShape(c, path);
       return shape == null ? null : _s(StickerType.cutout, {'path': path, 'shape': shape});
     }),
-    _ChipDef('Avatar', Icons.face_retouching_natural_outlined, _peach,
-        (c, r) async => _s(StickerType.avatar, {'name': widget.userName})),
+    _ChipDef('Avatar', Icons.face_retouching_natural_outlined, _peach, (c, r) async {
+      // Your Phlio avatar; make one first if you haven't.
+      AvatarConfig? mine;
+      try {
+        mine = await r.read(myAvatarProvider.future);
+      } catch (_) {}
+      if (mine == null && c.mounted) mine = await openAvatarBuilder(c);
+      return mine == null
+          ? _s(StickerType.avatar, {'name': widget.userName})
+          : _s(StickerType.avatar, {'name': widget.userName, 'avatar': mine.toJson()});
+    }),
     _ChipDef('Templates', Icons.dashboard_customize_outlined, _peach, (c, r) async => const TrayPick.templates()),
     _ChipDef('Emoji slider', Icons.linear_scale_rounded, _pink, (c, r) async {
       final v = await _askSlider(c);

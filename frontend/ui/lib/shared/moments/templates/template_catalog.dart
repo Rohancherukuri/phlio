@@ -1,6 +1,6 @@
 // Moment templates — the catalogue.
 //
-// 25 ready-to-post designs in five groups: Portraits, Collages, Creator,
+// 33 ready-to-post designs in five groups: Portraits, Collages, Creator,
 // Trending (formats people are posting right now) and Quotes & advice.
 // Coordinates are in the 360 × 640 design space (centre x, centre y; sizes
 // in the same units). Every text is editable and every photo frame is
@@ -160,6 +160,116 @@ final momentTemplates = <MomentTemplate>[
       TElement.slot(_o(98, 470), const Size(156, 190), shape: SlotShape.rounded, radius: 22),
       TElement.slot(_o(262, 470), const Size(156, 190), shape: SlotShape.rounded, radius: 22),
       TElement.text('weekend mode', _o(180, 600), font: 'Space Grotesk', fontSize: 22, color: _white, weight: FontWeight.w700),
+    ],
+  ),
+
+  // More collages: pick several photos and every frame is filled for you.
+  MomentTemplate(
+    id: 'dump6',
+    name: 'Photo dump',
+    category: TemplateCategory.collage,
+    trend: 'Six-photo weekly dump',
+    backdrop: () => _bd(BackdropStyle.linear, 2, animate: false, grain: .15),
+    build: () => [
+      TElement.text('photo dump', _o(180, 56), font: 'Caveat', fontSize: 40, color: _ink, weight: FontWeight.w700),
+      for (final (i, c) in const [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)].indexed)
+        TElement.slot(_o(c.$1 == 0 ? 96.0 : 264.0, 186 + c.$2 * 170.0), const Size(156, 156),
+            shape: SlotShape.rounded, radius: 12, rotation: (i.isEven ? -1 : 1) * .02, shadow: true),
+      TElement.text('#photodump', _o(180, 612), fontSize: 13, color: _ink, weight: FontWeight.w800, role: TextRole.tag),
+    ],
+  ),
+  MomentTemplate(
+    id: 'triptych',
+    name: 'Triptych',
+    category: TemplateCategory.collage,
+    backdrop: () => _bd(BackdropStyle.linear, 3, animate: false),
+    build: () => [
+      TElement.slot(_o(62, 320), const Size(112, 600), shape: SlotShape.rounded, radius: 16),
+      TElement.slot(_o(180, 320), const Size(112, 600), shape: SlotShape.rounded, radius: 16),
+      TElement.slot(_o(298, 320), const Size(112, 600), shape: SlotShape.rounded, radius: 16),
+    ],
+  ),
+  MomentTemplate(
+    id: 'photobooth',
+    name: 'Photo booth',
+    category: TemplateCategory.collage,
+    trend: 'Four-frame booth strip',
+    backdrop: () => _bd(BackdropStyle.halftone, 0, grain: .3),
+    build: () => [
+      TElement.deco(DecoKind.rect, _o(180, 320), const Size(190, 600), color: _white, rotation: -.04),
+      for (var i = 0; i < 4; i++)
+        TElement.slot(_o(180 + (i - 1.5) * -6, 102 + i * 138.0), const Size(166, 124), rotation: -.04),
+      TElement.text('PHLIO BOOTH', _o(180, 612), font: 'Courier Prime', fontSize: 13, color: _ink, weight: FontWeight.w700, spacing: 3, rotation: -.04),
+    ],
+  ),
+  MomentTemplate(
+    id: 'bubbles',
+    name: 'Bubbles',
+    category: TemplateCategory.collage,
+    backdrop: () => _bd(BackdropStyle.aurora, 1),
+    build: () => [
+      TElement.slot(_o(180, 250), const Size(230, 230), shape: SlotShape.circle, border: _white, borderWidth: 4, shadow: true),
+      TElement.slot(_o(78, 432), const Size(120, 120), shape: SlotShape.circle, border: _white, borderWidth: 3),
+      TElement.slot(_o(282, 432), const Size(120, 120), shape: SlotShape.circle, border: _white, borderWidth: 3),
+      TElement.slot(_o(180, 520), const Size(100, 100), shape: SlotShape.circle, border: _white, borderWidth: 3),
+      TElement.slot(_o(286, 110), const Size(80, 80), shape: SlotShape.circle, border: _white, borderWidth: 3),
+      TElement.text('my people', _o(90, 100), font: 'Pacifico', fontSize: 28, color: _white),
+    ],
+  ),
+  MomentTemplate(
+    id: 'magazine',
+    name: 'Magazine cover',
+    category: TemplateCategory.collage,
+    backdrop: () => _bd(BackdropStyle.linear, 4, animate: false),
+    build: () => [
+      TElement.slot(_o(180, 320), const Size(360, 640), hint: 'Cover photo'),
+      TElement.text('PHLIO', _o(180, 70), font: 'Bebas Neue', fontSize: 92, color: _white, spacing: 6),
+      TElement.text('the main character issue', _o(180, 128), fontSize: 12, color: _white, weight: FontWeight.w800, spacing: 3, upper: true),
+      TElement.slot(_o(282, 470), const Size(110, 140), border: _white, borderWidth: 3, rotation: .06, shadow: true),
+      TElement.text('EXCLUSIVE', _o(80, 520), fontSize: 12, color: _ink, bg: TextBg.block, bgColor: _yellow, weight: FontWeight.w900, spacing: 2),
+      TElement.text('how I spent\nmy weekend', _o(92, 572), width: 170, font: 'DM Serif Display', fontSize: 24, color: _white, weight: FontWeight.w400),
+    ],
+  ),
+  MomentTemplate(
+    id: 'duo',
+    name: 'Side by side',
+    category: TemplateCategory.collage,
+    backdrop: () => _bd(BackdropStyle.mesh, 0),
+    build: () => [
+      TElement.slot(_o(96, 300), const Size(160, 440), shape: SlotShape.arch, shadow: true),
+      TElement.slot(_o(264, 340), const Size(160, 440), shape: SlotShape.arch, shadow: true),
+      TElement.text('then & now', _o(180, 590), font: 'Playfair Display', fontSize: 30, color: _white, italic: true, weight: FontWeight.w600),
+    ],
+  ),
+  MomentTemplate(
+    id: 'scatter',
+    name: 'Polaroid pile',
+    category: TemplateCategory.collage,
+    trend: 'Messy polaroid stack',
+    backdrop: () => _bd(BackdropStyle.paper, 2, grain: .4, animate: false),
+    build: () => [
+      TElement.slot(_o(118, 150), const Size(160, 190), shape: SlotShape.polaroid, rotation: -.2, shadow: true),
+      TElement.slot(_o(250, 210), const Size(160, 190), shape: SlotShape.polaroid, rotation: .16, shadow: true),
+      TElement.slot(_o(110, 360), const Size(160, 190), shape: SlotShape.polaroid, rotation: .1, shadow: true),
+      TElement.slot(_o(256, 430), const Size(160, 190), shape: SlotShape.polaroid, rotation: -.12, shadow: true),
+      TElement.slot(_o(150, 545), const Size(160, 190), shape: SlotShape.polaroid, rotation: .05, shadow: true),
+      TElement.deco(DecoKind.tape, _o(250, 116), const Size(70, 20), color: const Color(0xCCE795D7), rotation: .3),
+    ],
+  ),
+  MomentTemplate(
+    id: 'bento',
+    name: 'Bento',
+    category: TemplateCategory.collage,
+    trend: 'Bento-box grid',
+    backdrop: () => _bd(BackdropStyle.grid, 1, animate: false),
+    build: () => [
+      TElement.slot(_o(122, 150), const Size(220, 250), shape: SlotShape.rounded, radius: 20),
+      TElement.slot(_o(292, 112), const Size(108, 174), shape: SlotShape.rounded, radius: 20),
+      TElement.slot(_o(292, 252), const Size(108, 86), shape: SlotShape.rounded, radius: 20),
+      TElement.slot(_o(96, 410), const Size(168, 250), shape: SlotShape.rounded, radius: 20),
+      TElement.slot(_o(264, 388), const Size(160, 176), shape: SlotShape.rounded, radius: 20),
+      TElement.text('this month ✦', _o(264, 512), font: 'Space Grotesk', fontSize: 20, color: _white, weight: FontWeight.w700),
+      TElement.slot(_o(180, 590), const Size(336, 76), shape: SlotShape.rounded, radius: 20),
     ],
   ),
 

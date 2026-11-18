@@ -80,8 +80,12 @@ class SnapSendView extends StatefulWidget {
     required this.onAudience,
     required this.onDiscard,
     required this.onSend,
+    this.onFilters,
     super.key,
   });
+
+  /// Opens the smart filter editor (time, weather, place…).
+  final VoidCallback? onFilters;
 
   final XFile file;
   final bool video;
@@ -504,6 +508,13 @@ class _SnapSendViewState extends State<SnapSendView> {
             onPressed: widget.busy ? null : _captions,
             icon: const _CaptionsIcon(),
           ),
+          if (widget.onFilters != null)
+            IconButton(
+              tooltip: 'Filters',
+              iconSize: 34,
+              onPressed: widget.busy ? null : widget.onFilters,
+              icon: const Icon(Icons.filter_vintage_outlined, color: Colors.white),
+            ),
         ]),
         const SizedBox(height: 22),
         _recipients(),

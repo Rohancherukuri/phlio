@@ -12,6 +12,9 @@
 // reaction carries the reacting person (user: {username, display_name,
 // avatar_url}) and reacted_at.
 
+import '../../../../shared/media/phlio_look_data.dart';
+import '../../../../shared/media/smart_filter_editor.dart';
+import '../../../../shared/media/smart_filters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -63,7 +66,7 @@ class _SnapFrame extends StatelessWidget {
         child: ColoredBox(
           color: const Color(0xFF1B1B1F),
           child: MemoryPhoto('${item['image_url']}', decorations: (item['decorations'] as List?) ?? const [],
-              isVideo: item['media_kind'] == 'video', filter: item['filter'] as String?, autoplay: autoplay),
+              isVideo: item['media_kind'] == 'video', filter: item['filter'] as String?, filterSpec: item['filter_spec'], autoplay: autoplay),
         ),
       );
 }
@@ -236,6 +239,30 @@ class SnapDetailScreen extends ConsumerWidget {
     }
   }
 
+  /// Change the snap's smart filters after sharing (saved on the server).
+  Future<void> _editFilters(BuildContext context, WidgetRef ref, Map live) async {
+    final (look, effect) = splitMomentFilter(live['filter'] as String?);
+    final current = FilterSpec.fromJson(live['filter_spec']) ??
+        FilterSpec(look: look, effect: effect == 'none' ? null : effect);
+    final edited = await openSmartFilterEditor(context,
+        aspectRatio: 1,
+        initial: current,
+        media: MemoryPhoto('${live['image_url']}',
+            isVideo: live['media_kind'] == 'video', filter: live['filter'] as String?));
+    if (edited == null || !context.mounted) return;
+    try {
+      await getIt<ApiClient>().dio.put('/social/filters/memories/${live['id']}', data: {'spec': edited.toJson()});
+      ref.invalidate(memoriesProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Filters updated')));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not update the filters.')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Show the freshest reactions if the list reloaded while we're open.
@@ -260,8 +287,12 @@ class SnapDetailScreen extends ConsumerWidget {
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'delete') _delete(context, ref);
+              if (v == 'filters') _editFilters(context, ref, live);
             },
-            itemBuilder: (_) => const [PopupMenuItem(value: 'delete', child: Text('Delete snap'))],
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'filters', child: Text('Edit filters')),
+              PopupMenuItem(value: 'delete', child: Text('Delete snap')),
+            ],
           ),
         ],
       ),
