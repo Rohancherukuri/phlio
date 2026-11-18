@@ -33,8 +33,11 @@ final memoriesProvider = FutureProvider.autoDispose<List<Map>>((ref) async {
 });
 
 class MemoriesScreen extends ConsumerStatefulWidget {
-  const MemoriesScreen(
-      {super.key, this.openCamera = false, this.kind = 'snap',});
+  const MemoriesScreen({
+    super.key,
+    this.openCamera = false,
+    this.kind = 'snap',
+  });
   final bool openCamera;
   final String kind;
   @override
@@ -104,14 +107,19 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
   final decorations = <MomentSticker>[];
 
   Future<void> decorate() async {
-    if (decorations.length >= 20) { message("You can add up to 20 decorations."); return; }
+    if (decorations.length >= 20) {
+      message("You can add up to 20 decorations.");
+      return;
+    }
     final item = await pickSnapDecoration(context);
     if (!mounted || item == null) return;
     setState(() {
-      if (item.type == StickerType.music) decorations.removeWhere((s) => s.type == StickerType.music);
+      if (item.type == StickerType.music)
+        decorations.removeWhere((s) => s.type == StickerType.music);
       decorations.add(item);
     });
   }
+
   bool busy = false, picking = false;
   @override
   void initState() {
@@ -137,8 +145,11 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
     if (picking || busy) return;
     picking = true;
     try {
-      final result = await Navigator.of(context).push<Object>(MaterialPageRoute(
-          builder: (_) => SnapCameraScreen(audience: audience),),);
+      final result = await Navigator.of(context).push<Object>(
+        MaterialPageRoute(
+          builder: (_) => SnapCameraScreen(audience: audience),
+        ),
+      );
       if (!mounted) return;
       if (result == true) {
         // The camera's grid button: your saved snaps.
@@ -180,7 +191,8 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
             '/social/memories',
             data: FormData.fromMap({
               'caption': caption.text.trim(),
-              'decorations': jsonEncode(decorations.map((s) => s.toJson()).toList()),
+              'decorations':
+                  jsonEncode(decorations.map((s) => s.toJson()).toList()),
               'audience': audience.mode,
               'recipients': jsonEncode(audience.recipients),
               'kind': widget.kind,
@@ -190,7 +202,9 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                 'filter_spec': jsonEncode(() {
                   final (look, effect) = splitMomentFilter(snapFilter);
                   return FilterSpec(
-                          look: look, effect: effect == 'none' ? null : effect, overlays: snapSmart.overlays)
+                          look: look,
+                          effect: effect == 'none' ? null : effect,
+                          overlays: snapSmart.overlays)
                       .toJson();
                 }()),
               'file': await MultipartFile.fromFile(
@@ -212,7 +226,8 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
       });
       ref.invalidate(memoriesProvider);
       ref.invalidate(sharedStoriesProvider);
-      message('${widget.kind[0].toUpperCase()}${widget.kind.substring(1)} shared with ${audience.label}.');
+      message(
+          '${widget.kind[0].toUpperCase()}${widget.kind.substring(1)} shared with ${audience.label}.');
     } catch (_) {
       if (mounted) {
         message(
@@ -260,26 +275,28 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
       canPop: !busy,
       child: Scaffold(
         backgroundColor: Colors.black,
-        appBar: snap != null ? null : AppBar(
-          backgroundColor: Colors.black,
-          title:
-              Text(widget.kind == 'snap' ? 'Memories' : 'New ${widget.kind}'),
-          centerTitle: true,
-          actions: [
-            if (snap == null) ...[
-              IconButton(
-                tooltip: 'Your snaps',
-                onPressed: openArchive,
-                icon: const Icon(Icons.grid_view_rounded),
+        appBar: snap != null
+            ? null
+            : AppBar(
+                backgroundColor: Colors.black,
+                title: Text(
+                    widget.kind == 'snap' ? 'Memories' : 'New ${widget.kind}'),
+                centerTitle: true,
+                actions: [
+                  if (snap == null) ...[
+                    IconButton(
+                      tooltip: 'Your snaps',
+                      onPressed: openArchive,
+                      icon: const Icon(Icons.grid_view_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Take a snap',
+                      onPressed: capture,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
+                  ],
+                ],
               ),
-              IconButton(
-                tooltip: 'Take a snap',
-                onPressed: capture,
-                icon: const Icon(Icons.photo_camera_outlined),
-              ),
-            ],
-          ],
-        ),
         body: snap != null
             // Locket-style "Send to…": preview, quick-add pill, send, people.
             ? SnapSendView(
@@ -295,7 +312,10 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                     path: snap!.path,
                     video: snapVideo,
                     filter: snapFilter,
-                    videoPlayer: SnapVideoPreview(key: ValueKey(snap!.path), path: snap!.path, filter: snapFilter),
+                    videoPlayer: SnapVideoPreview(
+                        key: ValueKey(snap!.path),
+                        path: snap!.path,
+                        filter: snapFilter),
                   ),
                   SmartFilterLayer(spec: snapSmart),
                 ]),
@@ -307,9 +327,13 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                         path: snap!.path,
                         video: snapVideo,
                         filter: snapFilter,
-                        videoPlayer: SnapVideoPreview(key: ValueKey('${snap!.path}-f'), path: snap!.path, filter: snapFilter),
+                        videoPlayer: SnapVideoPreview(
+                            key: ValueKey('${snap!.path}-f'),
+                            path: snap!.path,
+                            filter: snapFilter),
                       ));
-                  if (edited != null && mounted) setState(() => snapSmart = edited);
+                  if (edited != null && mounted)
+                    setState(() => snapSmart = edited);
                 },
                 onChanged: () => setState(() {}),
                 onAudience: (value) => setState(() => audience = value),
@@ -341,13 +365,14 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
   }
 
   Widget photo(Map item, {bool autoplay = false}) => ClipRRect(
-      borderRadius: BorderRadius.circular(64),
-      child: MemoryPhoto(item['image_url'] as String,
-          decorations: (item['decorations'] as List?) ?? const [],
-          isVideo: item['media_kind'] == 'video',
-          filter: item['filter'] as String?,
-          filterSpec: item['filter_spec'],
-          autoplay: autoplay),);
+        borderRadius: BorderRadius.circular(64),
+        child: MemoryPhoto(item['image_url'] as String,
+            decorations: (item['decorations'] as List?) ?? const [],
+            isVideo: item['media_kind'] == 'video',
+            filter: item['filter'] as String?,
+            filterSpec: item['filter_spec'],
+            autoplay: autoplay),
+      );
 
   Widget memoryFeed(List<Map> items) {
     // Friends' active snaps lead the stack; the creator's archive follows.
@@ -626,7 +651,8 @@ class SnapVideoPreview extends StatefulWidget {
 }
 
 class _SnapVideoPreviewState extends State<SnapVideoPreview> {
-  late final VideoPlayerController player = VideoPlayerController.file(File(widget.path));
+  late final VideoPlayerController player =
+      VideoPlayerController.file(File(widget.path));
 
   @override
   void initState() {
@@ -646,7 +672,8 @@ class _SnapVideoPreviewState extends State<SnapVideoPreview> {
 
   @override
   Widget build(BuildContext context) {
-    if (!player.value.isInitialized) return const Center(child: CircularProgressIndicator());
+    if (!player.value.isInitialized)
+      return const Center(child: CircularProgressIndicator());
     final (look, effect) = splitMomentFilter(widget.filter);
     return PhlioLook(
       look: look,

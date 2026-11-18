@@ -32,6 +32,12 @@ api_router.include_router(home.router)
 # Moments before social: /social/moments/* must not hit social's catch-alls.
 from app.api.v1 import moments
 api_router.include_router(moments.router)
+# Avatars (/social/avatar), before social's catch-alls.
+from app.api.v1 import avatars
+api_router.include_router(avatars.router)
+# Smart filters (/social/filters), before social's catch-alls.
+from app.api.v1 import smart_filters
+api_router.include_router(smart_filters.router)
 # Snap friend lists, also before social's catch-alls.
 from app.api.v1 import snap_lists
 api_router.include_router(snap_lists.router)

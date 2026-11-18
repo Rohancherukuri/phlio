@@ -316,6 +316,7 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
                         audience: str = Form(default='friends'), recipients: str = Form(default='[]'),
                         kind: str = Form(default='snap'), decorations: str = Form(default='[]', max_length=50000),
                         filter: str = Form(default='normal', max_length=40),
+                        filter_spec: str = Form(default=''),
                         group: str = Form(default='', max_length=40),
                         user=Depends(get_current_user), c=Depends(get_container)):
     import uuid
@@ -326,6 +327,8 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
     from app.core.container import media_root_path
     from app.api.v1.snap_decorations import parse_snap_decorations
     layers = parse_snap_decorations(decorations)
+    from app.api.v1.smart_filters import FilterSpec, parse_filter_spec
+    spec = parse_filter_spec(filter_spec)
     if kind not in {'snap', 'moment', 'experience'}:
         raise HTTPException(422, 'Unknown content type.')
     try:
@@ -374,7 +377,9 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
         author=user.id, image_url='/social/memories/' + memory_id + '/photo',
         private_file=filename, media_kind='video' if video else 'image', caption=caption.strip(), decorations=layers, kind=kind,
         # Look / effect drawn live by the app ("look" or "look+effect").
-        filter=filter.strip() or 'normal',
+        filter=(FilterSpec.model_validate(spec).legacy() if spec else filter.strip()) or 'normal',
+        # Smart filter (look, effect, info overlays), editable after posting.
+        filter_spec=spec,
         # Experiences: photos shared together as one weekly dump.
         group=group.strip() or None,
         **policy, created_at=now()))

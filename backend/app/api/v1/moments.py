@@ -88,6 +88,7 @@ async def create_moment(
     allow_comments: bool = Form(default=True),
     overlays: str = Form(default="[]"),
     filter: str = Form(default="normal", max_length=24),
+    filter_spec: str = Form(default=""),
     highlight: str = Form(default="", max_length=40),
     ai_label: bool = Form(default=False),
     music: str = Form(default=""),
@@ -159,6 +160,9 @@ async def create_moment(
         target.write_bytes(raw)
         kind = "image"
 
+    from app.api.v1.smart_filters import FilterSpec, parse_filter_spec
+    spec = parse_filter_spec(filter_spec)
+    spec_legacy = FilterSpec.model_validate(spec).legacy() if spec else None
     created = dt.datetime.now(dt.UTC)
     moment_id = "social_moment:" + identifier
     row = dict(
@@ -170,7 +174,9 @@ async def create_moment(
                    else ("/media/social_moments/" + target.name if kind == "image" else None)),
         caption=caption.strip(),
         overlays=layers,
-        filter=filter,
+        filter=spec_legacy or filter,
+        # Smart filter (look, effect, info overlays), drawn live by the app.
+        filter_spec=spec,
         allow_comments=allow_comments,
         ai_label=ai_label,
         music=song,

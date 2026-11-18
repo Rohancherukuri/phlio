@@ -9,6 +9,8 @@ import uuid
 from app.infrastructure.database.surreal.client import record
 
 TABLES = {
+    "avatar_config",
+    "filter_preset",
     "fact_note",
     "fact_rating",
     "membership_plan",
