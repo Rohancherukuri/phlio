@@ -101,6 +101,7 @@ flutter:
     - assets/shaders/moment_backdrop.frag
     - assets/shaders/profile_fx.frag
     - assets/shaders/hacker_theme.frag
+    - assets/shaders/note_effects.frag
   uses-material-design: true
 
   # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker

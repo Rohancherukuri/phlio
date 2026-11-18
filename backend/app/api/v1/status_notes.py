@@ -1,8 +1,9 @@
 """
 Notes: short status bubbles above the DM inbox, like Instagram Notes.
 
-A note is up to 60 characters of text with, optionally, a song, a GIF and a
-place. Each person has at most one active note; posting again replaces it,
+A note is up to 60 characters of text with, optionally, a song, a GIF, a
+place (stored at ~1 km precision), a bubble colour and an animated effect.
+Each person has at most one active note; posting again replaces it,
 and notes disappear 24 hours after they were posted. They are shown to
 people who follow the author (``audience="followers"``) or only to people
 the author follows back (``"mutuals"``). Others can like a note; replies go
@@ -77,6 +78,19 @@ class NoteIn(BaseModel):
     gif: NoteGif | None = None
     location: NotePlace | None = None
     audience: Literal["followers", "mutuals"] = "followers"
+    # Bubble Editor: a bubble colour (#RRGGBB) and an animated effect drawn
+    # by the app's note_effects shader.
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    effect: Literal["confetti", "sparkles", "hearts", "fireworks", "glow", "snow", "fizz"] | None = None
+
+
+def _coarse(place: NotePlace) -> dict:
+    """Followers see the neighbourhood, not your exact spot: ~1 km precision."""
+    out = place.model_dump()
+    for axis in ("lat", "lng"):
+        if out[axis] is not None:
+            out[axis] = round(out[axis], 2)
+    return out
 
 
 def _now() -> dt.datetime:
@@ -98,6 +112,7 @@ async def _present(c, row: dict, viewer: str) -> dict | None:
     return dict(
         author=c.graph.profile(person), text=row.get("text", ""), music=row.get("music"),
         gif=row.get("gif"), location=row.get("location"), audience=row.get("audience", "followers"),
+        color=row.get("color"), effect=row.get("effect"),
         created_at=row["created_at"], expires_at=row["expires_at"],
         like_count=len(likes) if row["author"] == viewer else None,  # only the author sees the count
         liked_by_me=viewer in likes,
@@ -138,7 +153,8 @@ async def post_note(body: NoteIn, user=Depends(get_current_user), c=Depends(get_
     row = dict(author=user.id, text=text, audience=body.audience, likes=[],
                music=body.music.model_dump() if body.music else None,
                gif=body.gif.model_dump() if body.gif else None,
-               location=body.location.model_dump() if body.location else None,
+               location=_coarse(body.location) if body.location else None,
+               color=body.color.upper() if body.color else None, effect=body.effect,
                created_at=now.isoformat(), expires_at=(now + LIFETIME).isoformat())
     saved = await c.graph.store.put(key("status_note", user.id), row)
     return await _present(c, saved or row, user.id)

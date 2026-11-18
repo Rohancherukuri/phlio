@@ -1,11 +1,13 @@
 // Notes above the DM inbox, like Instagram Notes.
 //
 // A note is a short thought (60 characters) with, optionally, a song from
-// Phlio Stream, a GIF from GIPHY and a place. It sits in a bubble over your
-// avatar for 24 hours; people who follow you (or only people you follow back)
-// see it at the top of their chats, can like it and reply in DMs.
+// Phlio Stream, a GIF from GIPHY, a place, a bubble colour and an animated
+// effect (Bubble Editor). It sits in a bubble on your avatar for 24 hours;
+// your followers (or only people you follow back) see it at the top of
+// their chats, can like it and reply in DMs.
 //
-// Backend: /api/v1/social/notes (backend/app/api/v1/status_notes.py).
+// Widgets: NoteBubble / NoteTile (note_bubble.dart), BubbleEditorScreen
+// (note_bubble_editor.dart). Backend: /api/v1/social/notes.
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -26,6 +28,8 @@ import '../../../../shared/music/stream_song_picker.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../data/datasources/messaging_api.dart';
+import 'note_bubble.dart';
+import 'note_bubble_editor.dart';
 
 /// `(mine, items)` from the server; refreshed when the inbox refreshes.
 final statusNotesProvider = FutureProvider.autoDispose<(Map?, List<Map>)>((ref) async {
@@ -38,7 +42,6 @@ final statusNotesProvider = FutureProvider.autoDispose<(Map?, List<Map>)>((ref) 
   );
 });
 
-/// The short line a bubble shows: text, else the song, place or "GIF".
 String _bubbleLine(Map note) {
   final text = '${note['text'] ?? ''}'.trim();
   if (text.isNotEmpty) return text;
@@ -49,83 +52,29 @@ String _bubbleLine(Map note) {
   return note['gif'] != null ? 'GIF' : '';
 }
 
-/// A speech bubble (with the song / place / GIF line Instagram shows).
-class NoteBubble extends StatelessWidget {
-  const NoteBubble({super.key, this.note, this.placeholder, this.maxWidth = 104});
-
-  /// The note; null shows [placeholder] (your "Note..." prompt).
-  final Map? note;
-  final String? placeholder;
-  final double maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final n = note;
-    final music = n?['music'] as Map?;
-    final place = n?['location'] as Map?;
-    final gif = n?['gif'] as Map?;
-    final line = n == null ? (placeholder ?? '') : _bubbleLine(n);
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: PhlioColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 6, offset: Offset(0, 2))],
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (music != null)
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.graphic_eq_rounded, size: 13, color: PhlioColors.brandPink),
-              const SizedBox(width: 3),
-              Flexible(
-                child: Text('${music['title']}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
-              ),
-            ]),
-          if (music != null && '${music['artist'] ?? ''}'.isNotEmpty)
-            Text('${music['artist']}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10.5, color: PhlioColors.textMuted)),
-          if (gif != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(imageUrl: '${gif['url']}', height: 34, fit: BoxFit.cover),
-              ),
-            ),
-          if (place != null && (n?['text'] ?? '').toString().trim().isEmpty && music == null)
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.place_rounded, size: 12, color: PhlioColors.brandViolet),
-              Flexible(
-                child: Text(line,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5)),
-              ),
-            ])
-          else if (line.isNotEmpty && (music == null || '${n?['text'] ?? ''}'.trim().isNotEmpty) && line != 'GIF')
-            Text(line,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 12, color: n == null ? PhlioColors.textMuted : PhlioColors.textPrimary, height: 1.15)),
-        ]),
-      ),
-    );
-  }
+/// "📍 KPHB Colony" or, for your own note without a place, "Location off".
+Widget _placeLine(Map? note, {required bool own}) {
+  final place = note?['location'] as Map?;
+  if (place == null && !own) return const SizedBox.shrink();
+  final off = place == null;
+  return Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+    Icon(off ? Icons.location_off_rounded : Icons.location_on_rounded,
+        size: 12, color: off ? const Color(0xFFFF4D67) : const Color(0xFF3897F0)),
+    const SizedBox(width: 2),
+    Flexible(
+      child: Text(off ? 'Location off' : '${place['name']}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: PhlioColors.textPrimary)),
+    ),
+  ]);
 }
 
-/// The notes strip for the top of the inbox: your note, then others' notes,
-/// then [trailing] (recent contacts without notes).
+/// The notes row for the top of the inbox: your note, others' notes, then
+/// [trailing] (recent chats without notes).
 class NotesStrip extends ConsumerWidget {
   const NotesStrip({super.key, this.trailing = const []});
 
-  /// Extra tiles after the notes (e.g. recent chats).
   final List<Widget> trailing;
 
   @override
@@ -134,72 +83,48 @@ class NotesStrip extends ConsumerWidget {
     final data = ref.watch(statusNotesProvider).valueOrNull;
     final mine = data?.$1;
     final items = data?.$2 ?? const <Map>[];
-    Widget tile({required Widget avatar, required String caption, Widget? bubble, required VoidCallback onTap,
-        Widget? captionIcon}) {
-      return SizedBox(
-        width: 104,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Column(children: [
-            SizedBox(
-              height: 128,
-              child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
-                Positioned(top: 38, child: avatar),
-                if (bubble != null) Positioned(top: 0, child: bubble),
-              ]),
-            ),
-            const SizedBox(height: 4),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              if (captionIcon != null) captionIcon,
-              Flexible(
-                child: Text(caption,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-              ),
-            ]),
-          ]),
-        ),
-      );
-    }
-
     return SizedBox(
-      height: 160,
+      height: 176,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         children: [
-          tile(
-            avatar: MeAvatar(name: me?.username ?? 'You', size: 76),
-            bubble: NoteBubble(note: mine, placeholder: 'Note...'),
+          NoteTile(
+            avatar: MeAvatar(name: me?.username ?? 'You', size: NoteTile.avatarSize),
+            note: mine,
+            placeholder: 'Note...',
             caption: 'Your note',
-            captionIcon: mine?['location'] != null
-                ? const Icon(Icons.place_rounded, size: 12, color: PhlioColors.brandViolet)
-                : null,
+            subcaption: _placeLine(mine, own: true),
             onTap: () => mine == null ? openNoteComposer(context) : showNoteSheet(context, mine, own: true),
           ),
           for (final note in items)
-            tile(
+            NoteTile(
               avatar: PhlioAvatar(
-                  name: '${(note['author'] as Map)['display_name'] ?? ''}',
-                  imageUrl: (note['author'] as Map)['avatar_url'] as String?,
-                  size: 76),
-              bubble: NoteBubble(note: note),
+                name: '${(note['author'] as Map)['display_name'] ?? ''}',
+                imageUrl: (note['author'] as Map)['avatar_url'] as String?,
+                size: NoteTile.avatarSize,
+              ),
+              note: note,
               caption: '${(note['author'] as Map)['display_name'] ?? (note['author'] as Map)['username']}',
+              subcaption: _placeLine(note, own: false),
               onTap: () => showNoteSheet(context, note),
             ),
-          // Line plain contacts up with the avatars under the bubbles.
-          for (final t in trailing) Padding(padding: const EdgeInsets.only(top: 34), child: t),
+          // Plain contacts line up with the avatars under the bubbles.
+          for (final t in trailing) Padding(padding: const EdgeInsets.only(top: 51), child: t),
         ],
       ),
     );
   }
 }
 
-/// Opens the note composer.
-Future<void> openNoteComposer(BuildContext context) => Navigator.of(context, rootNavigator: true)
-    .push(MaterialPageRoute<void>(builder: (_) => const NoteComposerScreen(), fullscreenDialog: true));
+/// Opens the note composer (pre-filled with [existing] when editing).
+Future<void> openNoteComposer(BuildContext context, {Map? existing}) =>
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
+      builder: (_) => NoteComposerScreen(existing: existing),
+      fullscreenDialog: true,
+    ));
 
-/// A note up close: song preview, GIF, place, like and reply.
+/// A note up close: bubble (with its effect), song preview, place, like, reply.
 Future<void> showNoteSheet(BuildContext context, Map note, {bool own = false}) => showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -244,12 +169,14 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
   Future<void> _togglePlay() async {
     final music = widget.note['music'] as Map?;
     if (music == null) return;
-    if (playing) {
-      await _player.pause();
-    } else {
-      await _player.play(UrlSource(AppConfig.mediaUrl('${music['url']}')));
-    }
-    if (mounted) setState(() => playing = !playing);
+    try {
+      if (playing) {
+        await _player.pause();
+      } else {
+        await _player.play(UrlSource(AppConfig.mediaUrl('${music['url']}')));
+      }
+      if (mounted) setState(() => playing = !playing);
+    } catch (_) {}
   }
 
   String get _author => '${(widget.note['author'] as Map)['id']}';
@@ -259,7 +186,9 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
     setState(() => liked = !liked);
     try {
       final dio = getIt<ApiClient>().dio;
-      liked ? await dio.put<dynamic>('/social/notes/$_author/like') : await dio.delete<dynamic>('/social/notes/$_author/like');
+      liked
+          ? await dio.put<dynamic>('/social/notes/$_author/like')
+          : await dio.delete<dynamic>('/social/notes/$_author/like');
     } catch (_) {
       if (mounted) setState(() => liked = !liked);
     }
@@ -270,8 +199,7 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
     if (text.isEmpty || sending) return;
     setState(() => sending = true);
     try {
-      final line = _bubbleLine(widget.note);
-      await ref.read(messagingApiProvider).send(_author, 'Replied to your note “$line”\n$text');
+      await ref.read(messagingApiProvider).send(_author, 'Replied to your note “${_bubbleLine(widget.note)}”\n$text');
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reply sent')));
@@ -297,25 +225,32 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
     final author = note['author'] as Map;
     final music = note['music'] as Map?;
     final place = note['location'] as Map?;
-    final gif = note['gif'] as Map?;
-    final text = '${note['text'] ?? ''}'.trim();
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        PhlioAvatar(name: '${author['display_name'] ?? ''}', imageUrl: author['avatar_url'] as String?, size: 64),
-        const SizedBox(height: 6),
+        SizedBox(
+          height: 190,
+          child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
+            Positioned(
+              top: 96,
+              child: PhlioAvatar(
+                  name: '${author['display_name'] ?? ''}', imageUrl: author['avatar_url'] as String?, size: 90),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 110,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: NoteBubble(note: note, large: true, loopEffect: true),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 8),
         Text(widget.own ? 'Your note' : '${author['display_name'] ?? author['username']}',
             style: const TextStyle(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 14),
-        if (text.isNotEmpty)
-          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-        if (gif != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: CachedNetworkImage(imageUrl: '${gif['url']}', height: 140, fit: BoxFit.cover)),
-          ),
         if (music != null)
           Card(
             margin: const EdgeInsets.only(top: 14),
@@ -338,7 +273,7 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
         if (place != null)
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.place_rounded, color: PhlioColors.brandViolet),
+            leading: const Icon(Icons.location_on_rounded, color: Color(0xFF3897F0)),
             title: Text('${place['name']}'),
             subtitle: '${place['address'] ?? ''}'.isEmpty ? null : Text('${place['address']}'),
             trailing: place['lat'] == null ? null : const Icon(Icons.open_in_new_rounded, size: 18),
@@ -362,10 +297,10 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
               child: FilledButton.icon(
                 onPressed: () {
                   Navigator.pop(context);
-                  openNoteComposer(context);
+                  openNoteComposer(context, existing: note);
                 },
                 icon: const Icon(Icons.edit_rounded),
-                label: const Text('New note'),
+                label: const Text('Leave a new note'),
               ),
             ),
           ])
@@ -375,7 +310,7 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
               tooltip: liked ? 'Unlike' : 'Like',
               onPressed: _like,
               icon: Icon(liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  color: liked ? PhlioColors.brandPink : null),
+                  color: liked ? const Color(0xFFFF3B5C) : null),
             ),
             Expanded(
               child: TextField(
@@ -396,20 +331,30 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
   }
 }
 
-/// Write a note (Instagram's layout: your avatar with a bubble, and song,
-/// place and GIF buttons underneath).
+/// Write a note — Instagram's layout: the bubble you type into sits on your
+/// photo, a palette button opens the Bubble Editor, and song / place / GIF
+/// buttons sit underneath.
 class NoteComposerScreen extends ConsumerStatefulWidget {
-  const NoteComposerScreen({super.key});
+  const NoteComposerScreen({super.key, this.existing});
+
+  /// Your current note, to start from when leaving a new one.
+  final Map? existing;
 
   @override
   ConsumerState<NoteComposerScreen> createState() => _NoteComposerScreenState();
 }
 
 class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
-  final _text = TextEditingController();
-  Map<String, dynamic>? music, gif, place;
-  String audience = 'followers';
+  late final _text = TextEditingController(text: '${widget.existing?['text'] ?? ''}');
+  late Map<String, dynamic>? music = _copy(widget.existing?['music']);
+  late Map<String, dynamic>? gif = _copy(widget.existing?['gif']);
+  late Map<String, dynamic>? place = _copy(widget.existing?['location']);
+  late String? color = widget.existing?['color'] as String?;
+  late String? effect = widget.existing?['effect'] as String?;
+  late String audience = '${widget.existing?['audience'] ?? 'followers'}';
   bool busy = false, locating = false;
+
+  static Map<String, dynamic>? _copy(Object? v) => v is Map ? Map<String, dynamic>.from(v) : null;
 
   @override
   void dispose() {
@@ -417,7 +362,20 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     super.dispose();
   }
 
-  bool get _ready => _text.text.trim().isNotEmpty || music != null || gif != null || place != null;
+  bool get _ready => _text.text.trim().isNotEmpty || music != null || gif != null;
+
+  Map<String, dynamic> get _draft => {
+        'text': _text.text,
+        if (music != null) 'music': music,
+        if (gif != null) 'gif': gif,
+        'color': color,
+        'effect': effect,
+      };
+
+  Widget _avatar(double size) {
+    final me = ref.read(authControllerProvider).valueOrNull;
+    return MeAvatar(name: me?.username ?? 'You', size: size);
+  }
 
   Future<void> _pickSong() async {
     final song = await showStreamSongPicker(context);
@@ -434,44 +392,14 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     setState(() => gif = {'url': item.url, 'title': item.title});
   }
 
-  Future<void> _pickPlace() async {
+  /// Like Instagram: one tap adds where you are now; tap the place to choose
+  /// a different one nearby.
+  Future<void> _addHere() async {
     setState(() => locating = true);
     try {
       final pos = await currentPosition();
-      final nearby = await nearbyPlaces(pos.latitude, pos.longitude, radius: 400, limit: 12);
       final here = await reverseGeocode(pos.latitude, pos.longitude);
-      if (!mounted) return;
-      final chosen = await showModalBottomSheet<Place>(
-        context: context,
-        showDragHandle: true,
-        builder: (sheet) => SafeArea(
-          child: ListView(shrinkWrap: true, children: [
-            const ListTile(title: Text('Add a place', style: TextStyle(fontWeight: FontWeight.w800))),
-            if (here != null)
-              ListTile(
-                leading: const Icon(Icons.my_location_rounded),
-                title: Text(here.name),
-                subtitle: Text(here.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-                onTap: () => Navigator.pop(sheet, here),
-              ),
-            for (final p in nearby)
-              ListTile(
-                leading: const Icon(Icons.place_outlined),
-                title: Text(p.name),
-                subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-                onTap: () => Navigator.pop(sheet, p),
-              ),
-          ]),
-        ),
-      );
-      if (chosen != null && mounted) {
-        setState(() => place = {
-              'name': chosen.name.length > 80 ? chosen.name.substring(0, 80) : chosen.name,
-              'address': chosen.address.length > 160 ? chosen.address.substring(0, 160) : chosen.address,
-              'lat': chosen.lat,
-              'lng': chosen.lng,
-            });
-      }
+      if (here != null && mounted) _setPlace(here);
     } on LocationProblem catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     } catch (_) {
@@ -481,6 +409,76 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     } finally {
       if (mounted) setState(() => locating = false);
     }
+  }
+
+  Future<void> _choosePlace() async {
+    try {
+      final pos = await currentPosition();
+      final nearby = await nearbyPlaces(pos.latitude, pos.longitude, radius: 800, limit: 15);
+      if (!mounted) return;
+      final chosen = await showModalBottomSheet<Place>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: PhlioColors.surface,
+        builder: (sheet) => SafeArea(
+          child: ListView(shrinkWrap: true, children: [
+            const ListTile(title: Text('Choose a place', style: TextStyle(fontWeight: FontWeight.w800))),
+            for (final p in nearby)
+              ListTile(
+                leading: const Icon(Icons.location_on_outlined),
+                title: Text(p.name),
+                subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () => Navigator.pop(sheet, p),
+              ),
+            if (nearby.isEmpty) const ListTile(title: Text('No places found nearby.')),
+          ]),
+        ),
+      );
+      if (chosen != null && mounted) _setPlace(chosen);
+    } catch (_) {}
+  }
+
+  void _setPlace(Place p) => setState(() => place = {
+        'name': p.name.length > 80 ? p.name.substring(0, 80) : p.name,
+        'address': p.address.length > 160 ? p.address.substring(0, 160) : p.address,
+        'lat': p.lat,
+        'lng': p.lng,
+      });
+
+  Future<void> _openEditor() async {
+    final style = await openBubbleEditor(context, note: _draft, avatar: _avatar(120));
+    if (style != null && mounted) {
+      setState(() {
+        color = style.color;
+        effect = style.effect;
+      });
+    }
+  }
+
+  Future<void> _chooseAudience() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: PhlioColors.surface,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Share with', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final (id, title, sub, icon) in const [
+            ('followers', 'Followers', 'Everyone who follows you', Icons.people_alt_rounded),
+            ('mutuals', 'Friends', 'Followers you follow back', Icons.handshake_rounded),
+          ])
+            ListTile(
+              leading: Icon(icon),
+              title: Text(title),
+              subtitle: Text(sub),
+              trailing: audience == id ? const Icon(Icons.check_circle_rounded, color: Color(0xFF4F5BD5)) : null,
+              onTap: () => Navigator.pop(sheet, id),
+            ),
+        ]),
+      ),
+    );
+    if (picked != null && mounted) setState(() => audience = picked);
   }
 
   Future<void> _share() async {
@@ -498,8 +496,10 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
             if (music!['image_url'] != null) 'image_url': music!['image_url'],
             if (music!['ref'] != null) 'ref': music!['ref'],
           },
-        if (gif != null) 'gif': gif,
+        if (gif != null) 'gif': {'url': gif!['url'], 'title': gif!['title'] ?? 'GIF'},
         if (place != null) 'location': place,
+        if (color != null) 'color': color,
+        if (effect != null) 'effect': effect,
       });
       ref.invalidate(statusNotesProvider);
       if (mounted) Navigator.pop(context);
@@ -511,97 +511,201 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     }
   }
 
-  Widget _chip(IconData icon, Color color, String label, bool on, VoidCallback onTap, VoidCallback onClear) {
+  /// The small rounded buttons under the avatar. Tapping a filled one
+  /// offers Change / Remove.
+  Widget _attach(IconData icon, Color tint, bool on, VoidCallback pick, VoidCallback clear, String label) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 5),
-      child: on
-          ? InputChip(
-              avatar: Icon(icon, size: 16, color: color),
-              label: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 140),
-                  child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              onPressed: onTap,
-              onDeleted: onClear,
-            )
-          : OutlinedButton(
-              onPressed: onTap,
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            if (!on) {
+              pick();
+              return;
+            }
+            final action = await showModalBottomSheet<String>(
+              context: context,
+              backgroundColor: PhlioColors.surface,
+              builder: (sheet) => SafeArea(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  ListTile(leading: Icon(icon), title: Text('Change $label'), onTap: () => Navigator.pop(sheet, 'change')),
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline_rounded, color: Color(0xFFFF4D67)),
+                    title: Text('Remove $label', style: const TextStyle(color: Color(0xFFFF4D67))),
+                    onTap: () => Navigator.pop(sheet, 'remove'),
+                  ),
+                ]),
               ),
-              child: Icon(icon, color: color),
+            );
+            if (action == 'change') pick();
+            if (action == 'remove') clear();
+          },
+          child: Ink(
+            width: 56,
+            height: 44,
+            decoration: BoxDecoration(
+              color: on ? tint.withValues(alpha: 0.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: on ? tint : const Color(0xFF3A3F4B), width: 1.2),
             ),
+            child: Icon(icon, color: tint, size: 22),
+          ),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final me = ref.watch(authControllerProvider).valueOrNull;
+    ref.watch(authControllerProvider);
+    final fill = parseNoteColor(color) ?? kNoteBubbleColor;
+    final ink = noteInk(fill);
     return Scaffold(
       backgroundColor: PhlioColors.background,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: PhlioColors.background,
-        leading: IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+        leading: IconButton(
+            tooltip: 'Close', icon: const Icon(Icons.close_rounded, size: 30), onPressed: () => Navigator.pop(context)),
       ),
       body: SafeArea(
         child: Column(children: [
-          const Spacer(),
-          // The bubble you type into, above your photo.
-          Container(
-            constraints: const BoxConstraints(maxWidth: 260),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(color: PhlioColors.surfaceElevated, borderRadius: BorderRadius.circular(22)),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (music != null) NoteBubble(note: {'music': music}, maxWidth: 220),
-              TextField(
-                controller: _text,
-                autofocus: true,
-                maxLength: 60,
-                maxLines: 3,
-                minLines: 1,
-                textAlign: TextAlign.center,
-                onChanged: (_) => setState(() {}),
-                style: const TextStyle(fontSize: 18),
-                decoration: const InputDecoration(
-                    hintText: "Today's vibe...", border: InputBorder.none, counterText: '', isDense: true),
-              ),
-              if (gif != null)
-                ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: CachedNetworkImage(imageUrl: '${gif!['url']}', height: 70, fit: BoxFit.cover)),
-            ]),
-          ),
-          const SizedBox(height: 8),
-          MeAvatar(name: me?.username ?? 'You', size: 96),
-          const SizedBox(height: 18),
-          Wrap(alignment: WrapAlignment.center, runSpacing: 8, children: [
-            _chip(Icons.music_note_rounded, PhlioColors.brandPink, '${music?['title'] ?? ''}', music != null, _pickSong,
-                () => setState(() => music = null)),
-            _chip(Icons.place_outlined, PhlioColors.brandViolet,
-                locating ? 'Finding…' : '${place?['name'] ?? ''}', place != null || locating, _pickPlace,
-                () => setState(() => place = null)),
-            _chip(Icons.gif_box_outlined, const Color(0xFF39D98A), '${gif?['title'] ?? 'GIF'}', gif != null, _pickGif,
-                () => setState(() => gif = null)),
-          ]),
-          const Spacer(flex: 2),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(children: [
-              Expanded(
-                child: TextButton.icon(
-                  style: TextButton.styleFrom(alignment: Alignment.centerLeft, foregroundColor: PhlioColors.textPrimary),
-                  onPressed: () => setState(() => audience = audience == 'followers' ? 'mutuals' : 'followers'),
-                  icon: const Icon(Icons.people_alt_rounded, size: 20),
-                  label: Text(audience == 'followers' ? 'Share with followers  ›' : 'Followers you follow back  ›',
-                      overflow: TextOverflow.ellipsis),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(children: [
+                const SizedBox(height: 28),
+                // Bubble on the photo, like Instagram.
+                SizedBox(
+                  width: 300,
+                  height: 272,
+                  child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
+                    Positioned(top: 120, child: _avatar(150)),
+                    Positioned(
+                      top: 120 + 150 - 40,
+                      left: 150 + 75 * 0.7 - 6,
+                      child: Material(
+                        color: kNoteBubbleColor,
+                        shape: const CircleBorder(side: BorderSide(color: PhlioColors.background, width: 3)),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: _openEditor,
+                          child: const Padding(
+                            padding: EdgeInsets.all(7),
+                            child: Icon(Icons.palette_outlined, size: 20, color: Color(0xFFFF2E7E)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      height: 138,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: NoteBubble(
+                          note: _draft,
+                          large: true,
+                          loopEffect: true,
+                          child: TextField(
+                            controller: _text,
+                            autofocus: widget.existing == null,
+                            maxLength: 60,
+                            maxLines: 3,
+                            minLines: 1,
+                            textAlign: TextAlign.center,
+                            cursorColor: const Color(0xFF3897F0),
+                            onChanged: (_) => setState(() {}),
+                            style: TextStyle(fontSize: 18, color: ink, height: 1.2),
+                            decoration: InputDecoration(
+                              hintText: "Today's vibe...",
+                              hintStyle: TextStyle(color: ink.withValues(alpha: 0.5)),
+                              border: InputBorder.none,
+                              counterText: '',
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
                 ),
+                const SizedBox(height: 18),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _attach(Icons.music_note_rounded, const Color(0xFFFF2E7E), music != null, _pickSong,
+                      () => setState(() => music = null), 'song'),
+                  _attach(Icons.location_on_outlined, const Color(0xFF9B6BFF), place != null,
+                      _addHere, () => setState(() => place = null), 'location'),
+                  _attach(Icons.gif_box_outlined, const Color(0xFF2FCB6A), gif != null, _pickGif,
+                      () => setState(() => gif = null), 'GIF'),
+                ]),
+                const SizedBox(height: 18),
+                if (locating)
+                  const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('Finding where you are…', style: TextStyle(color: PhlioColors.textMuted)),
+                  ])
+                else if (place != null)
+                  // "📍 KPHB Colony ×" — tap the name to pick another place.
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Icon(Icons.location_on_rounded, color: Color(0xFF3897F0), size: 20),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: InkWell(
+                        onTap: _choosePlace,
+                        child: Text('${place!['name']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove location',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close_rounded, size: 20, color: PhlioColors.textMuted),
+                      onPressed: () => setState(() => place = null),
+                    ),
+                  ]),
+              ]),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 28, 12),
+            child: Text(
+              place != null
+                  ? 'Your note will be visible at this location and at the top of Inbox for 24 hours.'
+                  : 'Your note will be visible at the top of Inbox for 24 hours.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: PhlioColors.textMuted, fontSize: 13),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 16, 12),
+            child: Row(children: [
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: PhlioColors.textPrimary),
+                onPressed: _chooseAudience,
+                icon: const Icon(Icons.people_alt_rounded, size: 20),
+                label: Text(audience == 'followers' ? 'Share with followers  ›' : 'Share with friends  ›',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
+              const Spacer(),
               FilledButton(
                 onPressed: _ready && !busy ? _share : null,
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F5BD5),
+                  disabledBackgroundColor: const Color(0xFF1C2350),
+                  disabledForegroundColor: Colors.white38,
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                ),
                 child: busy
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Share'),
+                    : const Text('Share', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ]),
           ),

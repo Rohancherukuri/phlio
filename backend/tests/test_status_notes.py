@@ -74,3 +74,18 @@ async def test_expired_note_hidden(client: AsyncClient) -> None:
         assert body["items"] == []
     finally:
         status_notes._now = real
+
+
+async def test_bubble_style_and_coarse_location(client: AsyncClient) -> None:
+    kiara = await login(client, "artbykiara")
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={
+        "text": "we did it", "color": "#7c4dff", "effect": "confetti",
+        "location": {"name": "KPHB Colony", "lat": 17.493812, "lng": 78.391245}})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["color"] == "#7C4DFF" and body["effect"] == "confetti"
+    assert body["location"]["lat"] == 17.49 and body["location"]["lng"] == 78.39
+    bad = await client.post("/api/v1/social/notes", headers=kiara, json={"text": "x", "effect": "explode"})
+    assert bad.status_code == 422
+    bad = await client.post("/api/v1/social/notes", headers=kiara, json={"text": "x", "color": "red"})
+    assert bad.status_code == 422
