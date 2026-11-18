@@ -85,6 +85,13 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://127.0.0.1:6379/0"
     news_ingestion_enabled: bool = False
+    # NewsAPI.org headlines alongside the RSS feeds (app/domains/graph/newsapi.py).
+    news_api_key: str = Field(default="", repr=False)
+    news_api_country: str = "us"
+    news_api_interval_minutes: int = 180
+    # AfterShip parcel tracking for Phlio Shop (app/infrastructure/aftership.py).
+    aftership_api_key: str = Field(default="", repr=False)
+    aftership_api_endpoint: str = "https://api.aftership.com/tracking/2026-07"
     redis_enabled: bool = False
     redis_namespace: str = "development"
 
@@ -114,6 +121,9 @@ class Settings(BaseSettings):
     keep_awake: bool = False
     keep_awake_url: str = ""  # default: RENDER_EXTERNAL_URL (set by Render)
     keep_awake_interval: float = 600
+    # Re-date the seeded demo community's moments hourly so they stay inside
+    # their 24 hours on a deployed demo (app/domains/graph/demo_refresh.py).
+    demo_content_refresh: bool = False
 
     social_video_database: str = 'data/social_videos.sqlite3'
     messaging_database: str = 'data/messages.sqlite3'

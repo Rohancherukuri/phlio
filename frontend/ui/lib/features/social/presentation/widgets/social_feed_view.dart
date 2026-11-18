@@ -11,6 +11,8 @@ import '../../../../shared/content/social_comments_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../design_system/colors.dart';
+import '../../../../shared/events/festival_banner.dart';
 import '../../../../design_system/spacing.dart';
 
 import '../../../../shared/widgets/error_view.dart';
@@ -61,8 +63,9 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
   @override
   Widget build(BuildContext context) {
     final feedAsync = ref.watch(feedControllerProvider);
+    final newPosts = ref.watch(newPostsCountProvider);
 
-    return feedAsync.when(
+    final feed = feedAsync.when(
       loading: () => const PhlioLoadingIndicator(),
       error: (error, _) => PhlioErrorView(
         failure: error is Failure ? error : const Failure.unknown(),
@@ -80,6 +83,8 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
           ),
           children: [
             // Live Spaces float above the feed (X-style pill).
+            // Diwali, Christmas, Eid... (nothing when no event is on).
+            const FestivalBanner(platform: 'social'),
             const SpacesBar(seeAll: true),
             for (final post in state.posts) ...[
               PostCard(
@@ -102,5 +107,43 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
         ),
       ),
     );
+    return Stack(children: [
+      feed,
+      if (newPosts > 0)
+        Positioned(
+          top: 8,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () async {
+                  await ref.read(feedControllerProvider.notifier).showNewPosts();
+                  if (_scrollController.hasClients) {
+                    await _scrollController.animateTo(0,
+                        duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+                  }
+                },
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                  decoration: BoxDecoration(
+                    gradient: PhlioColors.brandGradient,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 4))],
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.arrow_upward_rounded, size: 16, color: PhlioColors.textOnBrand),
+                    const SizedBox(width: 6),
+                    Text(newPosts == 1 ? '1 new post' : '$newPosts new posts',
+                        style: const TextStyle(color: PhlioColors.textOnBrand, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ]);
   }
 }

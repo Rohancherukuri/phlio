@@ -9,10 +9,10 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../shared/content/content_surface.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
-import '../../../social/presentation/screens/social_graph_screen.dart';
 import '../../data/datasources/messaging_api.dart';
 import '../controllers/messaging_controller.dart';
 import '../widgets/direct_messages_panel.dart';
+import '../widgets/status_notes.dart';
 import 'create_group_screen.dart';
 
 class ChatsInboxScreen extends ConsumerStatefulWidget {
@@ -27,6 +27,7 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
   Future<void> refresh() async {
     ref.invalidate(dmConversationsProvider);
     ref.invalidate(groupsProvider);
+    ref.invalidate(statusNotesProvider);
     await ref.read(dmConversationsProvider.future);
   }
 
@@ -173,31 +174,14 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
                                       borderRadius: BorderRadius.circular(32),
                                       borderSide: BorderSide.none))))),
                   SliverToBoxAdapter(
-                      child: SizedBox(
-                          height: 128,
-                          child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
-                              children: [
-                                contact(
-                                    me?.username ?? 'You',
-                                    me?.avatarUrl,
-                                    () => Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                const SocialGraphScreen(
-                                                    initialTab: 1))),
-                                    caption: 'Your notes',
-                                    own: true),
-                                for (final item in items.take(12))
-                                  contact(
-                                      (item['peer'] as Map)['full_name']
-                                          as String,
-                                      (item['peer'] as Map)['avatar_url']
-                                          as String?,
-                                      () => open(item['peer'] as Map)),
-                              ]))),
+                      // Notes (song / GIF / place) over avatars, then recent chats.
+                      child: NotesStrip(trailing: [
+                    for (final item in items.take(12))
+                      contact(
+                          (item['peer'] as Map)['full_name'] as String,
+                          (item['peer'] as Map)['avatar_url'] as String?,
+                          () => open(item['peer'] as Map)),
+                  ])),
                   SliverToBoxAdapter(
                       child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,

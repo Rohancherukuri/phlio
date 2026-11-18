@@ -34,6 +34,9 @@ services:
       # starts take 30-60 s). Uses ~744 of the 750 free hours a month.
       - key: KEEP_AWAKE
         value: "true"
+      # Re-date the seeded demo community's moments hourly (24-hour stories).
+      - key: DEMO_CONTENT_REFRESH
+        value: "true"
       # -- Database (Surreal Cloud) --
       - key: DATABASE_BACKEND
         value: surreal
@@ -103,6 +106,14 @@ services:
       # -- Other integrations --
       - key: GIPHY_API_KEY
         sync: false
+      - key: NEWS_INGESTION_ENABLED
+        value: "true"
+      - key: NEWS_API_KEY
+        sync: false # newsapi.org key (server only)
+      - key: AFTERSHIP_API_KEY
+        sync: false # AfterShip tracking key (server only)
+      - key: AFTERSHIP_API_ENDPOINT
+        value: https://api.aftership.com/tracking/2026-07
       - key: SPOTIFY_CLIENT_ID
         sync: false
       - key: SPOTIFY_CALLBACK_URL

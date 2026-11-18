@@ -35,6 +35,10 @@ api_router.include_router(moments.router)
 # Snap friend lists, also before social's catch-alls.
 from app.api.v1 import snap_lists
 api_router.include_router(snap_lists.router)
+# Notes (Instagram-style status bubbles), before social's catch-alls.
+from app.api.v1 import status_notes
+
+api_router.include_router(status_notes.router)
 api_router.include_router(social.router)
 api_router.include_router(social_videos.router)
 api_router.include_router(rooms.router)
@@ -77,3 +81,9 @@ api_router.include_router(pay_gateway.router)
 
 from app.api.v1 import appearance
 api_router.include_router(appearance.router)
+# Seasonal festival / event banners (public).
+from app.api.v1 import events
+api_router.include_router(events.router)
+# Parcel tracking in Phlio Shop (AfterShip).
+from app.api.v1 import shop_tracking
+api_router.include_router(shop_tracking.router)

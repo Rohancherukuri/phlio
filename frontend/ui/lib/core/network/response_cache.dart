@@ -102,6 +102,12 @@ class ResponseCache extends Interceptor {
   final _seenThisSession = <String>{};
   bool _mutatedThisSession = false;
   Future<Directory?>? _dir;
+  final _updates = StreamController<String>.broadcast();
+
+  /// Paths whose screens were shown a saved copy and now have fresh data
+  /// (emitted when the slow network answer arrives). Screens listen and
+  /// reload, which is served instantly from the fresh in-memory copy.
+  Stream<String> get updates => _updates.stream;
 
   /// Drops every cached response (memory and disk). Called on sign-out.
   Future<void> clear() async {
@@ -169,6 +175,10 @@ class ResponseCache extends Interceptor {
         network,
         Future<Response<dynamic>?>.delayed(_slowAfter, () => null),
       ]);
+      if (winner == null) {
+        // The saved copy is shown now; tell listeners when fresh data lands.
+        unawaited(network.then((_) => _updates.add(options.path), onError: (_) {}));
+      }
       handler.resolve(winner ?? await _toResponse(options, saved, stale: true));
     } on DioException catch (e) {
       final fallback = instant ? (saved ?? _memory[key] ?? await _readDisk(key)) : null;

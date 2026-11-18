@@ -1,5 +1,6 @@
 import asyncio
 import random
+import time
 
 import copy
 import datetime as dt
@@ -8,6 +9,8 @@ import uuid
 from app.infrastructure.database.surreal.client import record
 
 TABLES = {
+    "shop_tracking",
+    "status_note",
     "stream_catalog_state",
     "memory_seen",
     "memory_reaction",
@@ -116,9 +119,37 @@ class MemoryGraphStore:
 
 
 class SurrealGraphStore:
+    """Graph store on SurrealDB.
+
+    Read caching (why): a hosted database is a network round trip away (about
+    65 ms from Render Singapore to Surreal Cloud Mumbai), and screens such as
+    Stream or a post's engagement bar read the same records many times per
+    request. Two small in-process caches remove most of those round trips:
+
+    * ``revision()`` (used as a cache key all over the API) is reused for
+      ``REVISION_TTL`` seconds;
+    * ``get(key)`` results are reused for ``READ_TTL`` seconds.
+
+    Every write through this store (``put``/``delete``) drops the cached record
+    and revision first, so this process always reads its own writes. Writes
+    made by *other* processes (a seeding script) become visible within the
+    TTL, which is the same freshness the API's response caches already have.
+    """
+
+    REVISION_TTL = 1.0
+    READ_TTL = 2.0
+    READ_CACHE_MAX = 20_000
+
     def __init__(self, db):
         self.db = db
         self._write_lock = asyncio.Lock()
+        self._revision: tuple[float, object] | None = None
+        self._reads: dict[str, tuple[float, object]] = {}
+
+    def _forget(self, key=None):
+        self._revision = None
+        if key is not None:
+            self._reads.pop(key, None)
 
     async def _transaction(self, query, params):
         # All graph writes touch the shared revision record. Serialise this
@@ -138,8 +169,15 @@ class SurrealGraphStore:
 
     async def get(self, key):
         assert key.split(":", 1)[0] in TABLES
+        hit = self._reads.get(key)
+        if hit and time.monotonic() - hit[0] < self.READ_TTL:
+            return copy.deepcopy(hit[1])
         value = await self.db.select(key)
-        return value[0] if isinstance(value, list) and value else value or None
+        value = value[0] if isinstance(value, list) and value else value or None
+        if len(self._reads) >= self.READ_CACHE_MAX:
+            self._reads.clear()  # rare; cheaper than tracking LRU order
+        self._reads[key] = (time.monotonic(), copy.deepcopy(value))
+        return value
 
     async def get_many(self, keys):
         if not keys:
@@ -177,11 +215,16 @@ class SurrealGraphStore:
             params["event"] = dict(event=table, entity=key, created_at=now(), delivered=False)
             event = "CREATE graph_outbox CONTENT $event;"
         revision = " UPDATE graph_meta:revision SET value += 1;" if event else ""
-        await self._transaction("BEGIN TRANSACTION; " + write + event + revision + " COMMIT TRANSACTION;", params)
+        self._forget(key)
+        try:
+            await self._transaction("BEGIN TRANSACTION; " + write + event + revision + " COMMIT TRANSACTION;", params)
+        finally:
+            self._forget(key)
         return await self.get(key)
 
     async def delete(self, key):
         assert key.split(":", 1)[0] in TABLES
+        self._forget(key)
         await self._transaction(
             "BEGIN TRANSACTION; DELETE $rid; CREATE graph_outbox CONTENT $event; "
             "UPDATE graph_meta:revision SET value += 1; COMMIT TRANSACTION;",
@@ -190,7 +233,13 @@ class SurrealGraphStore:
                 "event": dict(event="deleted", entity=key, created_at=now(), delivered=False),
             },
         )
+        self._forget(key)
 
     async def revision(self):
+        hit = self._revision
+        if hit and time.monotonic() - hit[0] < self.REVISION_TTL:
+            return hit[1]
         rows = await self.db.rows("SELECT * FROM graph_meta:revision")
-        return rows[0]["value"]
+        value = rows[0]["value"]
+        self._revision = (time.monotonic(), value)
+        return value
