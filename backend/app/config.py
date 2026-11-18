@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     # AfterShip parcel tracking for Phlio Shop (app/infrastructure/aftership.py).
     aftership_api_key: str = Field(default="", repr=False)
     aftership_api_endpoint: str = "https://api.aftership.com/tracking/2026-07"
+    # Google Maps Platform key for place names (Geocoding API + Places API (New)).
+    google_maps_api_key: str = Field(default="", repr=False)
     redis_enabled: bool = False
     redis_namespace: str = "development"
 

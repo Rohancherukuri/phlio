@@ -20,6 +20,9 @@ import '../../../../shared/music/stream_song_picker.dart';
 
 const kSpotifyGreen = Color(0xFF1DB954);
 
+/// Song formats the server accepts (backend AUDIO_TYPES).
+const kSongExtensions = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac', 'opus'];
+
 Future<Map<String, dynamic>?> pickNoteMusic(BuildContext context) async {
   final source = await showModalBottomSheet<String>(
     context: context,
@@ -47,7 +50,7 @@ Future<Map<String, dynamic>?> pickNoteMusic(BuildContext context) async {
           color: const Color(0xFF4CC9F0),
           icon: Icons.phone_android_rounded,
           title: 'From your phone',
-          subtitle: 'An MP3, M4A or other audio file (up to 15 MB)',
+          subtitle: 'MP3, M4A, AAC, WAV, OGG, FLAC or OPUS (up to 15 MB)',
           onTap: () => Navigator.pop(sheet, 'local'),
         ),
         const SizedBox(height: 8),
@@ -86,9 +89,20 @@ Future<Map<String, dynamic>?> pickNoteMusic(BuildContext context) async {
 }
 
 Future<Map<String, dynamic>?> _uploadFromPhone(BuildContext context) async {
-  final picked = await FilePicker.pickFiles(type: FileType.audio, withData: false);
+  // Only song files show up in the picker.
+  final picked = await FilePicker.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: kSongExtensions,
+    withData: false,
+  );
   final file = picked?.files.singleOrNull;
   if (file == null || !context.mounted) return null;
+  final ext = file.name.contains('.') ? file.name.split('.').last.toLowerCase() : '';
+  if (!kSongExtensions.contains(ext)) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Choose a song file: MP3, M4A, AAC, WAV, OGG, FLAC or OPUS.')));
+    return null;
+  }
   if (file.size > 15 * 1024 * 1024) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose a song under 15 MB.')));
     return null;
@@ -126,9 +140,15 @@ Future<Map<String, dynamic>?> _uploadFromPhone(BuildContext context) async {
   } catch (e) {
     navigator.pop();
     if (context.mounted) {
+      final status = e is DioException ? e.response?.statusCode : null;
       final detail = e is DioException && e.response?.data is Map ? (e.response!.data as Map)['detail'] : null;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(detail is String ? detail : 'Could not upload this song. Try another file.')));
+      final message = status == 404
+          // The server the app talks to doesn't have this feature yet.
+          ? 'Song uploads aren\'t on the server yet. Deploy the latest backend and try again.'
+          : detail is String && detail != 'Not Found'
+              ? detail
+              : 'Could not upload this song. Try another file.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
     return null;
   } finally {

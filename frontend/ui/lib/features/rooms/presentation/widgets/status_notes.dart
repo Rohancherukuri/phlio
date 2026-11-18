@@ -24,6 +24,7 @@ import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
+import '../../../../shared/location/server_places.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../data/datasources/messaging_api.dart';
@@ -414,7 +415,10 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
       final pos = await currentPosition();
       // The neighbourhood name people use ("KPHB Colony"), in English,
       // not whatever building or road happens to be under the GPS fix.
-      final here = await areaName(pos.latitude, pos.longitude) ?? await reverseGeocode(pos.latitude, pos.longitude);
+      final google = await serverAreas(pos.latitude, pos.longitude);
+      final here = (google != null && google.isNotEmpty ? google.first : null) ??
+          await areaName(pos.latitude, pos.longitude) ??
+          await reverseGeocode(pos.latitude, pos.longitude);
       if (here != null && mounted) _setPlace(here);
     } on LocationProblem catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

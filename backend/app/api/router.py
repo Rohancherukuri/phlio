@@ -87,3 +87,6 @@ api_router.include_router(events.router)
 # Parcel tracking in Phlio Shop (AfterShip).
 from app.api.v1 import shop_tracking
 api_router.include_router(shop_tracking.router)
+# Place names (Google Maps Platform, server-side key).
+from app.api.v1 import places
+api_router.include_router(places.router)

@@ -112,6 +112,8 @@ services:
         sync: false # newsapi.org key (server only)
       - key: AFTERSHIP_API_KEY
         sync: false # AfterShip tracking key (server only)
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false # Geocoding API + Places API (New); server only
       - key: AFTERSHIP_API_ENDPOINT
         value: https://api.aftership.com/tracking/2026-07
       - key: SPOTIFY_CLIENT_ID

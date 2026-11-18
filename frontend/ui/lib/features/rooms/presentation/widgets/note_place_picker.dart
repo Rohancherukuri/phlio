@@ -1,7 +1,8 @@
 // Location picker for notes (Instagram-style): opens straight away with a
 // search box, "Where you are" (your neighbourhood), Areas nearby and Spots
 // nearby with distance and address; typing searches places around you.
-// Names come from OpenStreetMap in English where available.
+// Names come from Google Maps (via Phlio's server) and fall back to
+// OpenStreetMap when that isn't available.
 
 import 'dart:async';
 
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../../../design_system/colors.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/places_api.dart';
+import '../../../../shared/location/server_places.dart';
 
 Future<Place?> pickNotePlace(BuildContext context, {String? selected}) => showModalBottomSheet<Place>(
       context: context,
@@ -36,6 +38,7 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
   Place? here;
   List<Place> areas = const [], spots = const [], results = const [];
   bool loading = true, searching = false;
+  bool fromGoogle = false; // results from Google: show the attribution
   String? problem;
   int _query = 0;
 
@@ -57,14 +60,29 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
       final pos = await currentPosition();
       lat = pos.latitude;
       lng = pos.longitude;
-      // Each list fills in as soon as it arrives.
-      unawaited(areaName(lat!, lng!).then((p) {
+      // Each list fills in as soon as it arrives. Google first; OSM if the
+      // server can't answer.
+      unawaited(() async {
+        final google = await serverAreas(lat!, lng!);
+        if (google != null && google.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              fromGoogle = true;
+              here = google.first;
+              areas = google.skip(1).toList();
+            });
+          }
+          return;
+        }
+        final p = await areaName(lat!, lng!);
         if (mounted) setState(() => here = p);
-      }));
-      unawaited(nearbyAreas(lat!, lng!).then((a) {
+        final a = await nearbyAreas(lat!, lng!).catchError((Object _) => <Place>[]);
         if (mounted) setState(() => areas = a);
-      }, onError: (Object _) {}));
-      final s = await nearbyPlaces(lat!, lng!, radius: 1000, limit: 25).catchError((Object _) => <Place>[]);
+      }());
+      final google = await serverNearby(lat!, lng!, radius: 1000);
+      final s = google != null && google.isNotEmpty
+          ? google
+          : await nearbyPlaces(lat!, lng!, radius: 1000, limit: 25).catchError((Object _) => <Place>[]);
       if (mounted) setState(() => spots = s);
     } on LocationProblem catch (e) {
       if (mounted) setState(() => problem = e.toString());
@@ -89,7 +107,7 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       final id = ++_query;
       try {
-        final found = await searchPlaces(q, lat: lat, lng: lng, box: .25);
+        final found = await serverSearch(q, lat: lat, lng: lng) ?? await searchPlaces(q, lat: lat, lng: lng, box: .25);
         if (lat != null) {
           found.sort((a, b) => distanceMetres(lat!, lng!, a.lat, a.lng).compareTo(distanceMetres(lat!, lng!, b.lat, b.lng)));
         }
@@ -215,6 +233,12 @@ class _NotePlacePickerState extends State<_NotePlacePicker> {
                       textAlign: TextAlign.center, style: TextStyle(color: PhlioColors.textMuted)),
                 ),
             ],
+            if (fromGoogle)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text('Powered by Google',
+                    textAlign: TextAlign.center, style: TextStyle(color: PhlioColors.textMuted, fontSize: 11)),
+              ),
           ]),
         ),
       ]),

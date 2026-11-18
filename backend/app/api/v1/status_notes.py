@@ -37,7 +37,7 @@ router = APIRouter(prefix="/social/notes", tags=["social"])
 LIFETIME = dt.timedelta(hours=24)
 _GIF_HOST = re.compile(r"^https://(media\d*|i)\.giphy\.com/")
 AUDIO_PREFIX = "/media/post_uploads/note_"
-AUDIO_TYPES = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"}
+AUDIO_TYPES = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac", ".opus"}
 MAX_AUDIO = 15 * 1024 * 1024
 
 
@@ -192,7 +192,7 @@ async def upload_note_audio(file: UploadFile = File(...), user=Depends(get_curre
     await c.cache.rate_limit(user.id, "note-audio", 10)
     extension = Path(file.filename or "").suffix.lower()
     if extension not in AUDIO_TYPES:
-        raise HTTPException(422, "Choose an MP3, M4A, AAC, WAV, OGG or FLAC file.")
+        raise HTTPException(422, "Choose an MP3, M4A, AAC, WAV, OGG, FLAC or OPUS file.")
     raw = await file.read(MAX_AUDIO + 1)
     if len(raw) > MAX_AUDIO:
         raise HTTPException(413, "Choose a song under 15 MB.")
