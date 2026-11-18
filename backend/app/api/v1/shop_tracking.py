@@ -71,20 +71,21 @@ async def _refresh(c, row: dict, force: bool = False) -> dict:
     except TrackingUnavailable:
         return row  # keep the last known status
     title = row.get("title")
-    row = dict(row, **live, title=title or live.get("title"), checked_at=_now().isoformat())
-    await c.graph.store.put(key("shop_tracking", row["user_id"], row["id"]), row)
+    row = {**row, **live, "title": title or live.get("title"), "checked_at": _now().isoformat()}
+    await c.graph.store.put(key("shop_tracking", row["user_id"], row["parcel_id"]), row)
     return row
 
 
 def _public(row: dict) -> dict:
-    return {k: v for k, v in row.items() if k not in ("user_id", "aftership_id")}
+    # The store sets ``id`` to the record key; the app uses our parcel id.
+    out = {k: v for k, v in row.items() if k not in ("id", "user_id", "aftership_id", "parcel_id")}
+    return dict(out, id=row["parcel_id"])
 
 
 @router.get("")
 async def list_parcels(user=Depends(get_current_user), c=Depends(get_container)):
     rows = await c.graph.store.rows("shop_tracking", {"user_id": user.id})
     rows = await asyncio.gather(*(_refresh(c, r) for r in rows))
-    rows.sort(key=lambda r: (r.get("tag") == "Delivered", r.get("created_at", "")), reverse=False)
     active = [r for r in rows if r.get("tag") != "Delivered"]
     active.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     done = [r for r in rows if r.get("tag") == "Delivered"]
@@ -115,7 +116,7 @@ async def track(body: TrackIn, user=Depends(get_current_user), c=Depends(get_con
     except TrackingUnavailable as exc:
         _fail(exc)
     rid = uuid.uuid4().hex[:16]
-    row = dict(normalize(t), id=rid, user_id=user.id, created_at=_now().isoformat(), checked_at=_now().isoformat())
+    row = dict(normalize(t), parcel_id=rid, user_id=user.id, created_at=_now().isoformat(), checked_at=_now().isoformat())
     if body.title:
         row["title"] = body.title
     await c.graph.store.put(key("shop_tracking", user.id, rid), row)

@@ -398,7 +398,9 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     setState(() => locating = true);
     try {
       final pos = await currentPosition();
-      final here = await reverseGeocode(pos.latitude, pos.longitude);
+      // The neighbourhood name people use ("KPHB Colony"), in English,
+      // not whatever building or road happens to be under the GPS fix.
+      final here = await areaName(pos.latitude, pos.longitude) ?? await reverseGeocode(pos.latitude, pos.longitude);
       if (here != null && mounted) _setPlace(here);
     } on LocationProblem catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -411,30 +413,56 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
     }
   }
 
+  /// Areas nearby first (neighbourhoods, localities), then spots (cafes,
+  /// malls, temples…), each with its distance.
   Future<void> _choosePlace() async {
     try {
       final pos = await currentPosition();
-      final nearby = await nearbyPlaces(pos.latitude, pos.longitude, radius: 800, limit: 15);
+      final lat = pos.latitude, lng = pos.longitude;
+      final results = await Future.wait([
+        nearbyAreas(lat, lng).catchError((Object _) => <Place>[]),
+        nearbyPlaces(lat, lng, radius: 800, limit: 15).catchError((Object _) => <Place>[]),
+      ]);
+      final areas = results[0], spots = results[1];
       if (!mounted) return;
+      Widget row(BuildContext sheet, Place p, IconData icon) => ListTile(
+            leading: Icon(icon),
+            title: Text(p.name),
+            subtitle: Text(
+              [formatDistance(distanceMetres(lat, lng, p.lat, p.lng)), if (p.kind != null && p.kind!.isNotEmpty) p.kind!]
+                  .join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: place?['name'] == p.name ? const Icon(Icons.check_rounded, color: Color(0xFF3897F0)) : null,
+            onTap: () => Navigator.pop(sheet, p),
+          );
       final chosen = await showModalBottomSheet<Place>(
         context: context,
         showDragHandle: true,
+        isScrollControlled: true,
         backgroundColor: PhlioColors.surface,
-        builder: (sheet) => SafeArea(
-          child: ListView(shrinkWrap: true, children: [
-            const ListTile(title: Text('Choose a place', style: TextStyle(fontWeight: FontWeight.w800))),
-            for (final p in nearby)
-              ListTile(
-                leading: const Icon(Icons.location_on_outlined),
-                title: Text(p.name),
-                subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-                onTap: () => Navigator.pop(sheet, p),
-              ),
-            if (nearby.isEmpty) const ListTile(title: Text('No places found nearby.')),
+        builder: (sheet) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (_, scroll) => ListView(controller: scroll, children: [
+            if (areas.isNotEmpty) ...[
+              const ListTile(dense: true, title: Text('Areas', style: TextStyle(fontWeight: FontWeight.w800))),
+              for (final a in areas) row(sheet, a, Icons.location_city_rounded),
+            ],
+            if (spots.isNotEmpty) ...[
+              const ListTile(dense: true, title: Text('Spots nearby', style: TextStyle(fontWeight: FontWeight.w800))),
+              for (final p in spots) row(sheet, p, Icons.location_on_outlined),
+            ],
+            if (areas.isEmpty && spots.isEmpty)
+              const ListTile(title: Text('Couldn\'t load places nearby. Check your connection and try again.')),
           ]),
         ),
       );
       if (chosen != null && mounted) _setPlace(chosen);
+    } on LocationProblem catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     } catch (_) {}
   }
 
@@ -446,13 +474,15 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
       });
 
   Future<void> _openEditor() async {
-    final style = await openBubbleEditor(context, note: _draft, avatar: _avatar(120));
-    if (style != null && mounted) {
-      setState(() {
+    final style = await openBubbleEditor(context, note: _draft, avatar: _avatar(120), text: _text);
+    if (!mounted) return;
+    // Text typed in the editor is already in _text; refresh Share either way.
+    setState(() {
+      if (style != null) {
         color = style.color;
         effect = style.effect;
-      });
-    }
+      }
+    });
   }
 
   Future<void> _chooseAudience() async {
@@ -560,11 +590,9 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(authControllerProvider);
-    final fill = parseNoteColor(color) ?? kNoteBubbleColor;
-    final ink = noteInk(fill);
+    const avatarSize = 140.0;
     return Scaffold(
       backgroundColor: PhlioColors.background,
-      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: PhlioColors.background,
         leading: IconButton(
@@ -572,119 +600,113 @@ class _NoteComposerScreenState extends ConsumerState<NoteComposerScreen> {
       ),
       body: SafeArea(
         child: Column(children: [
+          // Everything above the bottom bar scrolls as one block, centred
+          // when there's room, so nothing overlaps when the keyboard opens.
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(children: [
-                const SizedBox(height: 28),
-                // Bubble on the photo, like Instagram.
-                SizedBox(
-                  width: 300,
-                  height: 272,
-                  child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
-                    Positioned(top: 120, child: _avatar(150)),
-                    Positioned(
-                      top: 120 + 150 - 40,
-                      left: 150 + 75 * 0.7 - 6,
-                      child: Material(
-                        color: kNoteBubbleColor,
-                        shape: const CircleBorder(side: BorderSide(color: PhlioColors.background, width: 3)),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: _openEditor,
-                          child: const Padding(
-                            padding: EdgeInsets.all(7),
-                            child: Icon(Icons.palette_outlined, size: 20, color: Color(0xFFFF2E7E)),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      top: 0,
-                      height: 138,
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: NoteBubble(
-                          note: _draft,
-                          large: true,
-                          loopEffect: true,
-                          child: TextField(
-                            controller: _text,
-                            autofocus: widget.existing == null,
-                            maxLength: 60,
-                            maxLines: 3,
-                            minLines: 1,
-                            textAlign: TextAlign.center,
-                            cursorColor: const Color(0xFF3897F0),
-                            onChanged: (_) => setState(() {}),
-                            style: TextStyle(fontSize: 18, color: ink, height: 1.2),
-                            decoration: InputDecoration(
-                              hintText: "Today's vibe...",
-                              hintStyle: TextStyle(color: ink.withValues(alpha: 0.5)),
-                              border: InputBorder.none,
-                              counterText: '',
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
+            child: LayoutBuilder(
+              builder: (context, box) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: box.maxHeight),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const SizedBox(height: 12),
+                    // Bubble resting on the photo, like Instagram.
+                    SizedBox(
+                      width: 300,
+                      height: 132 + avatarSize,
+                      child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
+                        Positioned(top: 132, child: _avatar(avatarSize)),
+                        Positioned(
+                          top: 132 + avatarSize - 38,
+                          left: 150 + avatarSize * 0.5 * 0.7 - 8,
+                          child: Material(
+                            color: kNoteBubbleColor,
+                            shape: const CircleBorder(side: BorderSide(color: PhlioColors.background, width: 3)),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _openEditor,
+                              child: const Padding(
+                                padding: EdgeInsets.all(7),
+                                child: Icon(Icons.palette_outlined, size: 20, color: Color(0xFFFF2E7E)),
+                              ),
                             ),
                           ),
                         ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          height: 150,
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: NoteTextBubble(
+                              controller: _text,
+                              note: _draft,
+                              autofocus: widget.existing == null,
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      _attach(Icons.music_note_rounded, const Color(0xFFFF2E7E), music != null, _pickSong,
+                          () => setState(() => music = null), 'song'),
+                      _attach(Icons.location_on_outlined, const Color(0xFF9B6BFF), place != null, _addHere,
+                          () => setState(() => place = null), 'location'),
+                      _attach(Icons.gif_box_outlined, const Color(0xFF2FCB6A), gif != null, _pickGif,
+                          () => setState(() => gif = null), 'GIF'),
+                    ]),
+                    const SizedBox(height: 16),
+                    if (locating)
+                      const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 8),
+                        Text('Finding where you are…', style: TextStyle(color: PhlioColors.textMuted)),
+                      ])
+                    else if (place != null)
+                      // "📍 KPHB Colony ×" — tap the name to pick another place.
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.location_on_rounded, color: Color(0xFF3897F0), size: 20),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: InkWell(
+                            onTap: _choosePlace,
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Flexible(
+                                child: Text('${place!['name']}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                              ),
+                              const Icon(Icons.expand_more_rounded, size: 20, color: PhlioColors.textMuted),
+                            ]),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove location',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close_rounded, size: 20, color: PhlioColors.textMuted),
+                          onPressed: () => setState(() => place = null),
+                        ),
+                      ]),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 12, 28, 12),
+                      child: Text(
+                        place != null
+                            ? 'Your note will be visible at this location and at the top of Inbox for 24 hours.'
+                            : 'Your note will be visible at the top of Inbox for 24 hours.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: PhlioColors.textMuted, fontSize: 13),
                       ),
                     ),
                   ]),
                 ),
-                const SizedBox(height: 18),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _attach(Icons.music_note_rounded, const Color(0xFFFF2E7E), music != null, _pickSong,
-                      () => setState(() => music = null), 'song'),
-                  _attach(Icons.location_on_outlined, const Color(0xFF9B6BFF), place != null,
-                      _addHere, () => setState(() => place = null), 'location'),
-                  _attach(Icons.gif_box_outlined, const Color(0xFF2FCB6A), gif != null, _pickGif,
-                      () => setState(() => gif = null), 'GIF'),
-                ]),
-                const SizedBox(height: 18),
-                if (locating)
-                  const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-                    SizedBox(width: 8),
-                    Text('Finding where you are…', style: TextStyle(color: PhlioColors.textMuted)),
-                  ])
-                else if (place != null)
-                  // "📍 KPHB Colony ×" — tap the name to pick another place.
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.location_on_rounded, color: Color(0xFF3897F0), size: 20),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: InkWell(
-                        onTap: _choosePlace,
-                        child: Text('${place!['name']}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Remove location',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.close_rounded, size: 20, color: PhlioColors.textMuted),
-                      onPressed: () => setState(() => place = null),
-                    ),
-                  ]),
-              ]),
+              ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(28, 0, 28, 12),
-            child: Text(
-              place != null
-                  ? 'Your note will be visible at this location and at the top of Inbox for 24 hours.'
-                  : 'Your note will be visible at the top of Inbox for 24 hours.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: PhlioColors.textMuted, fontSize: 13),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 16, 12),
+            padding: const EdgeInsets.fromLTRB(12, 4, 16, 12),
             child: Row(children: [
               TextButton.icon(
                 style: TextButton.styleFrom(foregroundColor: PhlioColors.textPrimary),

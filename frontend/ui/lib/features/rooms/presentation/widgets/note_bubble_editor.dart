@@ -13,21 +13,25 @@ import 'note_bubble.dart';
 /// `(color hex or null, effect id or null)`.
 typedef NoteStyle = ({String? color, String? effect});
 
+/// [text] is the composer's controller, so you can keep typing here and
+/// the words carry back.
 Future<NoteStyle?> openBubbleEditor(
   BuildContext context, {
   required Map note,
   required Widget avatar,
+  required TextEditingController text,
 }) =>
     Navigator.of(context).push<NoteStyle>(
-      MaterialPageRoute(builder: (_) => BubbleEditorScreen(note: note, avatar: avatar)),
+      MaterialPageRoute(builder: (_) => BubbleEditorScreen(note: note, avatar: avatar, text: text)),
     );
 
 class BubbleEditorScreen extends StatefulWidget {
-  const BubbleEditorScreen({required this.note, required this.avatar, super.key});
+  const BubbleEditorScreen({required this.note, required this.avatar, required this.text, super.key});
 
   /// The note as it is now (text, music, gif, color, effect).
   final Map note;
   final Widget avatar;
+  final TextEditingController text;
 
   @override
   State<BubbleEditorScreen> createState() => _BubbleEditorScreenState();
@@ -114,7 +118,12 @@ class _BubbleEditorScreenState extends State<BubbleEditorScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SafeArea(
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        // Tap outside the bubble to put the keyboard away and see the colours.
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: SafeArea(
         child: Column(children: [
           Expanded(
             child: Center(
@@ -131,7 +140,7 @@ class _BubbleEditorScreenState extends State<BubbleEditorScreen> {
                     child: Align(
                       alignment: Alignment.bottomCenter,
                       child: Stack(clipBehavior: Clip.none, children: [
-                        NoteBubble(note: preview, large: true, loopEffect: true, placeholder: "Today's vibe..."),
+                        NoteTextBubble(controller: widget.text, note: preview),
                         // Effects button on the bubble's top-left corner.
                         Positioned(
                           left: -18,
@@ -237,6 +246,7 @@ class _BubbleEditorScreenState extends State<BubbleEditorScreen> {
           ),
           const SizedBox(height: 8),
         ]),
+        ),
       ),
     );
   }

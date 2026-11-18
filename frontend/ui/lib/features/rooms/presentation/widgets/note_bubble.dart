@@ -350,3 +350,92 @@ class NoteTile extends StatelessWidget {
     );
   }
 }
+
+/// The bubble you type into (composer and Bubble Editor share it, so the
+/// bubble looks the same in both): no field background or border, and the
+/// bubble hugs the text the way Instagram's does instead of stretching to
+/// a fixed width.
+class NoteTextBubble extends StatelessWidget {
+  const NoteTextBubble({
+    required this.controller,
+    required this.note,
+    super.key,
+    this.hint = "Today's vibe...",
+    this.autofocus = false,
+    this.onChanged,
+    this.focusNode,
+  });
+
+  final TextEditingController controller;
+
+  /// The rest of the draft (music, gif, color, effect) for the bubble.
+  final Map note;
+  final String hint;
+  final bool autofocus;
+  final ValueChanged<String>? onChanged;
+  final FocusNode? focusNode;
+
+  static const _fontSize = 18.0, _maxText = 220.0;
+
+  double _measure(String s, TextStyle style) {
+    final tp = TextPainter(
+      text: TextSpan(text: s, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 3,
+    )..layout(maxWidth: _maxText);
+    final w = tp.width;
+    tp.dispose();
+    return w;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = parseNoteColor(note['color']) ?? kNoteBubbleColor;
+    final ink = noteInk(fill);
+    const style = TextStyle(fontSize: _fontSize, height: 1.2);
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final shown = value.text.isEmpty ? hint : value.text;
+        // Longest line decides the width; + room for the cursor.
+        final width = (_measure(shown, style) + 6).clamp(24.0, _maxText + 6);
+        return NoteBubble(
+          note: {...note, 'text': value.text},
+          large: true,
+          loopEffect: true,
+          child: SizedBox(
+            width: width,
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              autofocus: autofocus,
+              maxLength: 60,
+              maxLines: 3,
+              minLines: 1,
+              textAlign: TextAlign.center,
+              cursorColor: const Color(0xFF3897F0),
+              onChanged: onChanged,
+              style: style.copyWith(color: ink),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: style.copyWith(color: ink.withValues(alpha: 0.5)),
+                // The app theme fills and outlines every field; a note
+                // bubble must be plain.
+                filled: false,
+                fillColor: Colors.transparent,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                counterText: '',
+                isDense: true,
+                isCollapsed: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

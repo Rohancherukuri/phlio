@@ -103,10 +103,10 @@ def _eta(t: dict) -> str | None:
     latest = t.get("latest_estimated_delivery") or {}
     if latest.get("datetime") or latest.get("datetime_max"):
         return latest.get("datetime") or latest.get("datetime_max")
-    courier = t.get("courier_estimated_delivery_date") or {}
-    if isinstance(courier, dict):
+    courier = t.get("courier_estimated_delivery_date")
+    if isinstance(courier, dict) and courier:
         return courier.get("estimated_delivery_date") or courier.get("estimated_delivery_date_max")
-    return t.get("expected_delivery") or courier or None
+    return t.get("expected_delivery") or (courier if isinstance(courier, str) else None)
 
 
 def normalize(t: dict) -> dict:

@@ -94,3 +94,27 @@ async def test_track_parcel_flow(client: AsyncClient, auth_headers: dict, settin
     finally:
         settings.aftership_api_key = ""
         shop_tracking.TRANSPORT = None
+
+
+@pytest.mark.asyncio
+async def test_newsapi_rows_land_in_news(settings) -> None:
+    from app.core.container import build_container
+    from app.domains.graph import news
+    from app.domains.graph.service import key
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["x-api-key"] == "nk"
+        cat = request.url.params["category"]
+        return httpx.Response(200, json={"articles": [{"source": {"name": "AP"}, "title": f"{cat} story",
+                                                        "url": f"https://apnews.com/{cat}", "publishedAt": "2026-11-18T07:00:00Z",
+                                                        "description": "Short."}]})
+
+    settings.news_api_key = "nk"
+    c = await build_container(settings)
+    news._newsapi_last = None
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        assert await news._newsapi(c, client) == len(newsapi.CATEGORIES)
+        assert await news._newsapi(c, client) == 0  # waits for the next interval
+    rows = await c.graph.store.rows("platform_content", {"platform": "news"})
+    tech = next(r for r in rows if r["title"] == "technology story")
+    assert tech["category"] == "Technology" and tech["publisher"] == "AP" and tech["description"] == "Short."
