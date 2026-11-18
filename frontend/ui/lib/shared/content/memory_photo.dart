@@ -1,3 +1,4 @@
+import '../media/smart_filters.dart';
 import '../../features/profile/presentation/widgets/snap_decorations.dart';
 import '../moments/stickers/sticker_model.dart';
 import 'dart:io';
@@ -34,12 +35,16 @@ class MemoryPhoto extends ConsumerWidget {
       this.isVideo = false,
       this.decorations = const [],
       this.filter,
+      this.filterSpec,
       this.autoplay = false});
   final List decorations;
   final bool isVideo;
   final String url;
   final BoxFit fit;
   final String? filter;
+
+  /// Smart filter overlays (time, weather, place…) saved with the snap.
+  final Object? filterSpec;
 
   /// Videos start playing (looping) instead of waiting for a tap.
   final bool autoplay;
@@ -53,8 +58,12 @@ class MemoryPhoto extends ConsumerWidget {
   /// The filter applies to the photo / video, under the decorations.
   Widget _filtered(BuildContext context, WidgetRef ref) {
     final (look, effect) = splitMomentFilter(filter);
-    if (look == 'normal' && effect == 'none') return _photo(context, ref);
-    return PhlioLook(look: look, effect: effect, child: _photo(context, ref));
+    final base = look == 'normal' && effect == 'none'
+        ? _photo(context, ref)
+        : PhlioLook(look: look, effect: effect, child: _photo(context, ref));
+    final smart = FilterSpec.fromJson(filterSpec);
+    if (smart == null || smart.overlays.isEmpty) return base;
+    return Stack(fit: StackFit.expand, children: [base, SmartFilterLayer(spec: smart)]);
   }
 
   Widget _photo(BuildContext context, WidgetRef ref) {

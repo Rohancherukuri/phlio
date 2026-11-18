@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phlio/shared/widgets/notifications_button.dart';
 
 import '../../../../design_system/colors.dart';
+import '../../../../shared/events/festival_banner.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../shared/content/content_surface.dart';
 import '../../domain/entities/book_entities.dart';
@@ -138,6 +139,7 @@ class _BookHub extends ConsumerWidget {
 
     return ListView(padding: const EdgeInsets.only(bottom: 32), children: [
       const _Header(),
+      const FestivalBanner(platform: 'book', padding: EdgeInsets.fromLTRB(16, 12, 16, 0)),
       if (featured.isNotEmpty) ...[
         const SizedBox(height: 14),
         BookHeroCarousel(items: featured),

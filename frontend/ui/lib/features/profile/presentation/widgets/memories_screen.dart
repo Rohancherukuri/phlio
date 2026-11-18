@@ -1,3 +1,5 @@
+import '../../../../shared/media/smart_filter_editor.dart';
+import '../../../../shared/media/smart_filters.dart';
 import 'snap_decorations.dart';
 import '../../../../shared/moments/stickers/sticker_model.dart';
 import 'dart:convert';
@@ -46,6 +48,8 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
   /// The captured snap is a video (hold-to-record) and its filter.
   bool snapVideo = false;
   String snapFilter = 'normal';
+  // Snapchat-style info filters on this snap (kept as data, editable later).
+  FilterSpec snapSmart = FilterSpec();
   bool grid = false;
   int selected = 0;
   String? burst;
@@ -148,6 +152,7 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
           snap = capture.photo;
           snapVideo = capture.video;
           snapFilter = capture.filter;
+          snapSmart = FilterSpec();
           decorations.clear();
           caption.clear();
         });
@@ -181,6 +186,13 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
               'kind': widget.kind,
               // The filter travels as data and is drawn live everywhere.
               'filter': snapFilter,
+              if (snapSmart.overlays.isNotEmpty)
+                'filter_spec': jsonEncode(() {
+                  final (look, effect) = splitMomentFilter(snapFilter);
+                  return FilterSpec(
+                          look: look, effect: effect == 'none' ? null : effect, overlays: snapSmart.overlays)
+                      .toJson();
+                }()),
               'file': await MultipartFile.fromFile(
                 snap!.path,
                 filename: snap!.name,
@@ -278,12 +290,27 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
                 caption: caption,
                 audience: audience,
                 busy: busy,
-                media: snapMediaPreview(
-                  path: snap!.path,
-                  video: snapVideo,
-                  filter: snapFilter,
-                  videoPlayer: SnapVideoPreview(key: ValueKey(snap!.path), path: snap!.path, filter: snapFilter),
-                ),
+                media: Stack(fit: StackFit.expand, children: [
+                  snapMediaPreview(
+                    path: snap!.path,
+                    video: snapVideo,
+                    filter: snapFilter,
+                    videoPlayer: SnapVideoPreview(key: ValueKey(snap!.path), path: snap!.path, filter: snapFilter),
+                  ),
+                  SmartFilterLayer(spec: snapSmart),
+                ]),
+                onFilters: () async {
+                  final edited = await openSmartFilterEditor(context,
+                      aspectRatio: 1,
+                      initial: snapSmart,
+                      media: snapMediaPreview(
+                        path: snap!.path,
+                        video: snapVideo,
+                        filter: snapFilter,
+                        videoPlayer: SnapVideoPreview(key: ValueKey('${snap!.path}-f'), path: snap!.path, filter: snapFilter),
+                      ));
+                  if (edited != null && mounted) setState(() => snapSmart = edited);
+                },
                 onChanged: () => setState(() {}),
                 onAudience: (value) => setState(() => audience = value),
                 onDiscard: () => setState(() {
@@ -319,6 +346,7 @@ class _MemoriesState extends ConsumerState<MemoriesScreen> {
           decorations: (item['decorations'] as List?) ?? const [],
           isVideo: item['media_kind'] == 'video',
           filter: item['filter'] as String?,
+          filterSpec: item['filter_spec'],
           autoplay: autoplay),);
 
   Widget memoryFeed(List<Map> items) {

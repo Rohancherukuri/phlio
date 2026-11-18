@@ -1,3 +1,4 @@
+import '../fact_checks/fact_checks.dart';
 import 'stream_title_details.dart';
 import 'dart:async';
 import 'package:dio/dio.dart' show DioException;
@@ -223,19 +224,29 @@ class ContentSurface extends StatelessWidget {
   final Widget child;
   final bool showEngagement;
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onLongPress: () => showContentShare(context, '$platform/$contentId'),
+  Widget build(BuildContext context) {
+    final target = '$platform/$contentId';
+    final factChecks = factCheckPlatforms.contains(platform);
+    return GestureDetector(
+        // Social, Rooms and News: long-press also offers "Add context".
+        onLongPress: () => factChecks
+            ? showFactCheckActions(context, target,
+                onShare: () => showContentShare(context, target))
+            : showContentShare(context, target),
         child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               child,
+              // Community fact check (only when there's something to show).
+              if (factChecks) FactCheckSection(target: target),
               if (showEngagement)
                 Padding(
                     padding: const EdgeInsets.only(top: PhlioSpacing.xs),
                     child: EngagementRow(path: '$platform/$contentId')),
             ]),
       );
+  }
 }
 
 /// The one engagement bar used by every Phlio platform.

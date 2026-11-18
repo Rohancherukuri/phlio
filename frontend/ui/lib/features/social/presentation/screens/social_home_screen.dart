@@ -9,6 +9,7 @@ import '../widgets/stories_bar.dart';
 import '../widgets/social_clips_view.dart';
 import '../widgets/social_feed_view.dart';
 import '../widgets/social_videos_view.dart';
+import '../widgets/memberships.dart';
 
 /// Scroll-linked avatar geometry, matching the continuous collapse in the reference.
 class SocialHomeScreen extends ConsumerStatefulWidget {
@@ -40,6 +41,8 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
   @override
   void initState() {
     super.initState();
+    // Opening a locked members-only video shows the Join sheet.
+    membershipGate.addListener(_membershipGate);
     _tabs.addListener(_tabChanged);
   }
 
@@ -100,8 +103,16 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
     return false;
   }
 
+  void _membershipGate() {
+    final video = membershipGate.value;
+    if (video == null || !mounted) return;
+    membershipGate.value = null;
+    showJoinMembership(context, video.creator, video: video);
+  }
+
   @override
   void dispose() {
+    membershipGate.removeListener(_membershipGate);
     _tabsInst?.removeListener(_tabChanged);
     _tabsInst?.dispose();
     _foldInst?.dispose();

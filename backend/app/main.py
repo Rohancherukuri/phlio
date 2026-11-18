@@ -72,6 +72,9 @@ async def lifespan(app: FastAPI):
     # Free hosting: stop the service from falling asleep (no-op unless KEEP_AWAKE=true).
     from app.infrastructure import keep_awake
     awake = asyncio.create_task(keep_awake.run(container, settings.keep_awake_interval))
+    # Demo deploys: keep the seeded community's moments inside their 24 hours.
+    from app.domains.graph import demo_refresh
+    demo = asyncio.create_task(demo_refresh.run(container))
     from app.domains.graph.news import run as refresh_news
     news_worker = asyncio.create_task(refresh_news(container)) if settings.news_ingestion_enabled else None
     # Development: make sure Phlio Book has its catalogue (sample services +
@@ -102,6 +105,9 @@ async def lifespan(app: FastAPI):
         awake.cancel()
         with suppress(asyncio.CancelledError):
             await awake
+        demo.cancel()
+        with suppress(asyncio.CancelledError):
+            await demo
         # Cancelling makes the sync do one final backup before shutdown.
         state_sync.cancel()
         with suppress(asyncio.CancelledError):

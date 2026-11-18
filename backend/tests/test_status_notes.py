@@ -1,0 +1,124 @@
+"""Notes above the inbox: post, visibility to followers / mutuals, likes, expiry."""
+
+from __future__ import annotations
+
+import pytest
+from httpx import AsyncClient
+
+pytestmark = pytest.mark.asyncio
+SONG = {"title": "Midnight", "artist": "Kiara", "url": "/media/stream/midnight.mp3"}
+
+
+async def login(client: AsyncClient, name: str) -> dict:
+    r = await client.post("/api/v1/auth/login", json={"identifier": name, "password": "password123"})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['tokens']['access_token']}"}
+
+
+async def follow(client, headers, username):
+    assert (await client.put(f"/api/v1/social/creators/{username}/follow", headers=headers)).status_code == 204
+
+
+async def test_note_reaches_followers_and_likes(client: AsyncClient) -> None:
+    kiara, neha = await login(client, "artbykiara"), await login(client, "neha")
+    r = await client.post("/api/v1/social/notes", headers=kiara,
+                          json={"text": "  studio   day ", "music": SONG,
+                                "location": {"name": "Bandra", "lat": 19.06, "lng": 72.83}})
+    assert r.status_code == 201, r.text
+    assert r.json()["text"] == "studio day"
+
+    assert (await client.get("/api/v1/social/notes", headers=neha)).json()["items"] == []
+    await follow(client, neha, "artbykiara")
+    items = (await client.get("/api/v1/social/notes", headers=neha)).json()["items"]
+    assert [n["text"] for n in items] == ["studio day"]
+    assert items[0]["music"]["title"] == "Midnight" and items[0]["like_count"] is None
+
+    author = items[0]["author"]["id"]
+    assert (await client.put(f"/api/v1/social/notes/{author}/like", headers=neha)).json() == {"liked": True}
+    mine = (await client.get("/api/v1/social/notes", headers=kiara)).json()["mine"]
+    assert mine["like_count"] == 1
+    assert (await client.get("/api/v1/social/notes", headers=neha)).json()["items"][0]["liked_by_me"] is True
+
+    assert (await client.delete("/api/v1/social/notes/mine", headers=kiara)).status_code == 204
+    assert (await client.get("/api/v1/social/notes", headers=neha)).json()["items"] == []
+
+
+async def test_mutuals_only_and_validation(client: AsyncClient) -> None:
+    kiara, neha = await login(client, "artbykiara"), await login(client, "neha")
+    await follow(client, neha, "artbykiara")
+    await client.post("/api/v1/social/notes", headers=kiara, json={"text": "close friends", "audience": "mutuals"})
+    assert (await client.get("/api/v1/social/notes", headers=neha)).json()["items"] == []
+    await follow(client, kiara, "neha")
+    assert len((await client.get("/api/v1/social/notes", headers=neha)).json()["items"]) == 1
+
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"text": " "})).status_code == 422
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"text": "x" * 61})).status_code == 422
+    bad_gif = {"gif": {"url": "https://evil.example/a.gif"}}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json=bad_gif)).status_code == 422
+    bad_song = {"music": {**SONG, "url": "javascript:alert(1)"}}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json=bad_song)).status_code == 422
+
+
+async def test_expired_note_hidden(client: AsyncClient) -> None:
+    import datetime as dt
+
+    from app.api.v1 import status_notes
+
+    kiara, neha = await login(client, "artbykiara"), await login(client, "neha")
+    await follow(client, neha, "artbykiara")
+    await client.post("/api/v1/social/notes", headers=kiara, json={"text": "old"})
+    real = status_notes._now
+    status_notes._now = lambda: real() + dt.timedelta(hours=25)
+    try:
+        body = (await client.get("/api/v1/social/notes", headers=neha)).json()
+        assert body["items"] == []
+    finally:
+        status_notes._now = real
+
+
+async def test_bubble_style_and_coarse_location(client: AsyncClient) -> None:
+    kiara = await login(client, "artbykiara")
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={
+        "text": "we did it", "color": "#7c4dff", "effect": "confetti",
+        "location": {"name": "KPHB Colony", "lat": 17.493812, "lng": 78.391245}})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["color"] == "#7C4DFF" and body["effect"] == "confetti"
+    assert body["location"]["lat"] == 17.49 and body["location"]["lng"] == 78.39
+    bad = await client.post("/api/v1/social/notes", headers=kiara, json={"text": "x", "effect": "explode"})
+    assert bad.status_code == 422
+    bad = await client.post("/api/v1/social/notes", headers=kiara, json={"text": "x", "color": "red"})
+    assert bad.status_code == 422
+
+
+async def test_music_sources(client: AsyncClient) -> None:
+    kiara = await login(client, "artbykiara")
+    spotify = {"title": "Song", "artist": "A", "url": "https://open.spotify.com/track/abc123", "source": "spotify"}
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={"music": spotify})
+    assert r.status_code == 201 and r.json()["music"]["source"] == "spotify"
+    fake = {**spotify, "url": "https://evil.example/x"}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": fake})).status_code == 422
+
+    up = await client.post("/api/v1/social/notes/audio", headers=kiara,
+                           files={"file": ("my_song.mp3", b"ID3fake-audio", "audio/mpeg")})
+    if up.status_code == 422:  # ffprobe present and rejected the fake bytes: fine
+        return
+    assert up.status_code == 201, up.text
+    music = up.json()
+    assert music["source"] == "local" and music["url"].startswith("/media/post_uploads/note_")
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={"music": music})
+    assert r.status_code == 201 and r.json()["music"]["title"] == "my song"
+    sneaky = {**music, "url": "/media/post_uploads/other.mp3"}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": sneaky})).status_code == 422
+    bad = await client.post("/api/v1/social/notes/audio", headers=kiara, files={"file": ("x.exe", b"MZ", "application/x-msdownload")})
+    assert bad.status_code == 422
+
+
+async def test_song_clip(client: AsyncClient) -> None:
+    kiara = await login(client, "artbykiara")
+    song = {**SONG, "clip_start": 42.5, "clip_length": 15, "explicit": True}
+    r = await client.post("/api/v1/social/notes", headers=kiara, json={"music": song})
+    assert r.status_code == 201
+    assert r.json()["music"]["clip_start"] == 42.5 and r.json()["music"]["clip_length"] == 15
+    too_long = {**SONG, "clip_length": 60}
+    assert (await client.post("/api/v1/social/notes", headers=kiara, json={"music": too_long})).status_code == 422

@@ -2,6 +2,7 @@ import 'video_options_menu.dart';
 import 'video_details_sheet.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import 'video_thumbnail.dart';
+import 'memberships.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'creator_follow_button.dart';
@@ -178,6 +179,14 @@ class SocialVideoCard extends ConsumerWidget {
                       aspectRatio: 16 / 9,
                       child: Stack(fit: StackFit.expand, children: [
                         VideoThumbnail(url: video.thumbAsset),
+                        if (video.playable?.locked == true)
+                          LockedVeil(video: video.playable!),
+                        if (video.playable?.membersOnly == true)
+                          Positioned(
+                              left: 8,
+                              top: 8,
+                              child: MembersOnlyTag(
+                                  locked: video.playable!.locked)),
                         Positioned(
                             right: 8,
                             bottom: 8,

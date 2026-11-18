@@ -65,6 +65,8 @@ dependencies:
   # Location sharing: map + device location.
   google_maps_flutter: ^2.10.0
   geolocator: ^13.0.2
+  # Neighbourhood names from the phone's own geocoder (Notes location).
+  geocoding: ^3.0.0
   livekit_client: ^2.13.1
   country_picker: ^2.0.28
   flutter_contacts: 1.1.9+2
@@ -101,6 +103,7 @@ flutter:
     - assets/shaders/moment_backdrop.frag
     - assets/shaders/profile_fx.frag
     - assets/shaders/hacker_theme.frag
+    - assets/shaders/note_effects.frag
   uses-material-design: true
 
   # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker

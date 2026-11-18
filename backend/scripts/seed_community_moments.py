@@ -15,7 +15,9 @@ import random
 
 from app.core.container import build_container
 from app.domains.graph.service import key
-from scripts.run_graph_demo import settings
+from scripts.run_graph_demo import settings as local_settings
+
+settings = local_settings
 
 TOPICS = ["Design", "Gaming", "Music", "Code", "Travel", "Food", "Fitness", "Photography", "Books", "Science"]
 FILM_CAPTIONS = [
@@ -51,8 +53,15 @@ def stamp(moment):
     return moment.isoformat()
 
 
-async def main():
-    c = await build_container(settings)
+async def main(cloud: bool = False):
+    """Seeds the local graph, or with ``cloud`` the deployed one (Surreal Cloud,
+    credentials from backend/.env.publish, like run_seeded_spaces --cloud)."""
+    if cloud:
+        from scripts.run_seeded_spaces import cloud_settings
+        target = cloud_settings()
+    else:
+        target = settings
+    c = await build_container(target)
     now = dt.datetime.now(dt.UTC)
     try:
         members = {}
@@ -178,4 +187,9 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Seed community moments and highlights.")
+    parser.add_argument("--cloud", action="store_true",
+                        help="write to Surreal Cloud (backend/.env.publish) instead of the local graph")
+    asyncio.run(main(parser.parse_args().cloud))

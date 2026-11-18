@@ -1,6 +1,7 @@
 // Video likes summary (for cards) and the full "Details" sheet (for the
 // player), shared by the Social Videos tab and Social Explore → Videos.
 
+import '../../../../shared/fact_checks/fact_checks.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../../../design_system/widgets/phlio_icons.dart';
@@ -289,6 +290,10 @@ class _VideoDetails extends ConsumerWidget {
                   .whereType<String>()
                   .join(' · ')),
         const _Rule(),
+        // Community fact check: "Readers added context".
+        FactCheckSection(
+            target: 'social/${video.contentId ?? video.id}',
+            padding: const EdgeInsets.only(bottom: PhlioSpacing.md)),
         // Description
         Text('Description', style: PhlioTypography.title),
         const SizedBox(height: PhlioSpacing.sm),

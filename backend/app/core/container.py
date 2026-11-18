@@ -189,22 +189,23 @@ async def _build_repositories(settings: Settings):
     from app.infrastructure.database.surreal.social_repo import SurrealSocialRepository
 
     db = await create_surreal_connection(settings)
-    # Agent conversation history, Book, Pay and Activity stay in-memory even
-    # in "surreal" mode for this build stage — Agent history is ephemeral by
-    # design, while Book/Pay/Activity get Surreal repositories alongside the
-    # existing four once their schemas land in data/surrealdb/schema/.
-    from app.infrastructure.database.memory.activity_repo import InMemoryActivityRepository
-    from app.infrastructure.database.memory.agent_repo import InMemoryAgentRepository
+    # Every platform's data lives in SurrealDB in this mode (locally and in
+    # the cloud): identity, Social, Rooms, Shop, Book, Pay, Activity and the
+    # Agent's conversation history. (Media files and SQLite stores for DMs,
+    # social videos, music links and payments go to object storage instead;
+    # see app/infrastructure/media_sync.py.)
+    from app.infrastructure.database.surreal.activity_repo import SurrealActivityRepository
+    from app.infrastructure.database.surreal.agent_repo import SurrealAgentRepository
     from app.infrastructure.database.surreal.book_repo import SurrealBookRepository
-    from app.infrastructure.database.memory.pay_repo import InMemoryPayRepository
+    from app.infrastructure.database.surreal.pay_repo import SurrealPayRepository
 
     return (
         SurrealIdentityRepository(db),
         SurrealSocialRepository(db),
         SurrealRoomsRepository(db),
         SurrealShopRepository(db),
-        InMemoryAgentRepository(),
+        SurrealAgentRepository(db),
         SurrealBookRepository(db),
-        InMemoryPayRepository(),
-        InMemoryActivityRepository(),
+        SurrealPayRepository(db),
+        SurrealActivityRepository(db),
     )

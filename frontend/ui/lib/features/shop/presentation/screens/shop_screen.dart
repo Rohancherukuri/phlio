@@ -7,6 +7,7 @@ import 'package:phlio/shared/widgets/notifications_button.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../shared/events/festival_banner.dart';
 
 import '../../../../core/result/result.dart';
 import '../../../../design_system/colors.dart';
@@ -20,6 +21,7 @@ import '../../../../shared/widgets/shimmer_loading.dart';
 import '../../domain/entities/product_entity.dart';
 import '../controllers/shop_controller.dart';
 import '../widgets/product_card.dart';
+import 'parcel_tracking_screen.dart';
 
 class ShopScreen extends ConsumerWidget {
   const ShopScreen({super.key});
@@ -31,7 +33,15 @@ class ShopScreen extends ConsumerWidget {
     final selectedCategory = ref.watch(selectedShopCategoryProvider);
 
     return Scaffold(
-      appBar: AppBar(actions: const [PhlioNotificationsButton()],
+      appBar: AppBar(actions: [
+        IconButton(
+          tooltip: 'Track parcels',
+          icon: const Icon(Icons.local_shipping_outlined),
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ParcelTrackingScreen())),
+        ),
+        const PhlioNotificationsButton(),
+      ],
           title: Text('Phlio Shop', style: PhlioTypography.displayMedium)),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -41,6 +51,8 @@ class ShopScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(PhlioSpacing.lg),
           children: [
+            // Festive sales: Diwali, Black Friday, Christmas, 11.11...
+            const FestivalBanner(platform: 'shop'),
             Container(
               padding: const EdgeInsets.all(PhlioSpacing.xl),
               decoration: BoxDecoration(

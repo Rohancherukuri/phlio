@@ -890,6 +890,39 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
   /// Template tapped with your media: let photos decode, then export.
   bool _autoApplying = false;
   Future<void> _applyNow() async {
+    // Collages: one photo isn't enough. Offer to fill the other frames
+    // first (pick more photos, or repeat this one) so the collage is
+    // actually applied instead of exporting empty frames.
+    final empty = _els.where((e) => e.isSlot && e.photo == null && !e.video).toList();
+    if (empty.isNotEmpty) {
+      final choice = await _askFillFrames(empty.length);
+      if (!mounted) return;
+      if (choice == null) return; // stay in the editor to arrange by hand
+      if (choice == 'pick') {
+        final picked = await ImagePicker().pickMultiImage(
+            maxWidth: 2160, imageQuality: 92, limit: empty.length >= 2 ? empty.length : null);
+        if (!mounted) return;
+        if (picked.isEmpty) return; // cancelled: stay in the editor
+        setState(() {
+          for (final (i, p) in picked.take(empty.length).indexed) {
+            empty[i]
+              ..photo = p.path
+              ..photoOffset = Offset.zero
+              ..photoScale = 1;
+          }
+        });
+      } else if (choice == 'repeat' && widget.media != null && !widget.media!.video) {
+        setState(() {
+          for (final (i, e) in empty.indexed) {
+            // Same photo, framed a little differently in each frame.
+            e
+              ..photo = widget.media!.path
+              ..photoScale = 1.15 + (i % 3) * .2
+              ..photoOffset = Offset(((i % 2) * 2 - 1) * 12.0, ((i ~/ 2) % 2 * 2 - 1) * 10.0);
+          }
+        });
+      }
+    }
     setState(() => _autoApplying = true);
     try {
       for (final e in _els) {
@@ -903,6 +936,48 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
       if (mounted) setState(() => _autoApplying = false);
     }
   }
+
+  /// "This collage has N more frames": pick photos / repeat / leave empty.
+  /// Null means stay in the editor.
+  Future<String?> _askFillFrames(int count) => showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: const Color(0xFF151A23),
+        showDragHandle: true,
+        builder: (sheet) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(count == 1 ? 'One more frame to fill' : '$count more frames to fill',
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            const Text('Make the collage complete before it goes on your moment.',
+                style: TextStyle(color: Colors.white60)),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: Colors.white),
+              title: Text('Add $count photo${count == 1 ? '' : 's'}', style: const TextStyle(color: Colors.white)),
+              subtitle: const Text('Every frame gets one, in order', style: TextStyle(color: Colors.white54)),
+              onTap: () => Navigator.pop(sheet, 'pick'),
+            ),
+            if (widget.media != null && !widget.media!.video)
+              ListTile(
+                leading: const Icon(Icons.auto_awesome_mosaic_outlined, color: Colors.white),
+                title: const Text('Repeat my photo', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Same photo, cropped differently in each frame',
+                    style: TextStyle(color: Colors.white54)),
+                onTap: () => Navigator.pop(sheet, 'repeat'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.tune_rounded, color: Colors.white),
+              title: const Text('Arrange it myself', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(sheet),
+            ),
+            ListTile(
+              leading: const Icon(Icons.crop_square_rounded, color: Colors.white54),
+              title: const Text('Use with empty frames', style: TextStyle(color: Colors.white70)),
+              onTap: () => Navigator.pop(sheet, 'empty'),
+            ),
+          ]),
+        ),
+      );
 
   Future<void> _export({bool auto = false}) async {
     final empty = _els.where((e) => e.isSlot && e.photo == null && !e.video).length;

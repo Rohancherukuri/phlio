@@ -6,9 +6,12 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 // Likes are applied optimistically (`PostEntity.toggleLikedOptimistically`)
 // and rolled back if the request fails, so tapping the heart feels instant.
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/service_locator.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/result/result.dart';
 import '../../domain/entities/comment_entity.dart';
 import '../../domain/entities/post_entity.dart';
@@ -50,6 +53,13 @@ final socialRepositoryProvider =
 final feedControllerProvider =
     AsyncNotifierProvider<FeedController, FeedState>(FeedController.new);
 
+/// Posts published since the feed was loaded, waiting behind the
+/// "New posts" pill (0 hides it).
+final newPostsCountProvider = StateProvider<int>((ref) => 0);
+
+/// How often the open feed checks for posts published by others.
+const _newPostsInterval = Duration(seconds: 40);
+
 /// Comments for one post, fetched when the comments sheet opens. Invalidated
 /// after every successful add so the list refetches with the new comment.
 final commentsProvider = FutureProvider.autoDispose
@@ -75,7 +85,55 @@ class FeedController extends AsyncNotifier<FeedState> {
     _toggleLikeUseCase = ToggleLikeUseCase(repository);
     _addCommentUseCase = AddCommentUseCase(repository);
 
+    // A saved copy may have been shown at launch (slow server): reload as
+    // soon as the fresh feed arrives instead of keeping old posts on screen.
+    final cache = getIt<ApiClient>().cache;
+    final updates = cache.updates.where((path) => path == '/social/feed').listen((_) => _reloadQuietly());
+    // Others keep posting while the feed is open: check now and then and
+    // offer them behind a "New posts" pill (no jump while reading).
+    final timer = Timer.periodic(_newPostsInterval, (_) => _checkForNewPosts());
+    ref.onDispose(() {
+      updates.cancel();
+      timer.cancel();
+    });
+
     return _loadFirstPage();
+  }
+
+  FeedState? _pending;
+
+  Future<void> _reloadQuietly() async {
+    final result = await AsyncValue.guard(_loadFirstPage);
+    if (result.hasValue) state = result;
+  }
+
+  Future<void> _checkForNewPosts() async {
+    final current = state.valueOrNull;
+    if (current == null || state.isLoading) return;
+    final result = await _getFeedUseCase();
+    result.when(
+      success: (page) {
+        final known = {for (final p in current.posts) p.id};
+        final fresh = page.items.takeWhile((p) => !known.contains(p.id)).length;
+        if (fresh > 0) {
+          _pending = FeedState(posts: page.items, nextCursor: page.nextCursor, hasMore: page.hasMore);
+          ref.read(newPostsCountProvider.notifier).state = fresh;
+        }
+      },
+      failure: (_) {},
+    );
+  }
+
+  /// Shows the posts behind the "New posts" pill.
+  Future<void> showNewPosts() async {
+    final pending = _pending;
+    _pending = null;
+    ref.read(newPostsCountProvider.notifier).state = 0;
+    if (pending != null) {
+      state = AsyncData(pending);
+    } else {
+      await refresh();
+    }
   }
 
   Future<FeedState> _loadFirstPage() async {
@@ -91,6 +149,8 @@ class FeedController extends AsyncNotifier<FeedState> {
   }
 
   Future<void> refresh() async {
+    _pending = null;
+    ref.read(newPostsCountProvider.notifier).state = 0;
     state = const AsyncLoading<FeedState>().copyWithPrevious(state);
     state = await AsyncValue.guard(_loadFirstPage);
   }

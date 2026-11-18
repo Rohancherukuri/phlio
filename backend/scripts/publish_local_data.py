@@ -277,8 +277,13 @@ def surreal_cli() -> tuple[str, str]:
     return surreal, subprocess.run([surreal, "version"], capture_output=True, text=True).stdout.strip()
 
 
-def publish_database(settings: Settings, slim: bool) -> None:
-    """Exports the local SurrealDB and imports it into Surreal Cloud."""
+def publish_database(settings: Settings, slim: bool, fresh: bool = False) -> None:
+    """Exports the local SurrealDB and imports it into Surreal Cloud.
+
+    The import only adds records, so it fails on a cloud database that already
+    holds them. ``fresh`` first removes the cloud database (everything created
+    on the deployed app since the last import is lost) and imports a clean copy.
+    """
     surreal, cli = surreal_cli()
     # The CLI imports over HTTP(S); accept the wss:// address Surreal Cloud shows too.
     endpoint = need("SURREAL_CLOUD_ENDPOINT").replace("wss://", "https://").replace("ws://", "http://").removesuffix("/rpc")
@@ -290,10 +295,37 @@ def publish_database(settings: Settings, slim: bool) -> None:
     # The local names are read from the local database; the cloud ones may differ.
     namespace = os.environ.get("SURREAL_CLOUD_NAMESPACE", "").strip() or settings.surreal_namespace
     database = os.environ.get("SURREAL_CLOUD_DATABASE", "").strip() or settings.surreal_database
+    if fresh:
+        print(f"Removing the cloud database {namespace}/{database} for a clean import …")
+        remove_cloud_database(endpoint, auth, namespace, database)
     print(f"Importing into {endpoint} as {namespace}/{database} …")
-    subprocess.run([surreal, "import", "--endpoint", endpoint, *auth, "--namespace", namespace,
-                    "--database", database, str(dump)], check=True)
+    result = subprocess.run([surreal, "import", "--endpoint", endpoint, *auth, "--namespace", namespace,
+                             "--database", database, str(dump)])
+    if result.returncode != 0:
+        # (CalledProcessError would print the command line, password included.)
+        sys.exit(
+            f"\nThe import into {namespace}/{database} failed (see the error above).\n"
+            "If it says a record 'already exists', the cloud database already has this data:\n"
+            "  * nothing to do if it was imported before, or\n"
+            "  * run again with --fresh to replace it with your local copy (changes made on the\n"
+            "    deployed app since the last import are lost), with the Render service suspended.")
     print(f"  database imported. On Render set SURREAL_NAMESPACE={namespace} and SURREAL_DATABASE={database}.")
+
+
+def remove_cloud_database(endpoint: str, auth: list[str], namespace: str, database: str) -> None:
+    """REMOVE DATABASE on the cloud instance (HTTP /sql, root credentials)."""
+    if "--token" in auth:
+        headers, basic = {"Authorization": f"Bearer {auth[auth.index('--token') + 1]}"}, None
+    else:
+        headers, basic = {}, (auth[auth.index("--username") + 1], auth[auth.index("--password") + 1])
+    if not re.fullmatch(r"[A-Za-z0-9_]+", database):
+        sys.exit(f"Refusing to remove a database with an unusual name: {database!r}")
+    with httpx.Client(timeout=60) as http:
+        res = http.post(f"{endpoint}/sql", content=f"REMOVE DATABASE IF EXISTS {database};",
+                        auth=basic, headers={**headers, "Accept": "application/json",
+                                             "Surreal-NS": namespace, "NS": namespace})
+    if res.status_code != 200 or any(r.get("status") == "ERR" for r in (res.json() if res.content else [])):
+        sys.exit(f"Could not remove {namespace}/{database}: {res.status_code} {res.text[:300]}")
 
 
 # -- 2. media -----------------------------------------------------------------------
@@ -394,6 +426,8 @@ def main() -> None:
     parser.add_argument("--only", choices=["db", "media", "state", "move-state"], action="append",
                         help="run only these parts (repeatable); default: db, state and media")
     parser.add_argument("--slim", action="store_true", help="leave event-outbox history out of the database import")
+    parser.add_argument("--fresh", action="store_true",
+                        help="db: remove the cloud database first, then import (replaces cloud data with local)")
     parser.add_argument("--workers", type=int, default=4, help="parallel media uploads")
     parser.add_argument("--export-only", choices=["2", "3"],
                         help="only export the local database, prepared for SurrealDB 2.x or 3.x (no upload)")
@@ -409,7 +443,7 @@ def main() -> None:
     if "move-state" in parts:
         move_state(args.workers)
     if "db" in parts:
-        publish_database(settings, args.slim)
+        publish_database(settings, args.slim, args.fresh)
     if "state" in parts:
         print("State (SQLite databases + DM files):")
         publish_state(settings)

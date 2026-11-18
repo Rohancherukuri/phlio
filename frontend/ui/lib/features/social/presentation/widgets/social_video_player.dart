@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../controllers/video_playback_controller.dart';
 import 'creator_follow_button.dart';
+import 'floating_video_window.dart';
 import 'video_overlay_controls.dart';
 
 class SocialVideoPlayer extends ConsumerStatefulWidget {
@@ -384,20 +385,12 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                         label: const Text('Unlock controls'))),
             ]);
           }
-          return Stack(
-            children: [
-              Positioned(
-                left: (bounds.maxWidth - width - 12 + offset.dx)
-                    .clamp(0.0, bounds.maxWidth - width),
-                top: (bounds.maxHeight - height - 100 + offset.dy).clamp(
-                  0.0,
-                  (bounds.maxHeight - height).clamp(0.0, double.infinity),
-                ),
-                width: width,
-                height: height,
-                child: content,
-              ),
-            ],
+          // Minimised: a compact draggable window (floating_video_window.dart).
+          return FloatingVideoWindow(
+            controller: c,
+            picture: picture,
+            bounds: bounds,
+            onExpand: () => c.setMode(SocialPlayerMode.expanded),
           );
         },
       ),

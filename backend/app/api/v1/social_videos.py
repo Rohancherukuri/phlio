@@ -80,6 +80,8 @@ async def video_response(row, c, creator=None, details=None):
         location=details.get("location"),
         related_video=details.get("related_video"),
         paid_promotion=details.get("paid_promotion", False),
+        members_only=bool(details.get("members_only", False)),
+        creator_id=row["creator"],
     )
 
 
@@ -123,6 +125,8 @@ async def videos(
             and key('block', creator.id, user.id) not in blocked):
             result.append(await video_response(row, c, creator,
                 details.get(key('platform_content', 'social', row['id']), {})))
+    from app.api.v1.memberships import gate_videos
+    result = await gate_videos(c, user.id, result)
     await c.cache.put(cache_key, result)
     return result
 
@@ -167,12 +171,17 @@ async def upload_video(
     location: str | None = Form(None, max_length=120),
     related_video: str | None = Form(None, max_length=64),
     paid_promotion: bool = Form(False),
+    members_only: bool = Form(False),
     playlist_ids: str = Form("", max_length=2000),
     user: User = Depends(get_current_user),
     c: Container = Depends(get_container),
 ):
     from app.api.v1.music import prepare_selection, attach_selection
     music = await prepare_selection(c,user.id,kind,music_id)
+    if members_only:
+        from app.api.v1.memberships import _plan_out
+        if not _plan_out(await c.graph.store.get(key("membership_plan", user.id))):
+            raise HTTPException(409, "Set up your membership before posting members-only videos.")
     title = title.strip()
     suffix = Path(file.filename or "").suffix.lower()
     if not title or suffix not in {".mp4", ".mov", ".m4v", ".webm"}:
@@ -217,7 +226,8 @@ async def upload_video(
             {k: v for k, v in existing.items() if k != "id"},
             description=description.strip(), visibility=visibility, audience=audience,
             location=(location or "").strip() or None,
-            related_video=related_video or None, paid_promotion=paid_promotion))
+            related_video=related_video or None, paid_promotion=paid_promotion,
+            members_only=members_only))
     except BaseException:
         target.unlink(missing_ok=True)
         cover.unlink(missing_ok=True)
@@ -241,6 +251,8 @@ async def upload_video(
         kind=kind,
         duration_seconds=round(duration),
         thumbnail_url=thumbnail_url,
+        members_only=members_only,
+        locked=False,
     )
 
 

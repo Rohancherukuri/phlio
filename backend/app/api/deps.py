@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import Depends, Header, Request
 
-from app.common.exceptions import UnauthorizedError
+from app.common.exceptions import NotFoundError, UnauthorizedError
 from app.core.container import Container
 from app.domains.activity.service import ActivityService
 from app.domains.agent.service import AgentService
@@ -82,7 +82,13 @@ async def get_current_user(
 
     token = authorization.split(" ", 1)[1].strip()
     user_id = decode_token(token, "access", container.settings)
-    return await container.identity_service.get_user_or_raise(user_id)
+    try:
+        return await container.identity_service.get_user_or_raise(user_id)
+    except NotFoundError:
+        # A valid token for an account that no longer exists (deleted, or the
+        # database was replaced): 401, so the app signs out cleanly instead of
+        # every screen failing with 404s.
+        raise UnauthorizedError("This account no longer exists. Sign in again.") from None
 
 
 def get_agent_tools(

@@ -8,6 +8,7 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 import httpx
 from app.domains.graph.service import key
+from app.domains.graph import newsapi
 
 CATEGORIES = ['Top International', 'For You', 'Blindspot', 'Local News', 'Sports', 'Business', 'Entertainment', 'Science', 'International', 'Technology', 'Politics', 'AI']
 FEEDS = [(category, 'The Guardian', f'https://www.theguardian.com/{section}/rss') for category, section in [
@@ -55,7 +56,31 @@ async def refresh(c):
                     imported += 1
             except (httpx.HTTPError, ET.ParseError, ValueError):
                 log.exception('News feed unavailable: %s', publisher)
+        imported += await _newsapi(c, client)
     return imported
+
+_newsapi_last = None
+
+async def _newsapi(c, client):
+    '''NewsAPI headlines, at most every news_api_interval_minutes (free plan: 100 requests/day).'''
+    global _newsapi_last
+    settings = c.settings
+    now = dt.datetime.now(dt.UTC)
+    if not settings.news_api_key or (_newsapi_last and now - _newsapi_last < dt.timedelta(minutes=settings.news_api_interval_minutes)):
+        return 0
+    _newsapi_last = now
+    saved = 0
+    for article in await newsapi.fetch(client, settings.news_api_key, settings.news_api_country):
+        ref = article['ref']
+        oid = key('phlio_object', 'news', ref)
+        if not await c.graph.store.get(oid):
+            await c.graph.register_object('platform', 'news.article', ref, article['title'])
+        summary = article.pop('summary', '')
+        await c.graph.store.put(key('platform_content', 'news', ref), dict(
+            **article, platform='news', domain_ref=ref, object_id=oid,
+            kind='article', demo=False, description=summary, fetched_at=now.isoformat()))
+        saved += 1
+    return saved
 
 async def run(c):
     while True:
