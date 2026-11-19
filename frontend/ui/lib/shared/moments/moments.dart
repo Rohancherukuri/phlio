@@ -39,7 +39,10 @@ import '../giphy/giphy_picker.dart';
 import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
+import 'moment_activity.dart';
 import 'stickers/sticker_responses.dart';
+import '../media/story_fx_view.dart';
+import 'package:flutter/services.dart';
 import 'templates/template_media.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 
@@ -395,9 +398,14 @@ class _MomentStoryViewerState extends ConsumerState<MomentStoryViewer> {
     super.dispose();
   }
 
+  // Full screen: the moment runs edge to edge under the status bar; the
+  // header and bottom bar float over it (Instagram / Bond layout).
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent),
+      child: Scaffold(
         backgroundColor: Colors.black,
+        resizeToAvoidBottomInset: false,
         body: GestureDetector(
           onVerticalDragUpdate: (d) =>
               setState(() => _drag = math.max(0, _drag + d.delta.dy)),
@@ -428,7 +436,7 @@ class _MomentStoryViewerState extends ConsumerState<MomentStoryViewer> {
             ),
           ),
         ),
-      );
+      ));
 }
 
 class _AuthorMoments extends ConsumerStatefulWidget {
@@ -862,14 +870,58 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     _resume();
   }
 
+  /// React: saved on the moment (the author sees it in Viewers) and sent
+  /// to their DMs. Tapping the same reaction again takes it back.
   Future<void> _react(String emoji) async {
-    setState(() => burst = emoji);
+    final current = item;
+    final dio = getIt<ApiClient>().dio;
+    if (current['my_reaction'] == emoji) {
+      setState(() => current['my_reaction'] = null);
+      try {
+        await dio.delete('/social/moments/${_mid(current)}/reaction');
+      } catch (_) {}
+      return;
+    }
+    setState(() {
+      burst = emoji;
+      current['my_reaction'] = emoji;
+    });
+    try {
+      await dio.put('/social/moments/${_mid(current)}/reaction', data: {'emoji': emoji});
+    } catch (_) {}
     try {
       await ref.read(messagingApiProvider).send(
           author['username'] as String, '$emoji Reacted to your moment');
     } catch (_) {}
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (mounted) setState(() => burst = null);
+  }
+
+  /// People icon: who watched, with their reactions.
+  Future<void> _openViewers() async {
+    final current = item;
+    _pause();
+    await showMomentViewers(context, current,
+        onComments: _openComments,
+        onCounts: (c) {
+          if (!mounted) return;
+          setState(() {
+            current['view_count'] = c['views'];
+            current['reaction_count'] = c['reactions'];
+            current['comment_count'] = c['comments'];
+          });
+        });
+    _resume();
+  }
+
+  /// Comments icon: the moment's comment thread.
+  Future<void> _openComments() async {
+    final current = item;
+    _pause();
+    await showMomentComments(context, current, isAuthor: mine, onCount: (n) {
+      if (mounted) setState(() => current['comment_count'] = n);
+    });
+    _resume();
   }
 
   Future<void> _ownerMenu() async {
@@ -938,32 +990,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           _say('Filters updated');
         }
       } else if (action == 'viewers') {
-        final data = (await dio.get('/social/moments/${_mid(item)}/viewers'))
-            .data as Map;
-        if (!mounted) return;
-        await showModalBottomSheet<void>(
-          context: context,
-          showDragHandle: true,
-          builder: (_) => SafeArea(
-            child: ListView(shrinkWrap: true, children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Text('Viewed by ${data['count']}',
-                    style: PhlioTypography.title),
-              ),
-              for (final p in data['people'] as List)
-                ListTile(
-                  leading: PhlioAvatar(
-                      name: (p as Map)['display_name'] as String? ?? '',
-                      imageUrl: p['avatar_url'] as String?,
-                      size: 40,
-                      showMomentRing: false),
-                  title: Text(p['display_name'] as String? ?? ''),
-                  subtitle: Text('@${p['username']}'),
-                ),
-            ]),
-          ),
-        );
+        await _openViewers();
       } else if (action == 'delete') {
         final id = '${item['id']}';
         await dio.delete('/social/moments/${_mid(item)}');
@@ -1027,27 +1054,40 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     final reshare =
         current['reshared_from'] is Map ? current['reshared_from'] as Map : null;
     final showReshare = reshare != null && (song == null || _showReshare);
-    return SafeArea(
-      child: Column(children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Stack(fit: StackFit.expand, children: [
+    final insets = MediaQuery.paddingOf(context);
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final barSpace = (mine ? 92.0 : 76.0) + insets.bottom;
+    final comments = (current['comment_count'] as num?)?.toInt() ?? 0;
+    return Stack(fit: StackFit.expand, children: [
               _framedMediaFor(current, video),
               for (final layer in (current['overlays'] as List? ?? const []))
                 if (current['media_kind'] == 'video')
                   _OverlayView(layer: Map.from(layer as Map)),
-              const Positioned(
+              Positioned(
                 left: 0,
                 right: 0,
                 top: 0,
-                height: 130,
-                child: DecoratedBox(
+                height: 130 + insets.top,
+                child: const DecoratedBox(
                     decoration: BoxDecoration(
                         gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [Colors.black54, Colors.transparent]))),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: barSpace + 90,
+                child: const IgnorePointer(
+                  child: DecoratedBox(
+                      decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black54, Colors.transparent]))),
+                ),
               ),
               // Tap zones: left = back, right = forward, hold = pause.
               Row(children: [
@@ -1084,7 +1124,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
               Positioned(
                 left: 8,
                 right: 4,
-                top: 6,
+                top: insets.top + 6,
                 child: Column(children: [
                   Row(children: [
                     for (var i = 0; i < items.length; i++)
@@ -1236,7 +1276,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                 Positioned(
                   left: 16,
                   right: 16,
-                  bottom: 18,
+                  bottom: barSpace + 14,
                   child: Text(current['caption'] as String,
                       textAlign: TextAlign.center,
                       style: PhlioTypography.bodyLarge.copyWith(
@@ -1260,7 +1300,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 24,
+                  bottom: barSpace + 24,
                   child: Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1279,26 +1319,61 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                     ),
                   ),
                 ),
-            ]),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 6, 10),
+              // Quick reactions while you type a reply (Instagram style).
+              if (!mine && replyFocus.hasFocus && keyboard > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: keyboard + 72,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                    for (final e in const ['😂', '😮', '😍', '😢', '👏', '🔥'])
+                      GestureDetector(
+                        onTap: () {
+                          replyFocus.unfocus();
+                          _react(e);
+                        },
+                        child: Text(e, style: const TextStyle(fontSize: 34)),
+                      ),
+                  ]),
+                ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: keyboard > 0 ? keyboard : insets.bottom,
+          child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 6, 10),
           child: mine
-              ? Row(children: [
-                  const Icon(Icons.visibility_outlined,
-                      color: Colors.white70, size: 20),
-                  const SizedBox(width: 6),
-                  Text(widget.highlight ? 'Highlight' : 'Your moment',
-                      style: PhlioTypography.caption
-                          .copyWith(color: Colors.white70)),
-                  const Spacer(),
-                  TextButton.icon(
-                      onPressed: _ownerMenu,
-                      icon: const Icon(Icons.more_horiz_rounded,
-                          color: Colors.white),
-                      label: const Text('More',
-                          style: TextStyle(color: Colors.white))),
+              ? Column(mainAxisSize: MainAxisSize.min, children: [
+                  // Bond-style: ︿, then viewers and comments in the middle.
+                  GestureDetector(
+                    onTap: _openViewers,
+                    child: const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 26),
+                  ),
+                  Row(children: [
+                    const SizedBox(width: 56),
+                    Expanded(
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        _CountButton(
+                          tooltip: 'Viewers',
+                          icon: Icons.people_alt_outlined,
+                          count: (current['view_count'] as num?)?.toInt() ?? 0,
+                          badge: ((current['reaction_count'] as num?)?.toInt() ?? 0) > 0 ? '❤️' : null,
+                          onTap: _openViewers,
+                        ),
+                        const SizedBox(width: 26),
+                        _CountButton(
+                          tooltip: 'Comments',
+                          icon: Icons.chat_bubble_outline_rounded,
+                          count: comments,
+                          onTap: _openComments,
+                        ),
+                      ]),
+                    ),
+                    IconButton(
+                        tooltip: widget.highlight ? 'Highlight options' : 'More',
+                        onPressed: _ownerMenu,
+                        icon: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 28)),
+                  ]),
                 ])
               : Row(children: [
                   Expanded(
@@ -1391,12 +1466,21 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                             ]),
                           ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 2),
                   IconButton(
                       tooltip: 'Like',
                       onPressed: () => _react('❤️'),
-                      icon: const Icon(Icons.favorite_border_rounded,
-                          color: Colors.white, size: 30)),
+                      icon: current['my_reaction'] == '❤️'
+                          ? const Icon(Icons.favorite_rounded, color: Color(0xFFFF3B5C), size: 30)
+                          : const Icon(Icons.favorite_border_rounded, color: Colors.white, size: 30)),
+                  if (allowComments)
+                    _CountButton(
+                      tooltip: 'Comments',
+                      icon: Icons.chat_bubble_outline_rounded,
+                      count: comments,
+                      compact: true,
+                      onTap: _openComments,
+                    ),
                   IconButton(
                       tooltip: 'Send to someone',
                       onPressed: _shareMoment,
@@ -1404,9 +1488,52 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                           color: Colors.white, size: 28)),
                 ]),
         ),
-      ]),
-    );
+        ),
+      ]);
   }
+}
+
+/// Icon with a count beside it (viewers, comments).
+class _CountButton extends StatelessWidget {
+  const _CountButton({
+    required this.icon,
+    required this.count,
+    required this.onTap,
+    required this.tooltip,
+    this.badge,
+    this.compact = false,
+  });
+  final IconData icon;
+  final int count;
+  final VoidCallback onTap;
+  final String tooltip;
+  final String? badge;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 30,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 10, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Stack(clipBehavior: Clip.none, children: [
+                Icon(icon, color: Colors.white, size: compact ? 27 : 30),
+                if (badge != null)
+                  Positioned(right: -6, bottom: -4, child: Text(badge!, style: const TextStyle(fontSize: 12))),
+              ]),
+              if (count > 0 || !compact) ...[
+                const SizedBox(width: 6),
+                Text('$count',
+                    style: TextStyle(
+                        color: Colors.white, fontSize: compact ? 15 : 22, fontWeight: FontWeight.w600)),
+              ],
+            ]),
+          ),
+        ),
+      );
 }
 
 class _PillIcon extends StatelessWidget {
@@ -1540,9 +1667,18 @@ class _MomentMedia extends StatelessWidget {
                 color: Colors.white38, size: 48)),
       );
     }
-    final looked = PhlioLook(look: look, effect: effect, child: child);
-    // Smart filters (time, weather, place…) are stored as data and drawn live.
+    // Smart filters (time, weather, place…), adjustments and story effects
+    // are stored as data and drawn live.
     final smart = FilterSpec.fromJson(item['filter_spec']);
+    Widget looked = PhlioLook(look: look, effect: effect, child: child);
+    if (smart != null && (smart.fx != null || smart.adjust.isNotEmpty)) {
+      looked = StoryFxLayer(
+          fx: smart.fx,
+          amount: smart.fxAmount,
+          adjust: smart.adjust,
+          stamp: DateTime.tryParse('${item['created_at']}')?.toLocal(),
+          child: looked);
+    }
     if (smart == null || smart.overlays.isEmpty) return looked;
     return Stack(fit: StackFit.expand, children: [looked, SmartFilterLayer(spec: smart)]);
   }

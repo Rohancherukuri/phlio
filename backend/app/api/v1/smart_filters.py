@@ -88,11 +88,30 @@ class Overlay(BaseModel):
         return self
 
 
+# Advanced editing sliders (Experience / Moment editors), each -1..1.
+ADJUSTMENTS = {"exposure", "brightness", "contrast", "saturation", "warmth", "tint", "highlights",
+               "shadows", "fade", "vignette", "grain", "sharpen", "clarity", "vibrance"}
+
+
 class FilterSpec(BaseModel):
     look: str = Field(default="normal", pattern=NAME)
     effect: str | None = Field(default=None, pattern=NAME)
     strength: float = Field(default=1, ge=0, le=1)
     overlays: list[Overlay] = Field(default_factory=list, max_length=6)
+    # Story effect from the effects catalogue (shared/media/story_fx_catalog.dart),
+    # drawn live with Flutter shaders, and its intensity.
+    fx: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,32}$")
+    fx_amount: float = Field(default=1, ge=0, le=1)
+    adjust: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("adjust")
+    @classmethod
+    def _adjust(cls, values):
+        if len(values) > len(ADJUSTMENTS) or any(k not in ADJUSTMENTS for k in values):
+            raise ValueError("Unknown adjustment.")
+        if any(not -1 <= v <= 1 for v in values.values()):
+            raise ValueError("Adjustments go from -1 to 1.")
+        return {k: round(float(v), 4) for k, v in values.items() if abs(v) > 1e-4}
 
     def legacy(self) -> str:
         """The old ``filter`` string ("look" or "look+effect")."""

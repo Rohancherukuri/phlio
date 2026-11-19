@@ -117,33 +117,64 @@ class SmartOverlay {
 }
 
 class FilterSpec {
-  FilterSpec({this.look = 'normal', this.effect, this.strength = 1, List<SmartOverlay>? overlays})
-      : overlays = overlays ?? [];
+  FilterSpec({
+    this.look = 'normal',
+    this.effect,
+    this.strength = 1,
+    List<SmartOverlay>? overlays,
+    this.fx,
+    this.fxAmount = 1,
+    Map<String, double>? adjust,
+  })  : overlays = overlays ?? [],
+        adjust = adjust ?? {};
 
   String look;
   String? effect;
   double strength;
   final List<SmartOverlay> overlays;
 
-  bool get isEmpty => overlays.isEmpty && look == 'normal' && (effect == null || effect == 'none');
+  /// Story effect (shared/media/story_fx_catalog.dart), drawn live.
+  String? fx;
+  double fxAmount;
 
-  FilterSpec copy() =>
-      FilterSpec(look: look, effect: effect, strength: strength, overlays: [for (final o in overlays) o.copy()]);
+  /// Adjust sliders from the editors (exposure, contrast, warmth…), -1..1.
+  final Map<String, double> adjust;
+
+  bool get isEmpty =>
+      overlays.isEmpty && look == 'normal' && (effect == null || effect == 'none') && fx == null && adjust.isEmpty;
+
+  FilterSpec copy() => FilterSpec(
+      look: look,
+      effect: effect,
+      strength: strength,
+      overlays: [for (final o in overlays) o.copy()],
+      fx: fx,
+      fxAmount: fxAmount,
+      adjust: {...adjust});
 
   Map<String, dynamic> toJson() => {
         'look': look,
         if (effect != null && effect != 'none') 'effect': effect,
         'strength': strength,
         'overlays': [for (final o in overlays) o.toJson()],
+        if (fx != null) 'fx': fx,
+        if (fx != null) 'fx_amount': fxAmount.clamp(0.0, 1.0),
+        if (adjust.isNotEmpty) 'adjust': {for (final e in adjust.entries) if (e.value.abs() > 1e-4) e.key: e.value.clamp(-1.0, 1.0)},
       };
 
   static FilterSpec? fromJson(Object? j) {
     if (j is! Map) return null;
+    final adjust = j['adjust'];
     return FilterSpec(
       look: '${j['look'] ?? 'normal'}',
       effect: j['effect'] as String?,
       strength: (j['strength'] as num?)?.toDouble() ?? 1,
       overlays: (j['overlays'] as List? ?? const []).map(SmartOverlay.fromJson).whereType<SmartOverlay>().toList(),
+      fx: j['fx'] as String?,
+      fxAmount: (j['fx_amount'] as num?)?.toDouble() ?? 1,
+      adjust: adjust is Map
+          ? {for (final e in adjust.entries) if (e.value is num) '${e.key}': (e.value as num).toDouble()}
+          : null,
     );
   }
 }

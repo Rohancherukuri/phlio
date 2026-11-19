@@ -47,6 +47,8 @@ TABLES = {
     "moment_highlight",
     "moment_mute",
     "moment_response",
+    "moment_reaction",
+    "moment_comment",
     "live_location",
     "profile_style",
     "chat_theme",

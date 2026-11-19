@@ -818,7 +818,7 @@ class _ProfileTabBar extends SliverPersistentHeaderDelegate {
       oldDelegate.extent != extent;
 }
 
-/// "Highlights" title + circles, only when the creator has any.
+/// "Moments" title + highlight circles, only when the creator has any.
 class _CreatorHighlights extends ConsumerWidget {
   const _CreatorHighlights({required this.user});
   final String user;
@@ -834,7 +834,7 @@ class _CreatorHighlights extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Highlights', style: PhlioTypography.title),
+          Text('Moments', style: PhlioTypography.title),
           const SizedBox(height: PhlioSpacing.sm),
           MomentHighlightsRow(user: user),
         ],
