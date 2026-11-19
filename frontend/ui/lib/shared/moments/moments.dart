@@ -500,6 +500,8 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
       if (replyFocus.hasFocus) {
         _pause();
       } else {
+        // Keyboard dismissed (back button / swipe) with nothing typed.
+        if (_replying && reply.text.trim().isEmpty && mounted) setState(() => _replying = false);
         _resume();
       }
     });
@@ -1074,119 +1076,170 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
         ),
       );
 
-  /// Someone else's moment: a frosted reply pill on the left and three
-  /// evenly spaced actions on the right (like · comments · send). While
-  /// you type, the actions slide away and the pill takes the full width,
-  /// showing GIF / photo and a send button.
+  /// Reply mode: the keyboard is up, the moment dims and the big
+  /// reactions show (Instagram). Swipe down or tap the moment to leave.
+  bool _replying = false;
+  double _lastKeyboard = 0;
+
+  void _startReply() {
+    setState(() => _replying = true);
+    // Focus after the field exists, then ask for the keyboard explicitly —
+    // Android doesn't always raise it for a field that was just built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      replyFocus.requestFocus();
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    });
+  }
+
+  void _endReply() {
+    replyFocus.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    if (mounted) setState(() => _replying = false);
+  }
+
+  /// Someone else's moment, Instagram layout: a "Send message" pill, then
+  /// like · comments · send on the right, all on one centre line. Tapping
+  /// the pill enters reply mode: the pill takes the full width, the
+  /// keyboard comes up, and photo / GIF / mic and Send appear inside it.
   Widget _viewerBar(Map current, bool allowComments, int comments) {
-    final typing = replyFocus.hasFocus || reply.text.trim().isNotEmpty;
     final hasText = reply.text.trim().isNotEmpty;
     final liked = current['my_reaction'] == '❤️';
-    final name = author['username'] as String? ?? '';
-    const glass = Color(0x1FFFFFFF);
-    final pill = ClipRRect(
-      borderRadius: BorderRadius.circular(26),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          height: 48,
-          padding: EdgeInsets.only(left: 18, right: hasText ? 4 : 6),
-          decoration: BoxDecoration(
-            color: glass,
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withValues(alpha: .34), width: 1),
-          ),
-          child: !allowComments
-              ? Center(
-                  child: Text('Replies are turned off',
-                      style: PhlioTypography.body.copyWith(color: Colors.white60, fontSize: 15)))
-              : Row(children: [
-                  Expanded(
-                    child: TextField(
-                      controller: reply,
-                      focusNode: replyFocus,
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(color: Colors.white, fontSize: 15.5),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: _send,
-                      cursorColor: Colors.white,
-                      decoration: InputDecoration(
-                        isCollapsed: true,
-                        filled: false,
-                        fillColor: Colors.transparent,
-                        hintText: name.isEmpty ? 'Send message' : 'Reply to $name…',
-                        hintMaxLines: 1,
-                        hintStyle: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w500),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ),
-                  if (hasText)
-                    GestureDetector(
-                      onTap: sending ? null : () => _send(reply.text),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: const BoxDecoration(shape: BoxShape.circle, gradient: PhlioColors.brandGradient),
-                        child: sending
-                            ? const Padding(
-                                padding: EdgeInsets.all(11),
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                            : const Icon(Icons.arrow_upward_rounded, color: PhlioColors.textOnBrand, size: 22),
-                      ),
-                    )
-                  else if (typing) ...[
-                    _PillIcon(tooltip: 'Send a GIF', icon: Icons.gif_box_outlined, onTap: _sendGif),
-                    _PillIcon(tooltip: 'Send a photo', icon: Icons.image_outlined, onTap: _sendPhoto),
-                    _micButton(),
-                  ] else
-                    _micButton(),
-                ]),
+    const radius = BorderRadius.all(Radius.circular(26));
+    BoxDecoration pillBox(double border) => BoxDecoration(
+          color: const Color(0x14FFFFFF),
+          borderRadius: radius,
+          border: Border.all(color: Colors.white.withValues(alpha: .55), width: border),
+        );
+    Widget frosted(Widget child) => ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16), child: child),
+        );
+
+    if (!allowComments) {
+      return Row(children: [
+        Expanded(
+          child: frosted(Container(
+            height: 48,
+            alignment: Alignment.center,
+            decoration: pillBox(1),
+            child: Text('Replies are turned off',
+                style: PhlioTypography.body.copyWith(color: Colors.white60, fontSize: 15)),
+          )),
         ),
-      ),
+        const SizedBox(width: 6),
+        ..._actions(current, liked, comments, allowComments: false),
+      ]);
+    }
+
+    if (!_replying) {
+      return Row(children: [
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _startReply,
+            child: frosted(Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              alignment: Alignment.centerLeft,
+              decoration: pillBox(1.1),
+              child: const Text('Send message',
+                  style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w500)),
+            )),
+          ),
+        ),
+        const SizedBox(width: 6),
+        ..._actions(current, liked, comments),
+      ]);
+    }
+
+    return GestureDetector(
+      onVerticalDragEnd: (d) {
+        if ((d.primaryVelocity ?? 0) > 150) _endReply();
+      },
+      child: frosted(Container(
+        height: 50,
+        padding: EdgeInsets.only(left: 20, right: hasText ? 5 : 8),
+        decoration: pillBox(1.2),
+        child: Row(children: [
+          Expanded(
+            child: TextField(
+              controller: reply,
+              focusNode: replyFocus,
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+              style: const TextStyle(color: Colors.white, fontSize: 15.5),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (text) async {
+                await _send(text);
+                if (mounted) _endReply();
+              },
+              cursorColor: Colors.white,
+              decoration: const InputDecoration(
+                isCollapsed: true,
+                filled: false,
+                fillColor: Colors.transparent,
+                hintText: 'Send message',
+                hintStyle: TextStyle(color: Colors.white70, fontSize: 15.5),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          if (hasText)
+            TextButton(
+              onPressed: sending
+                  ? null
+                  : () async {
+                      await _send(reply.text);
+                      if (mounted) _endReply();
+                    },
+              style: TextButton.styleFrom(foregroundColor: PhlioColors.brandPeach),
+              child: sending
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Send', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+            )
+          else ...[
+            _PillIcon(tooltip: 'Send a photo', icon: Icons.image_outlined, onTap: _sendPhoto),
+            _PillIcon(tooltip: 'Send a GIF', icon: Icons.gif_box_outlined, onTap: _sendGif),
+            _micButton(),
+          ],
+        ]),
+      )),
     );
-    return Row(children: [
-      Expanded(child: pill),
-      AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        child: typing
-            ? const SizedBox(width: 0, height: 48)
-            : Row(mainAxisSize: MainAxisSize.min, children: [
-                const SizedBox(width: 10),
-                _BarIcon(
-                  tooltip: liked ? 'Unlike' : 'Like',
-                  onTap: () => _react('❤️'),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
-                    child: liked
-                        ? const Icon(Icons.favorite_rounded,
-                            key: ValueKey('liked'), color: Color(0xFFFF3B5C), size: 28)
-                        : const Icon(Icons.favorite_border_rounded,
-                            key: ValueKey('like'), color: Colors.white, size: 28, shadows: _iconShadow),
-                  ),
-                ),
-                if (allowComments)
-                  _BarIcon(
-                    tooltip: 'Comments',
-                    onTap: _openComments,
-                    badge: comments,
-                    child: const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 26, shadows: _iconShadow),
-                  ),
-                _BarIcon(
-                  tooltip: 'Send to someone',
-                  onTap: _shareMoment,
-                  child: const PhlioSendIcon(color: Colors.white, size: 26),
-                ),
-              ]),
-      ),
-    ]);
   }
+
+  /// like · comments · send — fixed 44 px slots, vertically centred on the
+  /// pill, the last one flush with the right gutter.
+  List<Widget> _actions(Map current, bool liked, int comments, {bool allowComments = true}) => [
+        _BarIcon(
+          tooltip: liked ? 'Unlike' : 'Like',
+          onTap: () => _react('❤️'),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+            child: liked
+                ? const Icon(Icons.favorite_rounded, key: ValueKey('liked'), color: Color(0xFFFF3B5C), size: 28)
+                : const Icon(Icons.favorite_border_rounded,
+                    key: ValueKey('like'), color: Colors.white, size: 28, shadows: _iconShadow),
+          ),
+        ),
+        if (allowComments)
+          _BarIcon(
+            tooltip: 'Comments',
+            onTap: _openComments,
+            badge: comments,
+            child: const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 26, shadows: _iconShadow),
+          ),
+        _BarIcon(
+          tooltip: 'Send to someone',
+          onTap: _shareMoment,
+          child: const PhlioSendIcon(color: Colors.white, size: 26),
+        ),
+      ];
 
   static const _iconShadow = [Shadow(color: Color(0x73000000), blurRadius: 10)];
 
@@ -1201,7 +1254,17 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
         current['reshared_from'] is Map ? current['reshared_from'] as Map : null;
     final showReshare = reshare != null && (song == null || _showReshare);
     final insets = MediaQuery.paddingOf(context);
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    // Read straight from the window, so no ancestor can hide the keyboard height.
+    // (MediaQuery.viewInsetsOf also subscribes this build to keyboard changes.)
+    final keyboard = math.max(
+        MediaQuery.viewInsetsOf(context).bottom, MediaQueryData.fromView(View.of(context)).viewInsets.bottom);
+    // Keyboard closed with the back button: leave reply mode too.
+    if (_replying && _lastKeyboard > 0 && keyboard == 0 && reply.text.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _replying) _endReply();
+      });
+    }
+    _lastKeyboard = keyboard;
     final barSpace = (mine ? 92.0 : 76.0) + insets.bottom;
     final comments = (current['comment_count'] as num?)?.toInt() ?? 0;
     // While Viewers / Comments is open the moment shrinks into a card at
@@ -1474,29 +1537,56 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                     ),
                   ),
                 ),
-              // Quick reactions while you type a reply (Instagram style).
-              if (!mine && replyFocus.hasFocus && keyboard > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: keyboard + 72,
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                    for (final e in const ['😂', '😮', '😍', '😢', '👏', '🔥'])
-                      GestureDetector(
-                        onTap: () {
-                          replyFocus.unfocus();
-                          _react(e);
-                        },
-                        child: Text(e, style: const TextStyle(fontSize: 34)),
+              // Reply mode: dim the moment, big reactions (Instagram 3 × 2).
+              // Tap or swipe down to drop the keyboard and the reactions.
+              if (!mine && _replying)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _endReply,
+                    onVerticalDragEnd: (d) {
+                      if ((d.primaryVelocity ?? 0) > 150) _endReply();
+                    },
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      builder: (_, t, child) => ColoredBox(
+                        color: Colors.black.withValues(alpha: .55 * t),
+                        child: Opacity(opacity: t, child: Transform.scale(scale: .9 + .1 * t, child: child)),
                       ),
-                  ]),
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: keyboard + 80, top: insets.top + 80),
+                        child: Center(
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 34,
+                            runSpacing: 28,
+                            children: [
+                              for (final e in const ['😂', '😮', '😍', '😢', '👏', '🔥'])
+                                SizedBox(
+                                  width: 76,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      _endReply();
+                                      _react(e);
+                                    },
+                                    child: Text(e, textAlign: TextAlign.center, style: const TextStyle(fontSize: 58)),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
         Positioned(
           left: 0,
           right: 0,
           bottom: keyboard > 0 ? keyboard : insets.bottom,
           child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 10, 10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
           child: mine
               ? Column(mainAxisSize: MainAxisSize.min, children: [
                   // Bond-style: ︿, then viewers and comments in the middle.
@@ -1556,7 +1646,7 @@ class _BarIcon extends StatelessWidget {
           radius: 26,
           child: SizedBox(
             width: 44,
-            height: 52,
+            height: 48,
             child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
               child,
               if (badge > 0)
