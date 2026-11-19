@@ -20,6 +20,9 @@ import '../../core/network/api_client.dart';
 import '../../design_system/colors.dart';
 import '../../design_system/typography.dart';
 import '../../design_system/widgets/phlio_card.dart';
+import '../content/content_surface.dart' show showEndpointShare;
+import '../content/mentions.dart';
+import 'package:flutter/services.dart';
 
 const _sheetColor = Color(0xFF15181E);
 
@@ -240,7 +243,8 @@ class _ViewerTile extends StatelessWidget {
 // -- comments -------------------------------------------------------------------------------
 
 /// [onCount] gets the number of comments each time the list loads.
-Future<void> showMomentComments(BuildContext context, Map item, {required bool isAuthor, ValueChanged<int>? onCount}) =>
+Future<void> showMomentComments(BuildContext context, Map item,
+        {required bool isAuthor, String? owner, ValueChanged<int>? onCount}) =>
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -248,13 +252,16 @@ Future<void> showMomentComments(BuildContext context, Map item, {required bool i
       backgroundColor: _sheetColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
       barrierColor: Colors.black26,
-      builder: (_) => _CommentsSheet(item: item, isAuthor: isAuthor, onCount: onCount),
+      builder: (_) => _CommentsSheet(item: item, isAuthor: isAuthor, owner: owner, onCount: onCount),
     );
 
 class _CommentsSheet extends StatefulWidget {
-  const _CommentsSheet({required this.item, required this.isAuthor, this.onCount});
+  const _CommentsSheet({required this.item, required this.isAuthor, this.owner, this.onCount});
   final Map item;
   final bool isAuthor;
+
+  /// The moment author's username.
+  final String? owner;
   final ValueChanged<int>? onCount;
   @override
   State<_CommentsSheet> createState() => _CommentsSheetState();
@@ -268,7 +275,129 @@ class _CommentsSheetState extends State<_CommentsSheet> {
   String? problem;
   Map? replyTo, editing;
 
+  /// People matching the "@…" being typed.
+  List<Map> people = [];
+  int _mentionRequest = 0;
+
   String get _base => '/social/moments/${_momentId(widget.item)}/comments';
+
+  Future<void> _searchMentions() async {
+    final token = ++_mentionRequest;
+    final query = mentionQuery(_text);
+    if (query == null) {
+      if (people.isNotEmpty) setState(() => people = []);
+      return;
+    }
+    final found = await searchMentionPeople(query);
+    if (mounted && token == _mentionRequest) setState(() => people = found);
+  }
+
+  void _startEdit(Map c) {
+    setState(() {
+      replyTo = null;
+      editing = c;
+      _text.text = '${c['text']}';
+    });
+    _focus.requestFocus();
+  }
+
+  /// Hold a comment: Share, Edit, Delete, Report, Block (Clips layout).
+  Future<void> _menu(Map c) async {
+    HapticFeedback.mediumImpact();
+    FocusScope.of(context).unfocus();
+    final user = c['user'] as Map? ?? const {};
+    final mine = c['mine'] == true;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1C2028),
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: .06), borderRadius: BorderRadius.circular(16)),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              PhlioAvatar(
+                  name: user['display_name'] as String? ?? '',
+                  imageUrl: user['avatar_url'] as String?,
+                  size: 32,
+                  showMomentRing: false),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${user['username'] ?? ''}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text('${c['text']}', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+                ]),
+              ),
+            ]),
+          ),
+          ListTile(
+              leading: const Icon(Icons.send_outlined, color: Colors.white),
+              title: const Text('Share', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(sheet, 'share')),
+          if (mine)
+            ListTile(
+                leading: const Icon(Icons.edit_outlined, color: Colors.white),
+                title: const Text('Edit', style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(sheet, 'edit')),
+          if (c['can_delete'] == true)
+            ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: PhlioColors.danger),
+                title: const Text('Delete', style: TextStyle(color: PhlioColors.danger)),
+                onTap: () => Navigator.pop(sheet, 'delete')),
+          if (!mine)
+            ListTile(
+                leading: const Icon(Icons.report_outlined, color: PhlioColors.danger),
+                title: const Text('Report', style: TextStyle(color: PhlioColors.danger)),
+                onTap: () => Navigator.pop(sheet, 'report')),
+          if (!mine)
+            ListTile(
+                leading: const Icon(Icons.block_rounded, color: PhlioColors.danger),
+                title: Text('Block @${user['username'] ?? ''}', style: const TextStyle(color: PhlioColors.danger)),
+                onTap: () => Navigator.pop(sheet, 'block')),
+        ]),
+      ),
+    );
+    if (!mounted || action == null) return;
+    final dio = getIt<ApiClient>().dio;
+    try {
+      switch (action) {
+        case 'share':
+          final owner = widget.owner ?? '';
+          await showEndpointShare(context,
+              endpoint: '$_base/${c['id']}/share',
+              link: 'phlio://app/moments/$owner',
+              quote: '@${user['username']}: ${c['text']}');
+        case 'edit':
+          _startEdit(c);
+        case 'delete':
+          await _delete(c);
+        case 'report':
+          await dio.post('$_base/${c['id']}/report', data: {'reason': 'Comment'});
+          _say('Thanks — we\'ll review this comment.');
+        case 'block':
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (d) => AlertDialog(
+              title: Text('Block @${user['username']}?'),
+              content: const Text('They won\'t be able to find your profile or see your moments, and their comments disappear for you.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Block')),
+              ],
+            ),
+          );
+          if (ok != true) return;
+          await dio.put('/social/blocks/${user['id']}');
+          await _load();
+          _say('Blocked @${user['username']}');
+      }
+    } catch (_) {
+      _say('Could not complete this. Try again.');
+    }
+  }
 
   @override
   void initState() {
@@ -402,17 +531,9 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                                     _focus.requestFocus();
                                   }
                                 : null,
-                            onEdit: items[i]['mine'] == true
-                                ? () {
-                                    setState(() {
-                                      replyTo = null;
-                                      editing = items[i];
-                                      _text.text = '${items[i]['text']}';
-                                    });
-                                    _focus.requestFocus();
-                                  }
-                                : null,
+                            onEdit: items[i]['mine'] == true ? () => _startEdit(items[i]) : null,
                             onDelete: items[i]['can_delete'] == true ? () => _delete(items[i]) : null,
+                            onHold: () => _menu(items[i]),
                           ),
                         ),
             ),
@@ -425,6 +546,33 @@ class _CommentsSheetState extends State<_CommentsSheet> {
               SafeArea(
                 top: false,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  MentionSuggestions(
+                    people: people,
+                    maxHeight: 200,
+                    onPick: (p) {
+                      applyMention(_text, '${p['username']}');
+                      _mentionRequest++;
+                      setState(() => people = []);
+                    },
+                  ),
+                  if (people.isEmpty && editing == null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                        for (final e in const ['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'])
+                          GestureDetector(
+                            onTap: () {
+                              final sel = _text.selection;
+                              final at = sel.isValid ? sel.start : _text.text.length;
+                              final end = sel.isValid ? sel.end : _text.text.length;
+                              _text.value = TextEditingValue(
+                                  text: _text.text.replaceRange(at, end, e),
+                                  selection: TextSelection.collapsed(offset: at + e.length));
+                            },
+                            child: Text(e, style: const TextStyle(fontSize: 27)),
+                          ),
+                      ]),
+                    ),
                   if (replyTo != null || editing != null)
                     Container(
                       color: Colors.white.withValues(alpha: .05),
@@ -456,6 +604,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                         child: TextField(
                           controller: _text,
                           focusNode: _focus,
+                          onChanged: (_) => _searchMentions(),
                           maxLength: 500,
                           minLines: 1,
                           maxLines: 4,
@@ -464,7 +613,11 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                           onSubmitted: (_) => _send(),
                           decoration: InputDecoration(
                             counterText: '',
-                            hintText: replyTo != null ? 'Write a reply…' : 'Add a comment…',
+                            hintText: replyTo != null
+                                ? 'Reply to ${(replyTo!['user'] as Map?)?['username'] ?? ''}…'
+                                : widget.isAuthor || widget.owner == null
+                                    ? 'Add a comment…'
+                                    : 'Add a comment for ${widget.owner}…',
                             isDense: true,
                             filled: true,
                             fillColor: Colors.white.withValues(alpha: .07),
@@ -491,9 +644,9 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 }
 
 class _CommentTile extends StatelessWidget {
-  const _CommentTile({required this.comment, this.onReply, this.onEdit, this.onDelete});
+  const _CommentTile({required this.comment, this.onReply, this.onEdit, this.onDelete, this.onHold});
   final Map comment;
-  final VoidCallback? onReply, onEdit, onDelete;
+  final VoidCallback? onReply, onEdit, onDelete, onHold;
 
   @override
   Widget build(BuildContext context) {
@@ -501,7 +654,10 @@ class _CommentTile extends StatelessWidget {
     final reply = comment['reply_to'] != null;
     final edited = comment['edited_at'] != null;
     const meta = TextStyle(color: Colors.white54, fontSize: 12.5, fontWeight: FontWeight.w600);
-    return Padding(
+    return GestureDetector(
+      onLongPress: onHold,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
       padding: EdgeInsets.fromLTRB(reply ? 64 : 16, 8, 12, 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         PhlioAvatar(
@@ -539,7 +695,7 @@ class _CommentTile extends StatelessWidget {
                 ]),
               ),
             const SizedBox(height: 3),
-            Text('${comment['text']}', style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.3)),
+            MentionText('${comment['text']}', style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.3)),
             const SizedBox(height: 6),
             Wrap(spacing: 16, children: [
               if (edited)
@@ -563,6 +719,7 @@ class _CommentTile extends StatelessWidget {
           ]),
         ),
       ]),
+    ),
     );
   }
 }

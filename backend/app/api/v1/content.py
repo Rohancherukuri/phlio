@@ -355,6 +355,8 @@ class ShareIn(BaseModel):
     members: list[str] = Field(default_factory=list, max_length=20)
     name: str = Field(default="Shared plans", min_length=1, max_length=80)
     message: str | None = Field(default=None, max_length=1000)
+    # Share one comment of this item's thread instead of the item itself.
+    comment_id: str | None = Field(default=None, max_length=120)
 
 
 async def group_for(c, user, gid):
@@ -436,6 +438,15 @@ async def share(
     await c.cache.rate_limit(user.id, "share", 30)
     link = f"phlio://content/{platform}/{quote(ref, safe='')}"
     text = f"Shared: {obj['title']}\n{link}"
+    if body.comment_id:
+        from app.api.v1.social_comments import comments as thread
+        visible = await thread(ref, platform, user, c)
+        comment = next((r for r in visible["items"] if r["id"] == body.comment_id), None)
+        if comment is None:
+            raise HTTPException(404, "Comment is no longer available.")
+        said = comment.get("text") or ("a sticker" if comment.get("sticker_id") else "a photo")
+        text = (f"💬 Shared a comment by @{comment['author']['username']} on {obj['title']}:\n"
+                f"“{said}”\n{link}?comment={quote(body.comment_id, safe='')}")
     group = None
     if body.destination == "dm":
         peer = await c.graph.user(body.target or "")
@@ -508,10 +519,17 @@ async def share_profile(
         raise HTTPException(404, "Profile unavailable.")
     await c.cache.rate_limit(user.id, "share", 30)
     text = f"Shared a profile: @{person.username}\nphlio://profile/{quote(person.username, safe='')}"
+    return await deliver_text(c, user, body, text, about=person.id)
+
+
+async def deliver_text(c, user, body: ShareIn, text: str, about: str | None = None) -> dict:
+    """Sends a text share (a profile card, a moment comment…) to a DM, a
+    group, a new group or a room, with the optional message after it.
+    ``about`` is the person the share is about (blocked recipients skip it)."""
     note = body.message.strip() if body.message and body.message.strip() else None
     if body.destination == "dm":
         peer = await c.graph.user(body.target or "")
-        if await c.graph.blocked(user.id, peer.id) or await c.graph.blocked(peer.id, person.id):
+        if await c.graph.blocked(user.id, peer.id) or (about and await c.graph.blocked(peer.id, about)):
             raise HTTPException(403, "Recipient unavailable.")
         c.messaging_service.send(user.id, peer.id, text, [])
         if note:

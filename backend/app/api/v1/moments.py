@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 
 from app.api.deps import get_container, get_current_user
+from app.api.v1.content import ShareIn
 from app.api.v1.snap_audience import SnapAudience, can_view, validate_audience
 from app.core.container import media_root_path
 from app.domains.graph.service import key
@@ -662,6 +663,7 @@ async def _comment_out(c, comment: dict, row: dict, viewer: str, profiles: dict,
         except HTTPException:
             pass
     return dict(id=comment["id"], text=comment["text"], user=person, created_at=comment["created_at"],
+                mentions=comment.get("mentions") or [],
                 edited_at=comment.get("edited_at"), reply_to=comment.get("reply_to"), reply_to_user=parent_user,
                 mine=comment["user_id"] == viewer, by_author=comment["user_id"] == row["author"],
                 can_delete=comment["user_id"] == viewer or row["author"] == viewer)
@@ -710,10 +712,11 @@ async def add_comment(moment_id: str, body: CommentIn, user=Depends(get_current_
             raise HTTPException(404, "That comment is gone.")
         # One level of replies: answering a reply joins its thread.
         reply_to = parent.get("reply_to") or parent["id"]
+    from app.api.v1.social_comments import comment_mentions
     cid = "moment_comment:" + uuid.uuid4().hex
     saved = await c.graph.store.put(cid, dict(
         moment_id=row["id"], author=row["author"], user_id=user.id, text=text, reply_to=reply_to,
-        created_at=now()))
+        mentions=await comment_mentions(c, user, text), created_at=now()))
     await _comment_dms(c, row, user.id, text, reply_to)
     by_id = {r["id"]: r for r in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]})}
     return await _comment_out(c, saved, row, user.id, {}, by_id)
@@ -754,7 +757,10 @@ async def edit_comment(moment_id: str, comment_id: str, body: CommentEdit,
         raise HTTPException(404, "That comment is gone.")
     if comment["user_id"] != user.id:
         raise HTTPException(403, "You can only edit your own comments.")
-    saved = await c.graph.store.put(comment["id"], dict(comment, text=body.text.strip(), edited_at=now()))
+    from app.api.v1.social_comments import comment_mentions
+    text = body.text.strip()
+    saved = await c.graph.store.put(comment["id"], dict(
+        comment, text=text, mentions=await comment_mentions(c, user, text), edited_at=now()))
     by_id = {r["id"]: r for r in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]})}
     return await _comment_out(c, saved, row, user.id, {}, by_id)
 
@@ -771,3 +777,35 @@ async def delete_comment(moment_id: str, comment_id: str, user=Depends(get_curre
         if reply.get("reply_to") == comment["id"]:
             await c.graph.store.delete(reply["id"])
     await c.graph.store.delete(comment["id"])
+
+
+async def _visible_comment(c, moment_id: str, comment_id: str, viewer: str) -> tuple[dict, dict]:
+    row = await _viewable(c, moment_id, viewer)
+    comment = await c.graph.store.get(_comment_id(comment_id))
+    if not comment or comment["moment_id"] != row["id"] or await c.graph.blocked(viewer, comment["user_id"]):
+        raise HTTPException(404, "That comment is gone.")
+    return row, comment
+
+
+@router.post("/{moment_id}/comments/{comment_id}/share", status_code=201)
+async def share_comment(moment_id: str, comment_id: str, body: ShareIn,
+                        user=Depends(get_current_user), c=Depends(get_container)):
+    """Send a moment's comment to a DM, a group, a new group or a room."""
+    from app.api.v1.content import deliver_text
+    row, comment = await _visible_comment(c, moment_id, comment_id, user.id)
+    await c.cache.rate_limit(user.id, "share", 30)
+    owner = await _profile(c, row["author"], {})
+    writer = await _profile(c, comment["user_id"], {})
+    text = (f"💬 Shared a comment by @{writer['username']} on @{owner['username']}'s moment:\n"
+            f"“{comment['text']}”\nphlio://app/moments/{owner['username']}")
+    return await deliver_text(c, user, body, text, about=comment["user_id"])
+
+
+@router.post("/{moment_id}/comments/{comment_id}/report", status_code=204)
+async def report_comment(moment_id: str, comment_id: str, body: ReportIn,
+                         user=Depends(get_current_user), c=Depends(get_container)):
+    row, comment = await _visible_comment(c, moment_id, comment_id, user.id)
+    await c.cache.rate_limit(user.id, "moment_report", 30)
+    await c.graph.store.put(key("content_report", user.id, comment["id"]), dict(
+        reporter_id=user.id, moment_id=row["id"], comment_id=comment["id"], author=comment["user_id"],
+        reason=body.reason, status="pending", created_at=now()))

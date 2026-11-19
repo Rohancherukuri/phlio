@@ -40,7 +40,10 @@ async def comments(ref: str, platform: str = 'social', user=Depends(get_current_
         if person:
             reactions = await c.graph.store.rows('comment_reaction', {'comment_id': row['id']})
             reactions = [r for r in reactions if not await c.graph.blocked(user.id, r['user_id'])]
-            result.append(dict(row,author=c.graph.profile(person),likes_count=len(reactions),liked_by_me=any(r['user_id']==user.id for r in reactions)))
+            result.append(dict(row,author=c.graph.profile(person),likes_count=len(reactions),liked_by_me=any(r['user_id']==user.id for r in reactions),
+                               # The creator liked it (shown as their face with a heart).
+                               liked_by_author=bool(obj.get('owner')) and any(r['user_id']==obj.get('owner') for r in reactions),
+                               by_author=row['author_id']==obj.get('owner')))
     return dict(items=result,count=len(result))
 
 @router.post('/content/{ref}/comments',status_code=201)
@@ -56,7 +59,7 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
         if not any(r['id'] == parent_id for r in existing['items']):
             raise HTTPException(404, 'Reply target is no longer available.')
     mentioned = []
-    for handle in set(re.findall(r'@([A-Za-z0-9_]{1,50})',text)):
+    for handle in set(h.rstrip('.') for h in re.findall(r'@([A-Za-z0-9_.]{1,50})',text)):
         person = await c.identity_repository.get_by_username(handle.lower())
         if person and not await c.graph.blocked(user.id,person.id): mentioned.append(c.graph.profile(person))
     cid = 'content_comment:' + uuid.uuid4().hex
@@ -85,7 +88,7 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
 
 async def comment_mentions(c, user, text):
     mentioned = []
-    for handle in set(re.findall(r'@([A-Za-z0-9_]{1,50})', text)):
+    for handle in set(h.rstrip('.') for h in re.findall(r'@([A-Za-z0-9_.]{1,50})', text)):
         person = await c.identity_repository.get_by_username(handle.lower())
         if person and not await c.graph.blocked(user.id, person.id): mentioned.append(c.graph.profile(person))
     return mentioned

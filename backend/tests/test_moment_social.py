@@ -232,3 +232,41 @@ async def test_video_edits_render(client: AsyncClient, auth_headers: dict, tmp_p
                              files={"file": ("clip.mp4", clip.read_bytes(), "video/mp4")},
                              data={"kind": "experience", "edits": json.dumps({"motion": "boomerang"})})
     assert boom.status_code == 201, boom.text
+
+
+
+async def test_comment_mentions_share_and_report(client: AsyncClient, auth_headers: dict) -> None:
+    m = await moment(client, auth_headers)
+    neha = await login(client, "neha")
+    base = f"/api/v1/social/moments/{m['id']}/comments"
+    c = (await client.post(base, headers=neha, json={"text": "Look @arjun and @nobody_xyz."})).json()
+    assert [p["username"] for p in c["mentions"]] == ["arjun"]
+    r = await client.post(f"{base}/{c['id']}/share", headers=auth_headers,
+                          json={"destination": "dm", "target": "artbykiara", "message": "lol"})
+    assert r.status_code == 201, r.text
+    dms = (await client.get("/api/v1/messaging/peers/artbykiara/messages", headers=auth_headers)).json()
+    texts = [x["text"] for x in (dms["items"] if isinstance(dms, dict) else dms)]
+    assert any(t.startswith("💬 Shared a comment by @neha on @arjun's moment") for t in texts) and "lol" in texts
+    assert (await client.post(f"{base}/{c['id']}/report", headers=auth_headers, json={"reason": "Spam"})).status_code == 204
+
+
+async def test_content_comment_share(client: AsyncClient, auth_headers: dict) -> None:
+    feed = (await client.get("/api/v1/social/feed", headers=auth_headers)).json()
+    post = (feed["items"] if isinstance(feed, dict) else feed)[0]
+    pid = post["id"]
+    c = await client.post(f"/api/v1/social/content/{pid}/comments", headers=auth_headers,
+                          data={"text": "hey @neha."})
+    assert c.status_code == 201, c.text
+    comment = c.json()
+    assert [p["username"] for p in comment["mentions"]] == ["neha"]
+    r = await client.post(f"/api/v1/content/social/{pid}/share", headers=auth_headers,
+                          json={"destination": "dm", "target": "neha", "comment_id": comment["id"]})
+    assert r.status_code == 201, r.text
+    dms = (await client.get("/api/v1/messaging/peers/neha/messages", headers=auth_headers)).json()
+    texts = [x["text"] for x in (dms["items"] if isinstance(dms, dict) else dms)]
+    assert any(t.startswith("💬 Shared a comment by @arjun") and "“hey @neha.”" in t for t in texts)
+    bad = await client.post(f"/api/v1/content/social/{pid}/share", headers=auth_headers,
+                            json={"destination": "dm", "target": "neha", "comment_id": "content_comment:nope"})
+    assert bad.status_code == 404
+    listed = (await client.get(f"/api/v1/social/content/{pid}/comments", headers=auth_headers)).json()["items"]
+    assert "liked_by_author" in listed[0]

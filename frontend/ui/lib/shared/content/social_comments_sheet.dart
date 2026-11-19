@@ -1,7 +1,7 @@
 import 'dart:ui';
-import 'package:share_plus/share_plus.dart';
 import '../giphy/giphy_picker.dart';
-import 'content_surface.dart' show engagementProvider;
+import 'content_surface.dart' show engagementProvider, showCommentShare;
+import 'mentions.dart';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -229,15 +229,28 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                       Text(age(item),
                           style: const TextStyle(
                               color: Colors.white54, fontSize: 12)),
+                      if (item['by_author'] == true)
+                        const Text('· Creator',
+                            style: TextStyle(
+                                color: Color(0xFFFFB58F),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
                       if (item['edited_at'] != null)
                         const Text('Edited',
                             style: TextStyle(
                                 color: Colors.white38, fontSize: 12)),
+                      // The creator liked it (Instagram's face + heart).
+                      if (item['liked_by_author'] == true &&
+                          item['by_author'] != true)
+                        const Tooltip(
+                            message: 'Liked by the creator',
+                            child: Icon(Icons.favorite,
+                                size: 14, color: Color(0xFFFF3B5C))),
                     ]),
                     if ((item['text'] as String? ?? '').isNotEmpty)
                       Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text(item['text'] as String,
+                          child: MentionText(item['text'] as String,
                               style:
                                   const TextStyle(fontSize: 14, height: 1.35))),
                     if (showTranslation.contains(item['id'].toString()))
@@ -413,9 +426,16 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
     if (!mounted || action == null) return;
     try {
       if (action == 'share') {
-        await SharePlus.instance.share(ShareParams(
-            text:
-                '${(item['author'] as Map)['username']}: ${item['text']}\nphlio://app/shared/${widget.contentId.contains('/') ? widget.contentId : 'social/${widget.contentId}'}'));
+        // Inside Phlio: to people, groups or rooms, like posts and clips.
+        final said = (item['text'] as String? ?? '').isNotEmpty
+            ? item['text'] as String
+            : item['sticker_id'] != null
+                ? 'a sticker'
+                : 'a photo';
+        await showCommentShare(context,
+            path: commentEngagementPath(widget.contentId),
+            commentId: item['id'].toString(),
+            quote: '@${(item['author'] as Map)['username']}: $said');
       } else if (action == 'edit') {
         final draft = item['text'] as String? ?? '';
         setState(() {
@@ -596,7 +616,7 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                     fontSize: 15, color: Color(0xFFF1F3F8)),
                                 decoration: const InputDecoration(
                                     counterText: '',
-                                    hintText: 'What do you think of this?',
+                                    hintText: 'Add a comment… @ to mention',
                                     hintMaxLines: 1,
                                     isDense: true,
                                     hintStyle: TextStyle(
@@ -661,22 +681,16 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
     super.dispose();
   }
 
+  /// "@ro…" before the cursor → people on Phlio to pick from.
   Future<void> searchMentions(String value) async {
     final token = ++mentionRequest;
-    final match = RegExp(r'@([A-Za-z0-9_]*)$').firstMatch(value);
-    if (match == null) {
-      setState(() => people = []);
+    final query = mentionQuery(text);
+    if (query == null) {
+      if (people.isNotEmpty) setState(() => people = []);
       return;
     }
-    try {
-      final result = await getIt<ApiClient>()
-          .dio
-          .get('/social/comment-mentions', queryParameters: {'q': match[1]});
-      if (mounted && token == mentionRequest)
-        setState(() => people = result.data as List);
-    } catch (_) {
-      if (mounted && token == mentionRequest) setState(() => people = []);
-    }
+    final found = await searchMentionPeople(query);
+    if (mounted && token == mentionRequest) setState(() => people = found);
   }
 
   void closePicker() {
@@ -961,26 +975,13 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                 constraints: BoxConstraints(maxHeight: height * .55),
                 child: SingleChildScrollView(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  if (people.isNotEmpty)
-                    SizedBox(
-                        height: 80,
-                        child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            children: [
-                              for (final p in people)
-                                TextButton(
-                                    onPressed: () {
-                                      final value = text.text.replaceFirst(
-                                          RegExp(r'@[A-Za-z0-9_]*$'),
-                                          '@${p['username']} ');
-                                      text.value = TextEditingValue(
-                                          text: value,
-                                          selection: TextSelection.collapsed(
-                                              offset: value.length));
-                                      setState(() => people = []);
-                                    },
-                                    child: Text('@${p['username']}'))
-                            ])),
+                  MentionSuggestions(
+                      people: people,
+                      onPick: (p) {
+                        applyMention(text, '${p['username']}');
+                        mentionRequest++;
+                        setState(() => people = []);
+                      }),
                   if (error != null)
                     Padding(
                         padding: const EdgeInsets.all(8),

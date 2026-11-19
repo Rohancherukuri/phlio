@@ -926,7 +926,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     final current = item;
     _pause();
     setState(() => _sheetOpen = true);
-    await showMomentComments(context, current, isAuthor: mine, onCount: (n) {
+    await showMomentComments(context, current, isAuthor: mine, owner: author['username'] as String?, onCount: (n) {
       if (mounted) setState(() => current['comment_count'] = n);
     });
     if (mounted) setState(() => _sheetOpen = false);
@@ -1359,7 +1359,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           right: 0,
           bottom: keyboard > 0 ? keyboard : insets.bottom,
           child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 6, 10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 10, 10),
           child: mine
               ? Column(mainAxisSize: MainAxisSize.min, children: [
                   // Bond-style: ︿, then viewers and comments in the middle.
@@ -1484,26 +1484,27 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                             ]),
                           ),
                   ),
-                  const SizedBox(width: 2),
-                  IconButton(
-                      tooltip: 'Like',
-                      onPressed: () => _react('❤️'),
-                      icon: current['my_reaction'] == '❤️'
-                          ? const Icon(Icons.favorite_rounded, color: Color(0xFFFF3B5C), size: 30)
-                          : const Icon(Icons.favorite_border_rounded, color: Colors.white, size: 30)),
+                  const SizedBox(width: 8),
+                  // Right-aligned actions, evenly spaced: like · comment · send.
+                  _BarIcon(
+                    tooltip: 'Like',
+                    onTap: () => _react('❤️'),
+                    child: current['my_reaction'] == '❤️'
+                        ? const Icon(Icons.favorite_rounded, color: Color(0xFFFF3B5C), size: 29)
+                        : const Icon(Icons.favorite_border_rounded, color: Colors.white, size: 29),
+                  ),
                   if (allowComments)
-                    _CountButton(
+                    _BarIcon(
                       tooltip: 'Comments',
-                      icon: Icons.chat_bubble_outline_rounded,
-                      count: comments,
-                      compact: true,
                       onTap: _openComments,
+                      badge: comments,
+                      child: const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 27),
                     ),
-                  IconButton(
-                      tooltip: 'Send to someone',
-                      onPressed: _shareMoment,
-                      icon: const PhlioSendIcon(
-                          color: Colors.white, size: 28)),
+                  _BarIcon(
+                    tooltip: 'Send to someone',
+                    onTap: _shareMoment,
+                    child: const PhlioSendIcon(color: Colors.white, size: 27),
+                  ),
                 ]),
         ),
         ),
@@ -1511,6 +1512,45 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
       ),
     );
   }
+}
+
+/// One of the right-hand actions on someone's moment: a fixed 44 px slot,
+/// so like / comment / send line up at the right edge.
+class _BarIcon extends StatelessWidget {
+  const _BarIcon({required this.child, required this.onTap, required this.tooltip, this.badge = 0});
+  final Widget child;
+  final VoidCallback onTap;
+  final String tooltip;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 26,
+          child: SizedBox(
+            width: 44,
+            height: 52,
+            child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+              child,
+              if (badge > 0)
+                Positioned(
+                  right: 0,
+                  top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    constraints: const BoxConstraints(minWidth: 16),
+                    decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(9)),
+                    child: Text(badge > 99 ? '99+' : '$badge',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+      );
 }
 
 /// Icon with a count beside it (viewers, comments).
