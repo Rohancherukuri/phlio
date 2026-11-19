@@ -67,6 +67,8 @@ dependencies:
   geolocator: ^13.0.2
   # Neighbourhood names from the phone's own geocoder (Notes location).
   geocoding: ^3.0.0
+  # Battery level for the Battery smart filter.
+  battery_plus: ^6.2.1
   livekit_client: ^2.13.1
   country_picker: ^2.0.28
   flutter_contacts: 1.1.9+2
@@ -104,6 +106,13 @@ flutter:
     - assets/shaders/profile_fx.frag
     - assets/shaders/hacker_theme.frag
     - assets/shaders/note_effects.frag
+    - assets/shaders/avatar_shade.frag
+    - assets/shaders/avatar_stage.frag
+    - assets/shaders/story_grade.frag
+    - assets/shaders/story_lens.frag
+    - assets/shaders/story_light.frag
+    - assets/shaders/story_scene.frag
+    - assets/shaders/story_art.frag
   uses-material-design: true
 
   # Brand assets: the Foxy mascot pose art, logo lockups, the chat sticker

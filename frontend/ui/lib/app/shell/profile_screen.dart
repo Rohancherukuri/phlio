@@ -753,8 +753,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           ),
           const SizedBox(height: PhlioSpacing.xl),
 
-          // -- Moments (highlights) ------------------------------------------------
-          Text('Highlights', style: PhlioTypography.headline),
+          // -- Moments (saved highlights) -------------------------------------------
+          Text('Moments', style: PhlioTypography.headline),
           const SizedBox(height: PhlioSpacing.md),
           MomentHighlightsRow(
               user: user.id, onNew: () => openMomentComposer(context)),

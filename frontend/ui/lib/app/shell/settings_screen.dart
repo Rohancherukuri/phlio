@@ -8,6 +8,7 @@ import '../../features/authentication/presentation/controllers/auth_controller.d
 import '../../features/social/presentation/screens/social_graph_screen.dart';
 import '../../features/social/presentation/widgets/memberships.dart';
 import '../../shared/fact_checks/fact_checks.dart';
+import '../../shared/avatar/avatar_builder.dart';
 import '../../shared/content/content_surface.dart';
 import '../../shared/content/playlists_screen.dart';
 import 'account_switcher.dart';
@@ -155,6 +156,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         subtitle: 'Organize saved videos',
         icon: Icons.playlist_play,
         tap: () => showPlaylists(context, 'stream')
+      ),
+      (
+        section: 'Avatar & stickers',
+        title: 'Avatar',
+        subtitle: 'Build your Phlio avatar for stickers',
+        icon: Icons.face_retouching_natural_outlined,
+        tap: () => openAvatarBuilder(context)
       ),
       (
         section: 'For creators',

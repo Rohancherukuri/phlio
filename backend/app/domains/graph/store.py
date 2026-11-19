@@ -9,6 +9,8 @@ import uuid
 from app.infrastructure.database.surreal.client import record
 
 TABLES = {
+    "avatar_config",
+    "filter_preset",
     "fact_note",
     "fact_rating",
     "membership_plan",
@@ -45,6 +47,8 @@ TABLES = {
     "moment_highlight",
     "moment_mute",
     "moment_response",
+    "moment_reaction",
+    "moment_comment",
     "live_location",
     "profile_style",
     "chat_theme",

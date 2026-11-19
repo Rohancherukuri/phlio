@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.api.deps import get_container, get_current_user, get_identity_service
@@ -224,3 +224,68 @@ async def update_profile(
         current_user.full_name = body.full_name.strip()
     updated = await container.identity_repository.update_user(current_user)
     return UserResponse.from_entity(updated)
+
+
+@router.put("/me/avatar", response_model=UserResponse)
+async def set_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
+) -> UserResponse:
+    """Uploads your profile photo, so everyone sees it (moments, comments,
+    DMs, the story rail…). It's re-encoded as a square-safe JPEG (max 1080
+    px, metadata such as GPS stripped) under /media/avatars/."""
+    import io
+    import uuid
+
+    from fastapi import HTTPException
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    from app.core.container import media_root_path
+
+    raw = await file.read(10 * 1024 * 1024 + 1)
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Choose a photo under 10 MB.")
+    try:
+        with Image.open(io.BytesIO(raw)) as picture:
+            if picture.format not in {"JPEG", "PNG", "WEBP"} or picture.width * picture.height > 40_000_000:
+                raise ValueError()
+            picture = ImageOps.exif_transpose(picture).convert("RGB")
+            picture.thumbnail((1080, 1080))
+            out = io.BytesIO()
+            picture.save(out, "JPEG", quality=90)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(422, "Choose a JPEG, PNG or WebP photo.")
+    folder = media_root_path(container.settings) / "avatars"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"{current_user.id}-{uuid.uuid4().hex[:12]}.jpg"
+    (folder / name).write_bytes(out.getvalue())
+    _remove_avatar_file(container, current_user.avatar_url)
+    current_user.avatar_url = "/media/avatars/" + name
+    updated = await container.identity_repository.update_user(current_user)
+    return UserResponse.from_entity(updated)
+
+
+@router.delete("/me/avatar", response_model=UserResponse)
+async def remove_avatar(
+    current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
+) -> UserResponse:
+    _remove_avatar_file(container, current_user.avatar_url)
+    current_user.avatar_url = None
+    updated = await container.identity_repository.update_user(current_user)
+    return UserResponse.from_entity(updated)
+
+
+def _remove_avatar_file(container: Container, url: str | None) -> None:
+    """Deletes an uploaded avatar we own (never seeded or external images)."""
+    from pathlib import Path
+
+    from app.core.container import media_root_path
+
+    if not url or not url.startswith("/media/avatars/"):
+        return
+    name = Path(url).name
+    if name != url.removeprefix("/media/avatars/"):
+        return
+    (media_root_path(container.settings) / "avatars" / name).unlink(missing_ok=True)

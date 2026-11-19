@@ -352,7 +352,10 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                                   .push('/creator/${Uri.encodeComponent(id)}');
                             })))
                 : content;
-            return Stack(children: [
+            // Everything the full-screen player shows (watch page, Stream
+            // engagement bar, settings) shares one Navigator, so its sheets
+            // and dialogs open on top of the video.
+            return _PlayerNavigator(child: Stack(children: [
               Positioned.fill(
                   child: AbsorbPointer(absorbing: locked, child: body)),
               if (!full && c.video!.platform == 'stream')
@@ -383,7 +386,7 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
                         onPressed: () => setState(() => locked = false),
                         icon: const Icon(Icons.lock_open),
                         label: const Text('Unlock controls'))),
-            ]);
+            ]));
           }
           // Minimised: a compact draggable window (floating_video_window.dart).
           return FloatingVideoWindow(
@@ -396,4 +399,55 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
       ),
     );
   }
+}
+
+/// The full-screen player lives above the app's Navigator (MaterialApp
+/// builder), so sheets and dialogs opened from it — holding a comment,
+/// share, repost, bookmark, playlists, the comment box's pickers — had no
+/// Navigator to open in (or opened underneath the player). This gives the
+/// watch / full-screen player its own Navigator, ScaffoldMessenger and
+/// Scaffold, so all of them open on top of the video like everywhere else.
+class _PlayerNavigator extends StatefulWidget {
+  const _PlayerNavigator({required this.child});
+  final Widget child;
+  @override
+  State<_PlayerNavigator> createState() => _PlayerNavigatorState();
+}
+
+class _PlayerNavigatorState extends State<_PlayerNavigator> {
+  late final ValueNotifier<Widget> _child = ValueNotifier(widget.child);
+  final _navigator = GlobalKey<NavigatorState>();
+
+  @override
+  void didUpdateWidget(_PlayerNavigator old) {
+    super.didUpdateWidget(old);
+    // The route below caches its page; feed it the latest player body.
+    _child.value = widget.child;
+  }
+
+  @override
+  void dispose() {
+    _child.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Navigator(
+          key: _navigator,
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            opaque: false,
+            transitionDuration: Duration.zero,
+            pageBuilder: (_, __, ___) => ScaffoldMessenger(
+              child: Scaffold(
+                backgroundColor: Colors.transparent,
+                // The comment box handles the keyboard itself, as before.
+                resizeToAvoidBottomInset: false,
+                body: ValueListenableBuilder<Widget>(
+                  valueListenable: _child,
+                  builder: (_, child, __) => child,
+                ),
+              ),
+            ),
+          ),
+      );
 }

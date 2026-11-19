@@ -34,6 +34,9 @@ import '../../../../shared/media/phlio_look_data.dart';
 import '../../../../shared/media/phlio_look_view.dart';
 import '../../../../shared/media/smart_filter_editor.dart';
 import '../../../../shared/media/smart_filters.dart';
+import '../../../../shared/media/story_fx_catalog.dart';
+import '../../../../shared/media/story_fx_view.dart';
+import '../../../../shared/content/mentions.dart' show MentionTextEditingController;
 import '../../../../shared/moments/moments.dart';
 import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart';
@@ -132,13 +135,18 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   ];
 
   final _canvasKey = GlobalKey();
-  final caption = TextEditingController();
+  final caption = MentionTextEditingController();
   final layers = <_Layer>[];
   String? mediaPath;
   bool isVideo = false, createMode = false;
   int gradient = 0;
   String filter = 'normal'; // look id (shared/media/phlio_look_data.dart)
   String effect = 'none'; // GPU effect id
+  // Story effects catalogue (shared/media/story_fx_catalog.dart): drawn
+  // live as data; video time effects (boomerang…) are rendered on upload.
+  String? fx;
+  double fxAmount = 1;
+  String? motion;
   // Snapchat-style info filters (time, weather, place…), kept as data.
   FilterSpec smart = FilterSpec();
   bool _capturing = false; // flattening a photo: bake the look, keep the effect live
@@ -527,6 +535,40 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     );
   }
 
+  /// The full effects catalogue (Classic, Vintage, Lens, Light, Art,
+  /// Animated, Motion…). AR and AI effects say "coming soon".
+  Future<void> storyEffects() async {
+    if (!hasContent) {
+      _say('Add a photo or video first.');
+      return;
+    }
+    final thumb = SizedBox.expand(
+      child: mediaPath != null && !isVideo
+          ? Image.file(File(mediaPath!), fit: BoxFit.cover, cacheWidth: 220)
+          : DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: _gradients[gradient]))),
+    );
+    await openStoryFxSheet(
+      context,
+      thumb: thumb,
+      isVideo: isVideo,
+      current: StoryFxChoice(fx: fx, motion: motion, amount: fxAmount),
+      onChanged: (choice) {
+        final named = choice.fx != fx;
+        setState(() {
+          fx = choice.fx;
+          motion = choice.motion;
+          fxAmount = choice.amount;
+          if (named && choice.fx != null) flash = storyFxById[choice.fx]?.name;
+        });
+        if (named) {
+          Future<void>.delayed(const Duration(milliseconds: 900), () {
+            if (mounted) setState(() => flash = null);
+          });
+        }
+      },
+    );
+  }
+
   Future<void> saveToDevice() async {
     if (!hasContent) return _say('Add a photo or video first.');
     try {
@@ -588,6 +630,8 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                     layers.clear();
                     filter = 'normal';
                     effect = 'none';
+                    fx = null;
+                    motion = null;
                     lookStrength = 1;
                   });
                 },
@@ -607,7 +651,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     // Animated effects (glitch, VHS, light leaks…) stay live in the viewer,
     // so they're left out of the flattened PNG and sent as data instead.
     // Interactive stickers are left out too (they stay live as overlays).
-    if (effect != 'none' || layers.any((l) => l.interactive)) {
+    if (effect != 'none' || fx != null || layers.any((l) => l.interactive)) {
       setState(() => _capturing = true);
       await WidgetsBinding.instance.endOfFrame;
     }
@@ -686,13 +730,28 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               if (_music != null) 'music': jsonEncode(_music),
               // Photos: the look is baked into the PNG; the effect plays live.
               'filter': isVideo ? joinMomentFilter(filter, effect) : joinMomentFilter('normal', effect),
-              if (smart.overlays.isNotEmpty)
+              if (smart.overlays.isNotEmpty || fx != null || filter != 'normal' || effect != 'none')
                 'filter_spec': jsonEncode((FilterSpec(
                   look: isVideo ? filter : 'normal',
                   effect: effect == 'none' ? null : effect,
                   strength: lookStrength.clamp(0.0, 1.0),
                   overlays: smart.overlays,
+                  fx: fx,
+                  fxAmount: fxAmount,
+                  // Photos bake the filter in; keep its name for the viewer.
+                  appliedLook: isVideo ? null : filter,
                 )).toJson()),
+              // Who's tagged (mention layers are flattened into photos), so
+              // the viewer can show "@a, @b" under your name.
+              'mentions': jsonEncode([
+                for (final l in layers)
+                  if (l.type == 'mention' && l.text.trim().isNotEmpty)
+                    l.text.trim().replaceFirst('@', '')
+                  else if (l.item?.type == StickerType.mention)
+                    '${l.item!.data['text'] ?? ''}'.replaceFirst('@', '')
+              ].where((u) => u.isNotEmpty).toList()),
+              // Boomerang, slow motion… rendered into the clip by the server.
+              if (isVideo && motion != null) 'edits': jsonEncode({'motion': motion}),
               'highlight': saveToHighlights ? 'Highlights' : '',
               'ai_label': aiLabel.toString(),
             }),
@@ -718,11 +777,16 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
 
   // -- UI -----------------------------------------------------------------------
 
-  Widget _filtered(String name, Widget child) => PhlioLook(
-      look: name,
-      strength: lookStrength,
-      effect: _capturing ? 'none' : effect,
-      child: child);
+  // The story effect stays live (sent as data), so it's left out of the
+  // flattened photo like the animated effects.
+  Widget _filtered(String name, Widget child) => StoryFxLayer(
+      fx: _capturing ? null : fx,
+      amount: fxAmount,
+      child: PhlioLook(
+          look: name,
+          strength: lookStrength,
+          effect: _capturing ? 'none' : effect,
+          child: child));
 
   Widget _background() {
     if (createMode) {
@@ -945,6 +1009,12 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         icon: const Icon(Icons.auto_fix_high_outlined),
         onTap: effects,
         on: false
+      ),
+      (
+        label: 'Story FX',
+        icon: const Icon(Icons.auto_awesome_motion_outlined),
+        onTap: storyEffects,
+        on: fx != null || motion != null
       ),
       (
         label: 'Save',

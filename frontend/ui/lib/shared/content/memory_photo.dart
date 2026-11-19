@@ -14,6 +14,7 @@ import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
+import '../media/story_fx_view.dart';
 
 final privatePhotoProvider =
     FutureProvider.autoDispose.family<Uint8List, String>((ref, path) async {
@@ -36,7 +37,11 @@ class MemoryPhoto extends ConsumerWidget {
       this.decorations = const [],
       this.filter,
       this.filterSpec,
+      this.takenAt,
       this.autoplay = false});
+
+  /// When it was taken (date stamps of film / camcorder effects).
+  final DateTime? takenAt;
   final List decorations;
   final bool isVideo;
   final String url;
@@ -58,10 +63,14 @@ class MemoryPhoto extends ConsumerWidget {
   /// The filter applies to the photo / video, under the decorations.
   Widget _filtered(BuildContext context, WidgetRef ref) {
     final (look, effect) = splitMomentFilter(filter);
-    final base = look == 'normal' && effect == 'none'
-        ? _photo(context, ref)
-        : PhlioLook(look: look, effect: effect, child: _photo(context, ref));
     final smart = FilterSpec.fromJson(filterSpec);
+    final looked = look == 'normal' && effect == 'none'
+        ? _photo(context, ref)
+        : PhlioLook(look: look, effect: effect, strength: smart?.strength ?? 1, child: _photo(context, ref));
+    // Adjust sliders and the story effect, drawn live on the GPU.
+    final base = smart == null || (smart.fx == null && smart.adjust.isEmpty)
+        ? looked
+        : StoryFxLayer(fx: smart.fx, amount: smart.fxAmount, adjust: smart.adjust, stamp: takenAt, child: looked);
     if (smart == null || smart.overlays.isEmpty) return base;
     return Stack(fit: StackFit.expand, children: [base, SmartFilterLayer(spec: smart)]);
   }

@@ -14,6 +14,7 @@ import '../media/smart_filters.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -39,7 +40,12 @@ import '../giphy/giphy_picker.dart';
 import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
+import 'moment_activity.dart';
+import 'moment_meta.dart';
+import '../content/mentions.dart' show MentionTextEditingController;
 import 'stickers/sticker_responses.dart';
+import '../media/story_fx_view.dart';
+import 'package:flutter/services.dart';
 import 'templates/template_media.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 
@@ -395,9 +401,14 @@ class _MomentStoryViewerState extends ConsumerState<MomentStoryViewer> {
     super.dispose();
   }
 
+  // Full screen: the moment runs edge to edge under the status bar; the
+  // header and bottom bar float over it (Instagram / Bond layout).
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent),
+      child: Scaffold(
         backgroundColor: Colors.black,
+        resizeToAvoidBottomInset: false,
         body: GestureDetector(
           onVerticalDragUpdate: (d) =>
               setState(() => _drag = math.max(0, _drag + d.delta.dy)),
@@ -428,7 +439,7 @@ class _MomentStoryViewerState extends ConsumerState<MomentStoryViewer> {
             ),
           ),
         ),
-      );
+      ));
 }
 
 class _AuthorMoments extends ConsumerStatefulWidget {
@@ -465,7 +476,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           if (status == AnimationStatus.completed) _forward();
         });
   VideoPlayerController? video;
-  final reply = TextEditingController();
+  final reply = MentionTextEditingController();
   final replyFocus = FocusNode();
   bool paused = false, sending = false, recording = false;
   String? burst;
@@ -490,13 +501,12 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
       if (replyFocus.hasFocus) {
         _pause();
       } else {
+        // Keyboard dismissed (back button / swipe) with nothing typed.
+        if (_replying && reply.text.trim().isEmpty && mounted) setState(() => _replying = false);
         _resume();
       }
     });
     if (widget.active) _show();
-    _musicLine = Timer.periodic(const Duration(milliseconds: 2600), (_) {
-      if (mounted) setState(() => _showReshare = !_showReshare);
-    });
   }
 
   @override
@@ -862,14 +872,67 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     _resume();
   }
 
+  /// React: saved on the moment (the author sees it in Viewers) and sent
+  /// to their DMs. Tapping the same reaction again takes it back.
   Future<void> _react(String emoji) async {
-    setState(() => burst = emoji);
+    final current = item;
+    final dio = getIt<ApiClient>().dio;
+    if (current['my_reaction'] == emoji) {
+      setState(() => current['my_reaction'] = null);
+      try {
+        await dio.delete('/social/moments/${_mid(current)}/reaction');
+      } catch (_) {}
+      return;
+    }
+    setState(() {
+      burst = emoji;
+      current['my_reaction'] = emoji;
+    });
+    try {
+      await dio.put('/social/moments/${_mid(current)}/reaction', data: {'emoji': emoji});
+    } catch (_) {}
     try {
       await ref.read(messagingApiProvider).send(
           author['username'] as String, '$emoji Reacted to your moment');
     } catch (_) {}
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (mounted) setState(() => burst = null);
+  }
+
+  /// Viewers / Comments sheet is up (the moment shrinks to a card).
+  bool _sheetOpen = false;
+
+  /// People icon: who watched, with their reactions.
+  Future<void> _openViewers() async {
+    final current = item;
+    _pause();
+    setState(() => _sheetOpen = true);
+    var thenComments = false;
+    await showMomentViewers(context, current,
+        onComments: () => thenComments = true,
+        onCounts: (c) {
+          if (!mounted) return;
+          setState(() {
+            current['view_count'] = c['views'];
+            current['reaction_count'] = c['reactions'];
+            current['comment_count'] = c['comments'];
+          });
+        });
+    if (mounted) setState(() => _sheetOpen = false);
+    if (thenComments && mounted) return _openComments();
+    _resume();
+  }
+
+  /// Comments icon: the moment's comment thread.
+  Future<void> _openComments() async {
+    final current = item;
+    _pause();
+    setState(() => _sheetOpen = true);
+    await showMomentComments(context, current, isAuthor: mine, owner: author['username'] as String?, onCount: (n) {
+      if (mounted) setState(() => current['comment_count'] = n);
+    });
+    if (mounted) setState(() => _sheetOpen = false);
+    _resume();
   }
 
   Future<void> _ownerMenu() async {
@@ -938,32 +1001,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           _say('Filters updated');
         }
       } else if (action == 'viewers') {
-        final data = (await dio.get('/social/moments/${_mid(item)}/viewers'))
-            .data as Map;
-        if (!mounted) return;
-        await showModalBottomSheet<void>(
-          context: context,
-          showDragHandle: true,
-          builder: (_) => SafeArea(
-            child: ListView(shrinkWrap: true, children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Text('Viewed by ${data['count']}',
-                    style: PhlioTypography.title),
-              ),
-              for (final p in data['people'] as List)
-                ListTile(
-                  leading: PhlioAvatar(
-                      name: (p as Map)['display_name'] as String? ?? '',
-                      imageUrl: p['avatar_url'] as String?,
-                      size: 40,
-                      showMomentRing: false),
-                  title: Text(p['display_name'] as String? ?? ''),
-                  subtitle: Text('@${p['username']}'),
-                ),
-            ]),
-          ),
-        );
+        await _openViewers();
       } else if (action == 'delete') {
         final id = '${item['id']}';
         await dio.delete('/social/moments/${_mid(item)}');
@@ -1017,37 +1055,253 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     );
   }
 
+  /// Hold-to-record mic (voice reply to their DMs).
+  Widget _micButton() => Tooltip(
+        message: 'Hold to record a voice message',
+        child: GestureDetector(
+          onTap: () => _say('Hold the mic to record a voice message.'),
+          onLongPressStart: (_) => _startVoice(),
+          onLongPressEnd: (_) => _stopVoice(),
+          onLongPressCancel: () => _stopVoice(cancel: true),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: recording ? 42 : 36,
+            height: recording ? 42 : 36,
+            decoration: BoxDecoration(
+                shape: BoxShape.circle, color: recording ? PhlioColors.danger : Colors.transparent),
+            child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 22),
+          ),
+        ),
+      );
+
+  /// Reply mode: the keyboard is up, the moment dims and the big
+  /// reactions show (Instagram). Swipe down or tap the moment to leave.
+  bool _replying = false;
+  double _lastKeyboard = 0;
+
+  void _startReply() {
+    setState(() => _replying = true);
+    // Focus after the field exists, then ask for the keyboard explicitly —
+    // Android doesn't always raise it for a field that was just built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      replyFocus.requestFocus();
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    });
+  }
+
+  void _endReply() {
+    replyFocus.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    if (mounted) setState(() => _replying = false);
+  }
+
+  /// Someone else's moment, Instagram layout: a "Send message" pill, then
+  /// like · comments · send on the right, all on one centre line. Tapping
+  /// the pill enters reply mode: the pill takes the full width, the
+  /// keyboard comes up, and photo / GIF / mic and Send appear inside it.
+  Widget _viewerBar(Map current, bool allowComments, int comments) {
+    final hasText = reply.text.trim().isNotEmpty;
+    final liked = current['my_reaction'] == '❤️';
+    const radius = BorderRadius.all(Radius.circular(26));
+    BoxDecoration pillBox(double border) => BoxDecoration(
+          color: const Color(0x14FFFFFF),
+          borderRadius: radius,
+          border: Border.all(color: Colors.white.withValues(alpha: .55), width: border),
+        );
+    Widget frosted(Widget child) => ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16), child: child),
+        );
+
+    if (!allowComments) {
+      return Row(children: [
+        Expanded(
+          child: frosted(Container(
+            height: 48,
+            alignment: Alignment.center,
+            decoration: pillBox(1),
+            child: Text('Replies are turned off',
+                style: PhlioTypography.body.copyWith(color: Colors.white60, fontSize: 15)),
+          )),
+        ),
+        const SizedBox(width: _BarIcon.pillGap),
+        ..._actions(current, liked, comments, allowComments: false),
+      ]);
+    }
+
+    if (!_replying) {
+      return Row(children: [
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _startReply,
+            child: frosted(Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              alignment: Alignment.centerLeft,
+              decoration: pillBox(1.1),
+              child: const Text('Send message',
+                  style: TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w500)),
+            )),
+          ),
+        ),
+        const SizedBox(width: _BarIcon.pillGap),
+        ..._actions(current, liked, comments),
+      ]);
+    }
+
+    return GestureDetector(
+      onVerticalDragEnd: (d) {
+        if ((d.primaryVelocity ?? 0) > 150) _endReply();
+      },
+      child: frosted(Container(
+        height: 50,
+        padding: EdgeInsets.only(left: 20, right: hasText ? 5 : 8),
+        decoration: pillBox(1.2),
+        child: Row(children: [
+          Expanded(
+            child: TextField(
+              controller: reply,
+              focusNode: replyFocus,
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+              style: const TextStyle(color: Colors.white, fontSize: 15.5),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (text) async {
+                await _send(text);
+                if (mounted) _endReply();
+              },
+              cursorColor: Colors.white,
+              decoration: const InputDecoration(
+                isCollapsed: true,
+                filled: false,
+                fillColor: Colors.transparent,
+                hintText: 'Send message',
+                hintStyle: TextStyle(color: Colors.white70, fontSize: 15.5),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          if (hasText)
+            TextButton(
+              onPressed: sending
+                  ? null
+                  : () async {
+                      await _send(reply.text);
+                      if (mounted) _endReply();
+                    },
+              style: TextButton.styleFrom(foregroundColor: PhlioColors.brandPeach),
+              child: sending
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Send', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+            )
+          else ...[
+            _PillIcon(tooltip: 'Send a photo', icon: Icons.image_outlined, onTap: _sendPhoto),
+            _PillIcon(tooltip: 'Send a GIF', icon: Icons.gif_box_outlined, onTap: _sendGif),
+            _micButton(),
+          ],
+        ]),
+      )),
+    );
+  }
+
+  /// like · comments · send — fixed 44 px slots, vertically centred on the
+  /// pill, the last one flush with the right gutter.
+  List<Widget> _actions(Map current, bool liked, int comments, {bool allowComments = true}) => [
+        _BarIcon(
+          tooltip: liked ? 'Unlike' : 'Like',
+          onTap: () => _react('❤️'),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+            child: liked
+                ? const Icon(Icons.favorite_rounded, key: ValueKey('liked'), color: Color(0xFFFF3B5C), size: _BarIcon.glyph)
+                : const Icon(Icons.favorite_border_rounded,
+                    key: ValueKey('like'), color: Colors.white, size: _BarIcon.glyph, shadows: _iconShadow),
+          ),
+        ),
+        if (allowComments)
+          _BarIcon(
+            tooltip: 'Comments',
+            onTap: _openComments,
+            badge: comments,
+            child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: _BarIcon.glyph - 1, shadows: _iconShadow),
+          ),
+        _BarIcon(
+          tooltip: 'Send to someone',
+          onTap: _shareMoment,
+          // The plane's ink sits a touch high in its box; nudge it to the line.
+          child: Transform.translate(
+              offset: const Offset(0, 1), child: const PhlioSendIcon(color: Colors.white, size: _BarIcon.glyph - 1)),
+        ),
+      ];
+
+  static const _iconShadow = [Shadow(color: Color(0x73000000), blurRadius: 10)];
+
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     final current = item;
     final created = DateTime.tryParse(current['created_at'] as String? ?? '');
     final allowComments = current['allow_comments'] != false;
-    final song = current['music'] is Map ? current['music'] as Map : null;
-    final reshare =
-        current['reshared_from'] is Map ? current['reshared_from'] as Map : null;
-    final showReshare = reshare != null && (song == null || _showReshare);
-    return SafeArea(
-      child: Column(children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Stack(fit: StackFit.expand, children: [
+    final insets = MediaQuery.paddingOf(context);
+    // Read straight from the window, so no ancestor can hide the keyboard height.
+    // (MediaQuery.viewInsetsOf also subscribes this build to keyboard changes.)
+    final keyboard = math.max(
+        MediaQuery.viewInsetsOf(context).bottom, MediaQueryData.fromView(View.of(context)).viewInsets.bottom);
+    // Keyboard closed with the back button: leave reply mode too.
+    if (_replying && _lastKeyboard > 0 && keyboard == 0 && reply.text.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _replying) _endReply();
+      });
+    }
+    _lastKeyboard = keyboard;
+    final barSpace = (mine ? 92.0 : 76.0) + insets.bottom;
+    final comments = (current['comment_count'] as num?)?.toInt() ?? 0;
+    // While Viewers / Comments is open the moment shrinks into a card at
+    // the top (Bond style), so you still see what people are reacting to.
+    return AnimatedScale(
+      scale: _sheetOpen ? .4 : 1,
+      alignment: Alignment(0, -1 + (insets.top + 24) / MediaQuery.sizeOf(context).height * 2),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_sheetOpen ? 34 : 0),
+        child: Stack(fit: StackFit.expand, children: [
               _framedMediaFor(current, video),
               for (final layer in (current['overlays'] as List? ?? const []))
                 if (current['media_kind'] == 'video')
                   _OverlayView(layer: Map.from(layer as Map)),
-              const Positioned(
+              Positioned(
                 left: 0,
                 right: 0,
                 top: 0,
-                height: 130,
-                child: DecoratedBox(
+                height: 130 + insets.top,
+                child: const DecoratedBox(
                     decoration: BoxDecoration(
                         gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [Colors.black54, Colors.transparent]))),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: barSpace + 90,
+                child: const IgnorePointer(
+                  child: DecoratedBox(
+                      decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black54, Colors.transparent]))),
+                ),
               ),
               // Tap zones: left = back, right = forward, hold = pause.
               Row(children: [
@@ -1084,7 +1338,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
               Positioned(
                 left: 8,
                 right: 4,
-                top: 6,
+                top: insets.top + 6,
                 child: Column(children: [
                   Row(children: [
                     for (var i = 0; i < items.length; i++)
@@ -1168,53 +1422,22 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                               const _Chip('AI info'),
                             ],
                           ]),
-                          if (song != null || reshare != null)
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 280),
-                              child: showReshare
-                                  ? Row(
-                                      key: const ValueKey('reshare'),
-                                      children: [
-                                        const Icon(Icons.repeat_rounded,
-                                            size: 14, color: Colors.white70),
-                                        const SizedBox(width: 6),
-                                        PhlioAvatar(
-                                            name: reshare['display_name']
-                                                    as String? ??
-                                                '',
-                                            imageUrl: reshare['avatar_url']
-                                                as String?,
-                                            size: 16),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                              reshare['username'] as String? ??
-                                                  '',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: PhlioTypography.caption
-                                                  .copyWith(
-                                                      color: Colors.white,
-                                                      fontSize: 13)),
-                                        ),
-                                      ])
-                                  : Row(
-                                      key: const ValueKey('song'),
-                                      children: [
-                                        _EqualizerBars(playing: !paused),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                              '${song!['artist']} · ${song['title']}',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: PhlioTypography.caption
-                                                  .copyWith(
-                                                      color: Colors.white,
-                                                      fontSize: 13)),
-                                        ),
-                                      ]),
+                          // Song · reshared from · mentions · effect · filter,
+                          // a new one every 3 seconds (Instagram).
+                          RotatingMeta(
+                            key: ValueKey('meta-${current['id']}'),
+                            paused: replyFocus.hasFocus || recording,
+                            lines: momentMetaLines(
+                              current,
+                              playing: !paused,
+                              onSong: _about,
+                              onProfile: (username) {
+                                final router = GoRouter.of(context);
+                                Navigator.of(context).maybePop();
+                                router.push('/creator/${Uri.encodeComponent(username)}');
+                              },
                             ),
+                          ),
                         ],
                       ),
                     ),
@@ -1236,7 +1459,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                 Positioned(
                   left: 16,
                   right: 16,
-                  bottom: 18,
+                  bottom: barSpace + 14,
                   child: Text(current['caption'] as String,
                       textAlign: TextAlign.center,
                       style: PhlioTypography.bodyLarge.copyWith(
@@ -1260,7 +1483,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 24,
+                  bottom: barSpace + 24,
                   child: Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1279,134 +1502,198 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                     ),
                   ),
                 ),
+              // Reply mode: dim the moment, big reactions (Instagram 3 × 2).
+              // Tap or swipe down to drop the keyboard and the reactions.
+              if (!mine && _replying)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _endReply,
+                    onVerticalDragEnd: (d) {
+                      if ((d.primaryVelocity ?? 0) > 150) _endReply();
+                    },
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      builder: (_, t, child) => ColoredBox(
+                        color: Colors.black.withValues(alpha: .55 * t),
+                        child: Opacity(opacity: t, child: Transform.scale(scale: .9 + .1 * t, child: child)),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: keyboard + 80, top: insets.top + 80),
+                        child: Center(
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 34,
+                            runSpacing: 28,
+                            children: [
+                              for (final e in const ['😂', '😮', '😍', '😢', '👏', '🔥'])
+                                SizedBox(
+                                  width: 76,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      _endReply();
+                                      _react(e);
+                                    },
+                                    child: Text(e, textAlign: TextAlign.center, style: const TextStyle(fontSize: 58)),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: keyboard > 0 ? keyboard : insets.bottom,
+          child: Padding(
+          padding: EdgeInsets.fromLTRB(12, 8, mine ? 8 : _BarIcon.rightPad, 10),
+          child: mine
+              ? Column(mainAxisSize: MainAxisSize.min, children: [
+                  // Bond-style: ︿, then viewers and comments in the middle.
+                  GestureDetector(
+                    onTap: _openViewers,
+                    child: const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 26),
+                  ),
+                  Row(children: [
+                    const SizedBox(width: 56),
+                    Expanded(
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        _CountButton(
+                          tooltip: 'Viewers',
+                          icon: Icons.people_alt_outlined,
+                          count: (current['view_count'] as num?)?.toInt() ?? 0,
+                          badge: ((current['reaction_count'] as num?)?.toInt() ?? 0) > 0 ? '❤️' : null,
+                          onTap: _openViewers,
+                        ),
+                        const SizedBox(width: 26),
+                        _CountButton(
+                          tooltip: 'Comments',
+                          icon: Icons.chat_bubble_outline_rounded,
+                          count: comments,
+                          onTap: _openComments,
+                        ),
+                      ]),
+                    ),
+                    IconButton(
+                        tooltip: widget.highlight ? 'Highlight options' : 'More',
+                        onPressed: _ownerMenu,
+                        icon: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 28)),
+                  ]),
+                ])
+              : _viewerBar(current, allowComments, comments),
+        ),
+        ),
+      ]),
+      ),
+    );
+  }
+}
+
+/// One of the right-hand actions on someone's moment: a fixed 44 px slot,
+/// so like / comment / send line up at the right edge.
+class _BarIcon extends StatelessWidget {
+  const _BarIcon({required this.child, required this.onTap, required this.tooltip, this.badge = 0});
+  final Widget child;
+  final VoidCallback onTap;
+  final String tooltip;
+  final int badge;
+
+  /// Every action is a [slot] × [height] box with its glyph centred, the
+  /// same height as the "Send message" pill, so all of them share one centre
+  /// line. Glyph-to-glyph spacing is slot − glyph (18 px); [pillGap] gives
+  /// the same 18 px between the pill and the first glyph, and [rightPad]
+  /// leaves 12 px after the last glyph — the same as the left gutter.
+  static const double slot = 44, height = 48, glyph = 26;
+  static const double pillGap = 18 - (slot - glyph) / 2;
+  static const double rightPad = 12 - (slot - glyph) / 2;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 24,
+          child: SizedBox(
+            width: slot,
+            height: height,
+            child: Center(
+              child: SizedBox.square(
+                dimension: glyph,
+                child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+                  child,
+                  if (badge > 0)
+                    // Pinned to the glyph's corner, so it never shifts the icon.
+                    Positioned(
+                      right: -9,
+                      top: -7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF3B5C),
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: Colors.black, width: 1.2),
+                        ),
+                        child: Text(badge > 99 ? '99+' : '$badge',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 9.5, height: 1.2, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Icon with a count beside it (viewers, comments).
+class _CountButton extends StatelessWidget {
+  const _CountButton({
+    required this.icon,
+    required this.count,
+    required this.onTap,
+    required this.tooltip,
+    this.badge,
+    this.compact = false,
+  });
+  final IconData icon;
+  final int count;
+  final VoidCallback onTap;
+  final String tooltip;
+  final String? badge;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 30,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 10, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Stack(clipBehavior: Clip.none, children: [
+                Icon(icon, color: Colors.white, size: compact ? 27 : 30),
+                if (badge != null)
+                  Positioned(right: -6, bottom: -4, child: Text(badge!, style: const TextStyle(fontSize: 12))),
+              ]),
+              if (count > 0 || !compact) ...[
+                const SizedBox(width: 6),
+                Text('$count',
+                    style: TextStyle(
+                        color: Colors.white, fontSize: compact ? 15 : 22, fontWeight: FontWeight.w600)),
+              ],
             ]),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 6, 10),
-          child: mine
-              ? Row(children: [
-                  const Icon(Icons.visibility_outlined,
-                      color: Colors.white70, size: 20),
-                  const SizedBox(width: 6),
-                  Text(widget.highlight ? 'Highlight' : 'Your moment',
-                      style: PhlioTypography.caption
-                          .copyWith(color: Colors.white70)),
-                  const Spacer(),
-                  TextButton.icon(
-                      onPressed: _ownerMenu,
-                      icon: const Icon(Icons.more_horiz_rounded,
-                          color: Colors.white),
-                      label: const Text('More',
-                          style: TextStyle(color: Colors.white))),
-                ])
-              : Row(children: [
-                  Expanded(
-                    child: !allowComments
-                        ? Container(
-                            height: 52,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(28),
-                                border: Border.all(color: Colors.white24)),
-                            child: Text('Replies are turned off',
-                                style: PhlioTypography.body
-                                    .copyWith(color: Colors.white54)),
-                          )
-                        : Container(
-                            height: 52,
-                            padding: const EdgeInsets.only(left: 20, right: 4),
-                            decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(28),
-                                border:
-                                    Border.all(color: Colors.white54, width: 1.2)),
-                            child: Row(children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: reply,
-                                  focusNode: replyFocus,
-                                  onChanged: (_) => setState(() {}),
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 16),
-                                  textInputAction: TextInputAction.send,
-                                  onSubmitted: _send,
-                                  cursorColor: Colors.white,
-                                  decoration: const InputDecoration(
-                                    isCollapsed: true,
-                                    filled: false,
-                                    fillColor: Colors.transparent,
-                                    hintText: 'Send message',
-                                    hintStyle: TextStyle(
-                                        color: Colors.white, fontSize: 16),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    disabledBorder: InputBorder.none,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ),
-                              if (reply.text.trim().isNotEmpty)
-                                TextButton(
-                                    onPressed:
-                                        sending ? null : () => _send(reply.text),
-                                    child: const Text('Send',
-                                        style: TextStyle(
-                                            color: PhlioColors.brandPeach,
-                                            fontWeight: FontWeight.w700)))
-                              else ...[
-                                _PillIcon(
-                                    tooltip: 'Send a GIF',
-                                    icon: Icons.gif_box_outlined,
-                                    onTap: _sendGif),
-                                _PillIcon(
-                                    tooltip: 'Send a photo',
-                                    icon: Icons.image_outlined,
-                                    onTap: _sendPhoto),
-                                Tooltip(
-                                  message: 'Hold to record a voice message',
-                                  child: GestureDetector(
-                                    onTap: () => _say(
-                                        'Hold the mic to record a voice message.'),
-                                    onLongPressStart: (_) => _startVoice(),
-                                    onLongPressEnd: (_) => _stopVoice(),
-                                    onLongPressCancel: () =>
-                                        _stopVoice(cancel: true),
-                                    child: AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 160),
-                                      width: recording ? 46 : 40,
-                                      height: recording ? 46 : 40,
-                                      decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: recording
-                                              ? PhlioColors.danger
-                                              : Colors.transparent),
-                                      child: const Icon(Icons.mic_none_rounded,
-                                          color: Colors.white, size: 24),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ]),
-                          ),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                      tooltip: 'Like',
-                      onPressed: () => _react('❤️'),
-                      icon: const Icon(Icons.favorite_border_rounded,
-                          color: Colors.white, size: 30)),
-                  IconButton(
-                      tooltip: 'Send to someone',
-                      onPressed: _shareMoment,
-                      icon: const PhlioSendIcon(
-                          color: Colors.white, size: 28)),
-                ]),
-        ),
-      ]),
-    );
-  }
+      );
 }
 
 class _PillIcon extends StatelessWidget {
@@ -1540,9 +1827,18 @@ class _MomentMedia extends StatelessWidget {
                 color: Colors.white38, size: 48)),
       );
     }
-    final looked = PhlioLook(look: look, effect: effect, child: child);
-    // Smart filters (time, weather, place…) are stored as data and drawn live.
+    // Smart filters (time, weather, place…), adjustments and story effects
+    // are stored as data and drawn live.
     final smart = FilterSpec.fromJson(item['filter_spec']);
+    Widget looked = PhlioLook(look: look, effect: effect, child: child);
+    if (smart != null && (smart.fx != null || smart.adjust.isNotEmpty)) {
+      looked = StoryFxLayer(
+          fx: smart.fx,
+          amount: smart.fxAmount,
+          adjust: smart.adjust,
+          stamp: DateTime.tryParse('${item['created_at']}')?.toLocal(),
+          child: looked);
+    }
     if (smart == null || smart.overlays.isEmpty) return looked;
     return Stack(fit: StackFit.expand, children: [looked, SmartFilterLayer(spec: smart)]);
   }

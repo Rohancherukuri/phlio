@@ -10,8 +10,14 @@
 //            swipe through, a caption and audience → "Share Experience".
 //            Every item uploads as an `experience` memory with the same
 //            `group`, so they show as one dump.
-//   Viewer   a dump's cards one by one ("2 / 4"), who posted it and when,
-//            quick reactions and a reply.
+//   Viewer   a dump's cards one by one ("2 / 4"), who posted each and when,
+//            where (pill → map), collaborators, quick reactions and a reply.
+//   Edit     ✎ on a card: crop, adjust, filters, effects, trim, speed…
+//            (shared/media/media_editor.dart).
+//   Together add collaborators from your friends or @mention them; they
+//            can add their own photos to the same dump.
+//
+// Composer and viewer live in experience_share.dart (a part of this file).
 //
 // Friends can see an Experience for 7 days (GET /social/memories).
 
@@ -37,6 +43,22 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../rooms/data/datasources/messaging_api.dart';
 import 'memories_screen.dart' show memoriesProvider;
 import 'snap_audience.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../../design_system/widgets/phlio_card.dart';
+import '../../../../shared/location/location_message.dart' show openInMaps;
+import '../../../../shared/location/location_service.dart' show Place;
+import '../../../../shared/location/location_share_screen.dart' show phlioMapStyle;
+import '../../../../shared/location/places_api.dart' show reverseGeocode;
+import '../../../../shared/media/media_editor.dart';
+import '../../../../shared/media/phlio_look_view.dart';
+import '../../../../shared/media/photo_exif.dart';
+import '../../../../shared/media/smart_filters.dart';
+import '../../../../shared/media/story_fx_view.dart';
+import '../../../../shared/content/mentions.dart' show MentionTextEditingController, MentionText, openMentionProfile;
+import '../../../../shared/moments/moment_meta.dart';
+import '../../../rooms/presentation/widgets/note_place_picker.dart' show pickNotePlace;
+
+part 'experience_share.dart';
 
 const _monthsShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const _weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -594,7 +616,11 @@ class _Polaroid extends StatelessWidget {
         ),
         child: ClipRect(
           child: MemoryPhoto('${item['image_url']}',
-              isVideo: item['media_kind'] == 'video', filter: item['filter'] as String?, autoplay: autoplay),
+              isVideo: item['media_kind'] == 'video',
+              filter: item['filter'] as String?,
+              filterSpec: item['filter_spec'],
+              takenAt: DateTime.tryParse('${item['created_at']}')?.toLocal(),
+              autoplay: autoplay),
         ),
       );
 }
@@ -640,443 +666,6 @@ class _MineRow extends StatelessWidget {
             const Icon(Icons.chevron_right_rounded, color: Colors.white54),
           ]),
         ),
-      ),
-    );
-  }
-}
-
-// -- share --------------------------------------------------------------------------------
-
-/// Picks up to 10 photos / videos and opens the Experience composer.
-Future<void> shareExperience(BuildContext context, WidgetRef ref) async {
-  final picked = await ImagePicker().pickMultipleMedia(limit: 10, imageQuality: 92, maxWidth: 2160);
-  if (picked.isEmpty || !context.mounted) return;
-  final shared = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => ExperienceComposer(files: picked.take(10).toList())));
-  if (shared == true) ref.invalidate(memoriesProvider);
-}
-
-bool _isVideoPath(String path) =>
-    const ['.mp4', '.mov', '.m4v', '.webm', '.3gp'].any((e) => path.toLowerCase().endsWith(e));
-
-class ExperienceComposer extends ConsumerStatefulWidget {
-  const ExperienceComposer({required this.files, super.key});
-  final List<XFile> files;
-  @override
-  ConsumerState<ExperienceComposer> createState() => _ExperienceComposerState();
-}
-
-class _ExperienceComposerState extends ConsumerState<ExperienceComposer> {
-  late final List<XFile> _files = [...widget.files];
-  final _caption = TextEditingController();
-  final _pager = PageController(viewportFraction: .82);
-  SnapAudience _audience = const SnapAudience();
-  int _page = 0;
-  int _sent = 0;
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _caption.dispose();
-    _pager.dispose();
-    super.dispose();
-  }
-
-  Future<void> _share() async {
-    if (_busy || _files.isEmpty) return;
-    setState(() {
-      _busy = true;
-      _sent = 0;
-    });
-    final group = 'exp_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
-    try {
-      for (final f in _files) {
-        final video = _isVideoPath(f.path);
-        await getIt<ApiClient>().dio.post(
-              '/social/memories',
-              data: FormData.fromMap({
-                // The caption goes with the first item of the dump.
-                'caption': f == _files.first ? _caption.text.trim() : '',
-                'audience': _audience.mode,
-                'recipients': jsonEncode(_audience.recipients),
-                'kind': 'experience',
-                'group': group,
-                'file': await MultipartFile.fromFile(f.path,
-                    filename: f.name,
-                    contentType: video
-                        ? DioMediaType('video', 'mp4')
-                        : f.path.toLowerCase().endsWith('.png')
-                            ? DioMediaType('image', 'png')
-                            : DioMediaType('image', 'jpeg')),
-              }),
-              options: Options(sendTimeout: const Duration(minutes: 3), receiveTimeout: const Duration(minutes: 3)),
-            );
-        if (mounted) setState(() => _sent++);
-      }
-      if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      Navigator.pop(context, true);
-      messenger.showSnackBar(SnackBar(content: Text('Experience shared with ${_audience.label} for 7 days')));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Shared $_sent of ${_files.length}. Check your connection and try again.')));
-        // Keep only what didn't go up, so a retry doesn't post twice.
-        setState(() => _files.removeRange(0, _sent));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final week = experienceWeek();
-    return Scaffold(
-      backgroundColor: PhlioColors.background,
-      appBar: AppBar(
-        backgroundColor: PhlioColors.background,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        title: Column(children: [
-          const Text('Your Experience', style: TextStyle(fontWeight: FontWeight.w900)),
-          Text(_weekLabel(week), style: const TextStyle(color: Colors.white54, fontSize: 11.5, letterSpacing: 1.6, fontFamily: 'monospace')),
-        ]),
-      ),
-      body: SafeArea(
-        child: Column(children: [
-          const SizedBox(height: 8),
-          Expanded(
-            child: PageView.builder(
-              controller: _pager,
-              itemCount: _files.length,
-              onPageChanged: (i) => setState(() => _page = i),
-              itemBuilder: (_, i) => AnimatedBuilder(
-                animation: _pager,
-                builder: (_, child) {
-                  final page = _pager.hasClients && _pager.position.haveDimensions ? _pager.page ?? 0 : 0.0;
-                  final d = (page - i).clamp(-1.0, 1.0);
-                  return Transform.rotate(angle: d * -.08, child: Transform.scale(scale: 1 - d.abs() * .08, child: child));
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-                  child: Stack(children: [
-                    Positioned.fill(
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF4F1EC),
-                          borderRadius: BorderRadius.circular(6),
-                          boxShadow: const [BoxShadow(color: Color(0x88000000), blurRadius: 18, offset: Offset(0, 8))],
-                        ),
-                        child: ClipRect(child: _LocalMedia(file: _files[i], playing: i == _page)),
-                      ),
-                    ),
-                    Positioned(
-                      right: 14,
-                      top: 14,
-                      child: Material(
-                        color: Colors.black54,
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          tooltip: 'Remove',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: _busy
-                              ? null
-                              : () {
-                                  setState(() => _files.removeAt(i));
-                                  if (_files.isEmpty) Navigator.pop(context);
-                                },
-                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
-                        ),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-          Text('${math.min(_page + 1, _files.length)} / ${_files.length}', style: const TextStyle(color: Colors.white54)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-            child: TextField(
-              controller: _caption,
-              enabled: !_busy,
-              maxLength: 500,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(hintText: 'Say something about your week…', counterText: ''),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-            child: Row(children: [
-              ActionChip(
-                avatar: const Icon(Icons.people_alt_outlined, size: 18),
-                label: Text(_audience.label),
-                onPressed: _busy
-                    ? null
-                    : () async {
-                        final v = await pickSnapAudience(context, _audience);
-                        if (mounted && v != null) setState(() => _audience = v);
-                      },
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white, foregroundColor: Colors.black, shape: const StadiumBorder()),
-                onPressed: _busy ? null : _share,
-                icon: _busy
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const ExperienceMark(size: 20),
-                label: Text(_busy ? 'Sharing $_sent/${_files.length}…' : 'Share Experience',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            ]),
-          ),
-        ]),
-      ),
-    );
-  }
-}
-
-/// A picked photo or (looping, muted) video.
-class _LocalMedia extends StatefulWidget {
-  const _LocalMedia({required this.file, required this.playing});
-  final XFile file;
-  final bool playing;
-  @override
-  State<_LocalMedia> createState() => _LocalMediaState();
-}
-
-class _LocalMediaState extends State<_LocalMedia> {
-  VideoPlayerController? _video;
-
-  @override
-  void initState() {
-    super.initState();
-    if (_isVideoPath(widget.file.path)) {
-      final c = VideoPlayerController.file(File(widget.file.path));
-      _video = c;
-      c.initialize().then((_) async {
-        await c.setLooping(true);
-        await c.setVolume(0);
-        if (widget.playing) await c.play();
-        if (mounted) setState(() {});
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(_LocalMedia old) {
-    super.didUpdateWidget(old);
-    final c = _video;
-    if (c != null && c.value.isInitialized && old.playing != widget.playing) {
-      widget.playing ? c.play() : c.pause();
-    }
-  }
-
-  @override
-  void dispose() {
-    _video?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = _video;
-    if (c == null) return Image.file(File(widget.file.path), fit: BoxFit.cover, width: double.infinity, height: double.infinity);
-    if (!c.value.isInitialized) return const Center(child: CircularProgressIndicator());
-    return SizedBox.expand(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        clipBehavior: Clip.hardEdge,
-        child: SizedBox(width: c.value.size.width, height: c.value.size.height, child: VideoPlayer(c)),
-      ),
-    );
-  }
-}
-
-// -- viewer --------------------------------------------------------------------------------
-
-class ExperienceViewer extends ConsumerStatefulWidget {
-  const ExperienceViewer({required this.items, super.key});
-  final List<Map> items;
-  @override
-  ConsumerState<ExperienceViewer> createState() => _ExperienceViewerState();
-}
-
-class _ExperienceViewerState extends ConsumerState<ExperienceViewer> {
-  final _pager = PageController();
-  final _reply = TextEditingController();
-  int _page = 0;
-  String? _burst;
-
-  @override
-  void initState() {
-    super.initState();
-    _seen(0);
-  }
-
-  @override
-  void dispose() {
-    _pager.dispose();
-    _reply.dispose();
-    super.dispose();
-  }
-
-  Future<void> _seen(int i) async {
-    final item = widget.items[i];
-    if (item['unread'] != true) return;
-    try {
-      await getIt<ApiClient>().dio.put('/social/memories/${item['id']}/seen');
-    } catch (_) {}
-  }
-
-  Future<void> _react(String emoji) async {
-    final item = widget.items[_page];
-    try {
-      await getIt<ApiClient>().dio.put('/social/memories/${item['id']}/reaction', data: {'emoji': emoji});
-      HapticFeedback.lightImpact();
-      setState(() => _burst = emoji);
-      ref.invalidate(memoriesProvider);
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      if (mounted) setState(() => _burst = null);
-    } catch (_) {
-      _say('Could not send reaction. Try again.');
-    }
-  }
-
-  Future<void> _send() async {
-    final text = _reply.text.trim();
-    final author = widget.items.first['author'] as Map? ?? const {};
-    if (text.isEmpty || author['username'] == null) return;
-    try {
-      await ref.read(messagingApiProvider).send('${author['username']}', 'Reply to your Experience: $text');
-      _reply.clear();
-      _say('Reply sent in messages.');
-    } catch (_) {
-      _say('Could not send reply. Try again.');
-    }
-  }
-
-  void _say(String t) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final items = widget.items;
-    final me = ref.watch(authControllerProvider).valueOrNull?.id;
-    final author = items.first['author'] as Map? ?? const {};
-    final mine = author['id'] == me;
-    final current = items[_page.clamp(0, items.length - 1)];
-    final t = DateTime.tryParse('${current['created_at']}')?.toLocal();
-    final avatar = author['avatar_url'] as String?;
-    final caption = '${items.first['caption'] ?? ''}'.trim();
-    return Scaffold(
-      backgroundColor: PhlioColors.background,
-      appBar: AppBar(
-        backgroundColor: PhlioColors.background,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        title: Column(children: [
-          const Row(mainAxisSize: MainAxisSize.min, children: [
-            ExperienceMark(size: 20),
-            SizedBox(width: 6),
-            Text('Experience', style: TextStyle(fontWeight: FontWeight.w900)),
-          ]),
-          if (t != null)
-            Text(_weekLabel(experienceWeek(t)),
-                style: const TextStyle(color: Colors.white54, fontSize: 11.5, letterSpacing: 1.6, fontFamily: 'monospace')),
-        ]),
-      ),
-      body: SafeArea(
-        child: Column(children: [
-          Expanded(
-            child: Stack(children: [
-              PageView.builder(
-                controller: _pager,
-                itemCount: items.length,
-                onPageChanged: (i) {
-                  setState(() => _page = i);
-                  _seen(i);
-                },
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: _Polaroid(item: items[i], autoplay: true),
-                ),
-              ),
-              Positioned(
-                right: 28,
-                top: 20,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
-                  child: Text('${_page + 1} / ${items.length}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontFamily: 'monospace')),
-                ),
-              ),
-              if (_burst != null) Center(child: Text(_burst!, style: const TextStyle(fontSize: 96))),
-            ]),
-          ),
-          ListTile(
-            leading: CircleAvatar(
-              backgroundColor: PhlioColors.surfaceElevated,
-              backgroundImage: avatar == null || avatar.isEmpty ? null : NetworkImage(AppConfig.mediaUrl(avatar)),
-              child: avatar == null || avatar.isEmpty
-                  ? Text('${author['display_name'] ?? author['username'] ?? '?'}'.characters.first.toUpperCase())
-                  : null,
-            ),
-            title: Text('${author['display_name'] ?? author['username'] ?? 'Friend'}',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-            subtitle: Text(
-                [if (t != null) _weekdays[t.weekday - 1], if (caption.isNotEmpty) caption].join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white60)),
-            trailing: (current['reactions'] as List? ?? const []).isEmpty
-                ? null
-                : Text((current['reactions'] as List).map((r) => r['emoji']).take(4).join(' '),
-                    style: const TextStyle(fontSize: 18)),
-          ),
-          if (!mine)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Row(children: [
-                for (final e in ['\u{1F602}', '\u{2764}\u{FE0F}', '\u{1F60D}', '\u{1F525}'])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => _react(e),
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(color: PhlioColors.surfaceElevated, shape: BoxShape.circle),
-                        child: Text(e, style: const TextStyle(fontSize: 20)),
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: TextField(
-                    controller: _reply,
-                    style: const TextStyle(color: Colors.white),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                    decoration: InputDecoration(
-                      hintText: 'Leave a comment…',
-                      isDense: true,
-                      filled: true,
-                      fillColor: PhlioColors.surface,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                    ),
-                  ),
-                ),
-              ]),
-            ),
-        ]),
       ),
     );
   }

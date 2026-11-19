@@ -855,9 +855,52 @@ Future<void> showContentShare(BuildContext context, String path) =>
         useSafeArea: true,
         builder: (_) => _ShareSheet(path: path));
 
+/// Share one comment (any platform: Social posts, videos, clips, Stream,
+/// Book, Shop…) to people, groups or rooms inside Phlio. [path] is the
+/// thread's `platform/ref`; the comment is quoted in the message.
+Future<void> showCommentShare(BuildContext context,
+        {required String path,
+        required String commentId,
+        required String quote}) =>
+    showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        useRootNavigator: true,
+        builder: (_) =>
+            _ShareSheet(path: path, commentId: commentId, quote: quote));
+
+/// Share something with its own share endpoint (same body as content
+/// shares: destination, target, members, name, message), e.g. a comment on
+/// a moment. [link] is used for Copy link / WhatsApp / More.
+Future<void> showEndpointShare(BuildContext context,
+        {required String endpoint, required String link, String? quote}) =>
+    showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        useRootNavigator: true,
+        builder: (_) => _ShareSheet(
+            path: 'endpoint', endpoint: endpoint, externalLink: link, quote: quote));
+
 class _ShareSheet extends ConsumerStatefulWidget {
-  const _ShareSheet({required this.path});
+  const _ShareSheet(
+      {required this.path,
+      this.commentId,
+      this.quote,
+      this.endpoint,
+      this.externalLink});
   final String path;
+
+  /// Sharing one comment of [path]'s thread.
+  final String? commentId;
+
+  /// "@user: text" shown above the recipients.
+  final String? quote;
+
+  /// Custom share endpoint (instead of /content/<path>/share).
+  final String? endpoint;
+  final String? externalLink;
   @override
   ConsumerState<_ShareSheet> createState() => _ShareSheetState();
 }
@@ -917,6 +960,9 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
 
   /// `profile/<username>` shares a profile instead of a piece of content.
   bool get _isProfile => widget.path.startsWith('profile/');
+
+  /// A comment (or another custom share): no story / bookmarks / reposts.
+  bool get _plain => _isProfile || widget.commentId != null || widget.endpoint != null;
   String get _profileName => widget.path.substring('profile/'.length);
 
   Future<Map> _post(String destination,
@@ -926,10 +972,12 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
       (await getIt<ApiClient>()
               .dio
               .post(
-                  _isProfile
-                      ? '/profiles/${Uri.encodeComponent(_profileName)}/share'
-                      : '/content/${widget.path}/share',
+                  widget.endpoint ??
+                      (_isProfile
+                          ? '/profiles/${Uri.encodeComponent(_profileName)}/share'
+                          : '/content/${widget.path}/share'),
                   data: {
+        if (widget.commentId != null) 'comment_id': widget.commentId,
         'destination': destination,
         'target': target,
         'members': members,
@@ -1018,9 +1066,12 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
     }
   }
 
-  String get link => _isProfile
-      ? 'phlio://profile/$_profileName'
-      : 'phlio://app/shared/${widget.path}';
+  String get link => widget.externalLink ??
+      (_isProfile
+          ? 'phlio://profile/$_profileName'
+          : widget.commentId != null
+              ? 'phlio://app/shared/${widget.path}?comment=${Uri.encodeComponent(widget.commentId!)}'
+              : 'phlio://app/shared/${widget.path}');
   Future<void> external(String action) async {
     try {
       if (action == 'copy') {
@@ -1052,7 +1103,7 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
             sharePositionOrigin: box.localToGlobal(Offset.zero) & box.size));
         if (result.status != ShareResultStatus.success) return;
       }
-      if (_isProfile) return;
+      if (_plain) return;
       await getIt<ApiClient>()
           .dio
           .put('/content/${widget.path}/actions/shared');
@@ -1160,6 +1211,29 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
               ),
             ]),
           ),
+          if (widget.quote != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                decoration: BoxDecoration(
+                    color: PhlioColors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(14),
+                    border: const Border(
+                        left: BorderSide(color: _violet, width: 3))),
+                child: Row(children: [
+                  const Icon(Icons.mode_comment_outlined,
+                      size: 18, color: PhlioColors.textSecondary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: Text(widget.quote!,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(height: 1.3))),
+                ]),
+              ),
+            ),
           if (error != null)
             Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1340,7 +1414,7 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
                           horizontal: 12, vertical: 14),
                       child: Row(children: [
                         for (final item in [
-                          if (!_isProfile)
+                          if (!_plain)
                             (
                               'story',
                               'Add to story',
@@ -1349,9 +1423,9 @@ class _ShareSheetState extends ConsumerState<_ShareSheet> {
                           ('whatsapp', 'WhatsApp', Icons.chat_outlined),
                           ('copy', 'Copy link', Icons.link_rounded),
                           ('share', 'More', Icons.ios_share_rounded),
-                          if (!_isProfile)
+                          if (!_plain)
                             ('saved', 'Bookmarks', Icons.bookmark_border_rounded),
-                          if (!_isProfile &&
+                          if (!_plain &&
                               platformShowsSocialMetrics(
                                   widget.path.split('/').first))
                             ('reposted', 'Reposts', Icons.repeat_rounded)

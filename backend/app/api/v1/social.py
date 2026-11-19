@@ -316,7 +316,11 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
                         audience: str = Form(default='friends'), recipients: str = Form(default='[]'),
                         kind: str = Form(default='snap'), decorations: str = Form(default='[]', max_length=50000),
                         filter: str = Form(default='normal', max_length=40),
+                        filter_spec: str = Form(default=''),
                         group: str = Form(default='', max_length=40),
+                        collaborators: str = Form(default='[]', max_length=4000),
+                        location: str = Form(default='', max_length=1000),
+                        edits: str = Form(default='', max_length=2000),
                         user=Depends(get_current_user), c=Depends(get_container)):
     import uuid
     from app.domains.graph.store import now
@@ -326,6 +330,8 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
     from app.core.container import media_root_path
     from app.api.v1.snap_decorations import parse_snap_decorations
     layers = parse_snap_decorations(decorations)
+    from app.api.v1.smart_filters import FilterSpec, parse_filter_spec
+    spec = parse_filter_spec(filter_spec)
     if kind not in {'snap', 'moment', 'experience'}:
         raise HTTPException(422, 'Unknown content type.')
     try:
@@ -333,6 +339,10 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
     except (ValueError, TypeError, ValidationError):
         raise HTTPException(422, 'Invalid audience.')
     policy = await validate_audience(c, user.id, choice)
+    from app.api.v1.media_edits import apply_video_edits, parse_media_edits
+    video_edits = parse_media_edits(edits)
+    place = parse_memory_location(location)
+    team, owner = await experience_collaborators(c, user.id, kind, group.strip(), collaborators, caption)
     await c.cache.rate_limit(user.id, 'create_memory', 20)
     from pathlib import Path
     import subprocess
@@ -357,6 +367,8 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
                 result=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=codec_type','-of','csv=p=0',str(destination)],check=True,capture_output=True,timeout=15)
                 if b'video' not in result.stdout: raise ValueError()
             await run_in_threadpool(check)
+            # Trim, speed, crop, rotate, mute and time effects (FFmpeg).
+            destination = await apply_video_edits(destination, video_edits)
         except BaseException as exc:
             destination.unlink(missing_ok=True)
             if isinstance(exc,HTTPException): raise
@@ -374,9 +386,14 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
         author=user.id, image_url='/social/memories/' + memory_id + '/photo',
         private_file=filename, media_kind='video' if video else 'image', caption=caption.strip(), decorations=layers, kind=kind,
         # Look / effect drawn live by the app ("look" or "look+effect").
-        filter=filter.strip() or 'normal',
+        filter=(FilterSpec.model_validate(spec).legacy() if spec else filter.strip()) or 'normal',
+        # Smart filter (look, effect, info overlays), editable after posting.
+        filter_spec=spec,
         # Experiences: photos shared together as one weekly dump.
         group=group.strip() or None,
+        # Experiences: friends you made it with (collaborators can view it and
+        # add their own photos to the same dump), and where it was taken.
+        collaborators=team, group_owner=owner, location=place,
         **policy, created_at=now()))
 
 
@@ -389,11 +406,12 @@ async def memories(user=Depends(get_current_user), c=Depends(get_container)):
     week_cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
     result = []
     for row in sorted(await c.graph.store.rows('social_memory'), key=lambda r: r['created_at'], reverse=True):
-        if not await can_view(c, user.id, row):
+        if not await can_view(c, user.id, row) and user.id not in (row.get('collaborators') or []):
             continue
         # Snaps are visible for 24 hours, experiences (weekly dumps) for 7 days.
         limit = week_cutoff if row.get('kind') == 'experience' else cutoff
-        if row['author'] != user.id and dt.datetime.fromisoformat(row['created_at']) < limit:
+        if row['author'] != user.id and user.id not in (row.get('collaborators') or []) \
+                and dt.datetime.fromisoformat(row['created_at']) < limit:
             continue
         from app.domains.graph.service import key
         seen = await c.graph.store.get(key('memory_seen', user.id, row['id']))
@@ -407,8 +425,14 @@ async def memories(user=Depends(get_current_user), c=Depends(get_container)):
                 person = None
             reactions.append(dict(reaction, user=person))
         safe = {k: v for k, v in row.items() if k not in {'private_file', 'recipients'}}
+        team = []
+        for uid in row.get('collaborators') or []:
+            try:
+                team.append(c.graph.profile(await c.graph.user(uid)))
+            except HTTPException:
+                pass
         result.append(dict(safe, author=c.graph.profile(await c.graph.user(row['author'])),
-            unread=row['author'] != user.id and not seen, reactions=reactions))
+            unread=row['author'] != user.id and not seen, reactions=reactions, collaborators=team))
     return result
 
 
@@ -459,3 +483,104 @@ async def memory_photo(memory_id: str, user=Depends(get_current_user), c=Depends
     if not filename or Path(filename).name != filename or not (folder / filename).is_file():
         raise HTTPException(404, 'Photo unavailable.')
     return FileResponse(folder / filename, headers={'Cache-Control': 'private, no-store'})
+
+
+
+# -- Experience collaborators and places ----------------------------------------------------
+
+MAX_COLLABORATORS = 20
+
+
+def parse_memory_location(raw: str) -> dict | None:
+    """``{name, address, lat, lng, kind?, source?}`` for where a photo was taken."""
+    import json
+    import math
+    if not raw or not raw.strip():
+        return None
+    try:
+        data = json.loads(raw)
+        lat, lng = float(data['lat']), float(data['lng'])
+        name = str(data.get('name') or '').strip()[:120]
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180) or math.isnan(lat + lng) or not name:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(422, 'Invalid location.') from exc
+    source = str(data.get('source') or 'picked')
+    return dict(name=name, address=str(data.get('address') or '').strip()[:200], lat=round(lat, 6),
+                lng=round(lng, 6), kind=(str(data['kind'])[:40] if data.get('kind') else None),
+                source=source if source in {'picked', 'photo', 'gps'} else 'picked')
+
+
+async def experience_collaborators(c, uid: str, kind: str, group: str, raw: str, caption: str):
+    """Who an Experience item is shared with as collaborators, and the dump's owner.
+
+    Starting a dump: the people you add plus anyone you @mention in the
+    caption, who must be your friends. Adding to someone else's dump (same
+    ``group``): you must be one of its collaborators; the item joins with
+    the dump's team (its owner in, you out)."""
+    import json
+    import re
+    try:
+        picked = json.loads(raw or '[]')
+        if not isinstance(picked, list) or len(picked) > MAX_COLLABORATORS or not all(isinstance(p, str) for p in picked):
+            raise ValueError()
+    except ValueError as exc:
+        raise HTTPException(422, 'Invalid collaborators.') from exc
+    if kind != 'experience':
+        if picked:
+            raise HTTPException(422, 'Only Experiences can have collaborators.')
+        return [], None
+    if group:
+        existing = [r for r in await c.graph.store.rows('social_memory', {'group': group}) if r.get('kind') == 'experience']
+        if existing:
+            first = min(existing, key=lambda r: r['created_at'])
+            owner = first.get('group_owner') or first['author']
+            team = set(first.get('collaborators') or []) | {owner}
+            if uid not in team:
+                raise HTTPException(403, 'Only collaborators can add to this Experience.')
+            return sorted(team - {uid}), owner
+    mentioned = re.findall(r'@([A-Za-z0-9_.]{2,30})', caption or '')
+    team: list[str] = []
+    for name in [*picked, *mentioned]:
+        try:
+            person = await c.graph.user(name)
+        except HTTPException:
+            if name in picked:
+                raise HTTPException(422, f'Could not find @{name}.')
+            continue  # an @word that isn't a person
+        if person.id == uid or person.id in team:
+            continue
+        if not await c.graph.friends(uid, person.id):
+            if name in picked:
+                raise HTTPException(422, 'Collaborators must be your friends.')
+            continue
+        team.append(person.id)
+    if len(team) > MAX_COLLABORATORS:
+        raise HTTPException(422, f'Add up to {MAX_COLLABORATORS} collaborators.')
+    return team, uid
+
+
+class CollaboratorsIn(BaseModel):
+    collaborators: list[str] = Field(default_factory=list, max_length=MAX_COLLABORATORS)
+
+
+@router.put('/memories/groups/{group}/collaborators')
+async def set_collaborators(group: str, body: CollaboratorsIn, user=Depends(get_current_user), c=Depends(get_container)):
+    """The dump's owner changes who collaborates on it."""
+    rows = [r for r in await c.graph.store.rows('social_memory', {'group': group}) if r.get('kind') == 'experience']
+    if not rows:
+        raise HTTPException(404, 'Experience unavailable.')
+    owner = min(rows, key=lambda r: r['created_at']).get('group_owner') or rows[0]['author']
+    if owner != user.id:
+        raise HTTPException(403, 'Only the person who started this Experience can change collaborators.')
+    team: list[str] = []
+    for name in body.collaborators:
+        person = await c.graph.user(name)
+        if person.id != user.id and person.id not in team:
+            if not await c.graph.friends(user.id, person.id):
+                raise HTTPException(422, 'Collaborators must be your friends.')
+            team.append(person.id)
+    for row in rows:
+        others = sorted((set(team) | {owner}) - {row['author']})
+        await c.graph.store.put(row['id'], dict(row, collaborators=others))
+    return dict(collaborators=[c.graph.profile(await c.graph.user(uid)) for uid in team])

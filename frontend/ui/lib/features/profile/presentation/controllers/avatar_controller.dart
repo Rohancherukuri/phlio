@@ -8,8 +8,13 @@
 // `profile_prefs.json`, so the avatar survives restarts and can be shown
 // anywhere — including the bottom-nav Profile slot.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:dio/dio.dart';
+import '../../../../core/di/service_locator.dart';
+import '../../../../core/network/api_client.dart';
 
 import 'package:flutter/material.dart';
 import '../../../../design_system/colors.dart';
@@ -201,6 +206,10 @@ class AvatarController extends Notifier<AvatarState> {
         songEnd: (json['song_end'] as num?)?.toDouble() ?? 0,
         streamSong: (json['stream_song'] as Map?)?.cast<String, dynamic>(),
       );
+      // A photo set before uploads existed (or while offline) that the
+      // server doesn't have yet: send it once.
+      final server = ref.read(authControllerProvider).valueOrNull?.avatarUrl;
+      if (avatarPath != null && (server == null || server.isEmpty)) _scheduleUpload();
     } catch (_) {
       // Corrupt/missing prefs: keep the empty avatar.
     }
@@ -265,11 +274,53 @@ class AvatarController extends Notifier<AvatarState> {
   /// Stages a cropped file (before the filter choice).
   void stage(File file) {
     state = AvatarState(filePath: file.path, filterIndex: state.filterIndex);
+    _scheduleUpload();
   }
 
   void setFilter(int index) {
     state = state.copyWith(filterIndex: index);
     _persist();
+    _scheduleUpload();
+  }
+
+  Timer? _upload;
+
+  /// Your photo (with its filter baked in) goes to the server a moment after
+  /// you stop changing it, so everyone — moments, the story rail, comments,
+  /// DMs — sees your latest profile picture, not only this phone.
+  void _scheduleUpload() {
+    _upload?.cancel();
+    _upload = Timer(const Duration(milliseconds: 1500), () => syncToServer());
+  }
+
+  Future<void> syncToServer() async {
+    final path = state.filePath;
+    if (path == null) return;
+    try {
+      final bytes = await _bakeFilter(File(path), kAvatarFilters[state.filterIndex].matrix);
+      await getIt<ApiClient>().dio.put('/auth/me/avatar',
+          data: FormData.fromMap({
+            'file': MultipartFile.fromBytes(bytes, filename: 'avatar.png', contentType: DioMediaType('image', 'png')),
+          }));
+      await ref.read(authControllerProvider.notifier).reloadProfile();
+      // Rings, the story rail and moment headers re-read the new photo.
+      ref.invalidate(momentFeedProvider);
+      ref.invalidate(momentRingsProvider);
+    } catch (_) {
+      // Offline: the next change (or app start with a newer photo) retries.
+    }
+  }
+
+  static Future<List<int>> _bakeFilter(File file, ColorFilter filter) async {
+    final codec = await ui.instantiateImageCodec(await file.readAsBytes(), targetWidth: 1080);
+    final image = (await codec.getNextFrame()).image;
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawImage(image, Offset.zero, Paint()..colorFilter = filter);
+    final baked = await recorder.endRecording().toImage(image.width, image.height);
+    final png = await baked.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    baked.dispose();
+    return png!.buffer.asUint8List();
   }
 
   /// Chooses a profile song from local audio files (copied into app
@@ -335,6 +386,13 @@ class AvatarController extends Notifier<AvatarState> {
     final old = state.filePath;
     state = const AvatarState();
     _persist();
+    _upload?.cancel();
+    try {
+      await getIt<ApiClient>().dio.delete('/auth/me/avatar');
+      await ref.read(authControllerProvider.notifier).reloadProfile();
+      ref.invalidate(momentFeedProvider);
+      ref.invalidate(momentRingsProvider);
+    } catch (_) {}
     if (old != null) {
       try {
         await File(old).delete();

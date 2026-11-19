@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 
 from app.api.deps import get_container, get_current_user
+from app.api.v1.content import ShareIn
 from app.api.v1.snap_audience import SnapAudience, can_view, validate_audience
 from app.core.container import media_root_path
 from app.domains.graph.service import key
@@ -73,6 +74,19 @@ def _public(row, seen, viewer):
     return safe
 
 
+async def _tagged(c, user, raw: str, caption: str) -> list[dict]:
+    """Profiles of the people a moment mentions (stickers + caption)."""
+    from app.api.v1.social_comments import comment_mentions
+    try:
+        names = json.loads(raw or "[]")
+        if not isinstance(names, list) or len(names) > 20 or not all(isinstance(n, str) for n in names):
+            raise ValueError()
+    except ValueError as exc:
+        raise HTTPException(422, "Invalid mentions.") from exc
+    text = " ".join([caption or "", *("@" + n.lstrip("@") for n in names)])
+    return [p for p in await comment_mentions(c, user, text) if p["id"] != user.id]
+
+
 async def _profile(c, uid, cache):
     if uid not in cache:
         cache[uid] = c.graph.profile(await c.graph.user(uid))
@@ -88,9 +102,12 @@ async def create_moment(
     allow_comments: bool = Form(default=True),
     overlays: str = Form(default="[]"),
     filter: str = Form(default="normal", max_length=24),
+    filter_spec: str = Form(default=""),
     highlight: str = Form(default="", max_length=40),
     ai_label: bool = Form(default=False),
     music: str = Form(default=""),
+    edits: str = Form(default=""),
+    mentions: str = Form(default="[]", max_length=2000),
     user=Depends(get_current_user),
     c=Depends(get_container),
 ):
@@ -104,6 +121,9 @@ async def create_moment(
             raise ValueError()
     except (ValueError, TypeError, ValidationError):
         raise HTTPException(422, "Invalid moment settings.")
+    from app.api.v1.media_edits import apply_video_edits, parse_media_edits
+    video_edits = parse_media_edits(edits)
+    tagged = await _tagged(c, user, mentions, caption)
     policy = await validate_audience(c, user.id, choice)
     await c.cache.rate_limit(user.id, "create_moment", 30)
 
@@ -133,6 +153,8 @@ async def create_moment(
                 raise HTTPException(422, "Could not read this video.")
         except (FileNotFoundError, asyncio.TimeoutError):
             pass  # ffprobe unavailable: accept the upload as-is
+        # Trim, speed, crop, rotate and time effects (boomerang, slow motion…).
+        target = await apply_video_edits(target, video_edits)
         kind = "video"
         cover = folder / (identifier + "-cover.jpg")
         try:
@@ -159,6 +181,9 @@ async def create_moment(
         target.write_bytes(raw)
         kind = "image"
 
+    from app.api.v1.smart_filters import FilterSpec, parse_filter_spec
+    spec = parse_filter_spec(filter_spec)
+    spec_legacy = FilterSpec.model_validate(spec).legacy() if spec else None
     created = dt.datetime.now(dt.UTC)
     moment_id = "social_moment:" + identifier
     row = dict(
@@ -170,10 +195,14 @@ async def create_moment(
                    else ("/media/social_moments/" + target.name if kind == "image" else None)),
         caption=caption.strip(),
         overlays=layers,
-        filter=filter,
+        filter=spec_legacy or filter,
+        # Smart filter (look, effect, info overlays), drawn live by the app.
+        filter_spec=spec,
         allow_comments=allow_comments,
         ai_label=ai_label,
         music=song,
+        # People tagged with mention stickers or @ in the caption.
+        mentions=tagged,
         **policy,
         created_at=created.isoformat(),
         expires_at=(created + LIFETIME).isoformat(),
@@ -234,6 +263,7 @@ async def feed(user=Depends(get_current_user), c=Depends(get_container)):
         group["items"].append(item)
         group["unseen"] = group["unseen"] or not item["seen"]
         group["latest"] = max(group["latest"], _time(row["created_at"]).timestamp())
+    await _enrich(c, [i for g in groups.values() for i in g["items"]], user.id)
     ordered = sorted(groups.values(), key=lambda g: (not g["following"] and g["author"]["id"] != user.id,
                                                     *_group_key(g, user.id)))
     return ordered
@@ -245,7 +275,9 @@ async def user_moments(identifier: str, user=Depends(get_current_user), c=Depend
     seen = await _seen_ids(c, user.id)
     rows = sorted((r for r in await _visible_rows(c, user.id, include_muted=True) if r["author"] == owner.id),
                   key=lambda r: r["created_at"])
-    return dict(author=c.graph.profile(owner), items=[_public(r, seen, user.id) for r in rows])
+    items = [_public(r, seen, user.id) for r in rows]
+    await _enrich(c, items, user.id)
+    return dict(author=c.graph.profile(owner), items=items)
 
 
 @router.put("/{moment_id}/seen", status_code=204)
@@ -259,16 +291,70 @@ async def mark_seen(moment_id: str, user=Depends(get_current_user), c=Depends(ge
 
 @router.get("/{moment_id}/viewers")
 async def viewers(moment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    """Who watched your moment, with their reaction and whether they
+    commented — people who reacted come first, then newest views."""
     row = await _moment(c, moment_id)
     if row["author"] != user.id:
         raise HTTPException(403, "Only the author can see viewers.")
+    views = {v["user_id"]: v for v in await c.graph.store.rows("moment_view", {"moment_id": row["id"]})}
+    reactions = {r["user_id"]: r for r in await c.graph.store.rows("moment_reaction", {"moment_id": row["id"]})}
+    comments: dict[str, int] = {}
+    for comment in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]}):
+        comments[comment["user_id"]] = comments.get(comment["user_id"], 0) + 1
+    answered: dict[str, int] = {}
+    for response in await c.graph.store.rows("moment_response", {"moment_id": row["id"]}):
+        answered[response["user_id"]] = answered.get(response["user_id"], 0) + 1
     people, profiles = [], {}
-    for view in await c.graph.store.rows("moment_view", {"moment_id": row["id"]}):
+    for uid in {*views, *reactions} - {user.id}:
         try:
-            people.append(await _profile(c, view["user_id"], profiles))
+            profile = await _profile(c, uid, profiles)
         except HTTPException:
             continue
-    return dict(count=len(people), people=people)
+        reaction = reactions.get(uid)
+        people.append(dict(profile,
+                           reaction=reaction["emoji"] if reaction else None,
+                           reacted_at=reaction["reacted_at"] if reaction else None,
+                           comments=comments.get(uid, 0),
+                           responses=answered.get(uid, 0),
+                           seen_at=(views.get(uid) or {}).get("seen_at")))
+    people.sort(key=lambda p: (p["reaction"] is None, -_stamp(p["reacted_at"] or p["seen_at"])))
+    return dict(count=len(people), reactions=sum(1 for p in people if p["reaction"]),
+                comments=sum(comments.values()), people=people)
+
+
+def _stamp(value) -> float:
+    try:
+        return _time(value).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def _enrich(c, items: list[dict], viewer: str) -> None:
+    """Adds comment counts and your reaction to moments (plus view and
+    reaction counts on your own) for the viewer's bottom bar."""
+    if not items:
+        return
+    ids = {i["id"] for i in items}
+    comment_counts: dict[str, int] = {}
+    for comment in await c.graph.store.rows("moment_comment"):
+        if comment["moment_id"] in ids:
+            comment_counts[comment["moment_id"]] = comment_counts.get(comment["moment_id"], 0) + 1
+    reactions: dict[str, list[dict]] = {}
+    for reaction in await c.graph.store.rows("moment_reaction"):
+        if reaction["moment_id"] in ids:
+            reactions.setdefault(reaction["moment_id"], []).append(reaction)
+    views: dict[str, int] = {}
+    if any(i.get("mine") for i in items):
+        for view in await c.graph.store.rows("moment_view", {"author": viewer}):
+            if view["moment_id"] in ids and view["user_id"] != viewer:
+                views[view["moment_id"]] = views.get(view["moment_id"], 0) + 1
+    for item in items:
+        mine = [r for r in reactions.get(item["id"], []) if r["user_id"] == viewer]
+        item["comment_count"] = comment_counts.get(item["id"], 0)
+        item["my_reaction"] = mine[0]["emoji"] if mine else None
+        if item.get("mine"):
+            item["view_count"] = views.get(item["id"], 0)
+            item["reaction_count"] = len(reactions.get(item["id"], []))
 
 
 @router.delete("/{moment_id}", status_code=204)
@@ -283,6 +369,9 @@ async def delete_moment(moment_id: str, user=Depends(get_current_user), c=Depend
                 await c.graph.store.put(highlight["id"], dict(highlight, moment_ids=ids))
             else:
                 await c.graph.store.delete(highlight["id"])
+    for table in ("moment_comment", "moment_reaction"):
+        for extra in await c.graph.store.rows(table, {"moment_id": row["id"]}):
+            await c.graph.store.delete(extra["id"])
     await c.graph.store.delete(row["id"])
 
 
@@ -348,6 +437,7 @@ async def highlights(identifier: str, user=Depends(get_current_user), c=Depends(
             if row and (owner.id == user.id or await can_view(c, user.id, row)):
                 items.append(_public(row, seen, user.id))
         if items:
+            await _enrich(c, items, user.id)
             result.append(dict(id=highlight["id"], title=highlight["title"],
                                cover_url=highlight.get("cover_url") or items[-1].get("cover_url")
                                or items[-1]["media_url"],
@@ -517,3 +607,222 @@ async def trending_prompts(user=Depends(get_current_user), c=Depends(get_contain
                 except HTTPException:
                     pass
     return sorted(groups.values(), key=lambda g: -g["count"])[:20]
+
+
+# -- reactions and comments ---------------------------------------------------------------
+#
+# A reaction is one emoji per viewer per moment (sending another replaces
+# it); the author sees it next to that person in Viewers. Comments are a
+# public thread under the moment for everyone who can see it (one level of
+# replies), unless the author turned comments off. Commenters can edit or
+# delete their own; the author can delete any.
+
+
+class ReactionIn(BaseModel):
+    emoji: str = Field(min_length=1, max_length=12)
+
+
+async def _viewable(c, moment_id: str, viewer: str) -> dict:
+    row = await _moment(c, moment_id)
+    if row["author"] != viewer and (not _active(row) and not await _highlighted(c, row)
+                                    or not await can_view(c, viewer, row)):
+        raise HTTPException(404, "Moment unavailable.")
+    return row
+
+
+async def _highlighted(c, row: dict) -> bool:
+    return any(row["id"] in h.get("moment_ids", [])
+               for h in await c.graph.store.rows("moment_highlight", {"owner": row["author"]}))
+
+
+@router.put("/{moment_id}/reaction")
+async def react(moment_id: str, body: ReactionIn, user=Depends(get_current_user), c=Depends(get_container)):
+    row = await _viewable(c, moment_id, user.id)
+    if row["author"] == user.id:
+        raise HTTPException(422, "You can't react to your own moment.")
+    await c.cache.rate_limit(user.id, "moment_react", 120)
+    await c.graph.store.put(key("moment_reaction", user.id, row["id"]), dict(
+        user_id=user.id, moment_id=row["id"], author=row["author"], emoji=body.emoji.strip(), reacted_at=now()))
+    return dict(reaction=body.emoji.strip())
+
+
+@router.delete("/{moment_id}/reaction", status_code=204)
+async def unreact(moment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    row = await _moment(c, moment_id)
+    rid = key("moment_reaction", user.id, row["id"])
+    if await c.graph.store.get(rid):
+        await c.graph.store.delete(rid)
+
+
+class CommentIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    reply_to: str | None = Field(default=None, max_length=120)
+
+
+class CommentEdit(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+def _comment_id(value: str) -> str:
+    return value if value.startswith("moment_comment:") else "moment_comment:" + value
+
+
+async def _comment_out(c, comment: dict, row: dict, viewer: str, profiles: dict, by_id: dict) -> dict | None:
+    try:
+        person = await _profile(c, comment["user_id"], profiles)
+    except HTTPException:
+        return None
+    parent = by_id.get(comment.get("reply_to") or "")
+    parent_user = None
+    if parent:
+        try:
+            parent_user = (await _profile(c, parent["user_id"], profiles))["username"]
+        except HTTPException:
+            pass
+    return dict(id=comment["id"], text=comment["text"], user=person, created_at=comment["created_at"],
+                mentions=comment.get("mentions") or [],
+                edited_at=comment.get("edited_at"), reply_to=comment.get("reply_to"), reply_to_user=parent_user,
+                mine=comment["user_id"] == viewer, by_author=comment["user_id"] == row["author"],
+                can_delete=comment["user_id"] == viewer or row["author"] == viewer)
+
+
+@router.get("/{moment_id}/comments")
+async def list_comments(moment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    """The moment's comments, oldest first, replies right under their comment."""
+    row = await _viewable(c, moment_id, user.id)
+    rows = sorted(await c.graph.store.rows("moment_comment", {"moment_id": row["id"]}),
+                  key=lambda r: r["created_at"])
+    blocked: dict[str, bool] = {}
+    visible = []
+    for comment in rows:
+        uid = comment["user_id"]
+        if uid != user.id:
+            if uid not in blocked:
+                blocked[uid] = await c.graph.blocked(user.id, uid)
+            if blocked[uid]:
+                continue
+        visible.append(comment)
+    by_id = {r["id"]: r for r in visible}
+    top = [r for r in visible if not r.get("reply_to") or r["reply_to"] not in by_id]
+    ordered = []
+    for comment in top:
+        ordered.append(comment)
+        ordered += [r for r in visible if r.get("reply_to") == comment["id"]]
+    profiles: dict = {}
+    items = [out for r in ordered if (out := await _comment_out(c, r, row, user.id, profiles, by_id))]
+    return dict(count=len(items), allow_comments=row.get("allow_comments", True) is not False, items=items)
+
+
+@router.post("/{moment_id}/comments", status_code=201)
+async def add_comment(moment_id: str, body: CommentIn, user=Depends(get_current_user), c=Depends(get_container)):
+    row = await _viewable(c, moment_id, user.id)
+    if row.get("allow_comments") is False and row["author"] != user.id:
+        raise HTTPException(403, "Comments are turned off for this moment.")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(422, "Write a comment.")
+    await c.cache.rate_limit(user.id, "moment_comment", 60)
+    reply_to = None
+    if body.reply_to:
+        parent = await c.graph.store.get(_comment_id(body.reply_to))
+        if not parent or parent["moment_id"] != row["id"]:
+            raise HTTPException(404, "That comment is gone.")
+        # One level of replies: answering a reply joins its thread.
+        reply_to = parent.get("reply_to") or parent["id"]
+    from app.api.v1.social_comments import comment_mentions
+    cid = "moment_comment:" + uuid.uuid4().hex
+    saved = await c.graph.store.put(cid, dict(
+        moment_id=row["id"], author=row["author"], user_id=user.id, text=text, reply_to=reply_to,
+        mentions=await comment_mentions(c, user, text), created_at=now()))
+    await _comment_dms(c, row, user.id, text, reply_to)
+    by_id = {r["id"]: r for r in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]})}
+    return await _comment_out(c, saved, row, user.id, {}, by_id)
+
+
+async def _comment_dms(c, row: dict, uid: str, text: str, reply_to: str | None) -> None:
+    """Comments go straight to DMs: the moment's author gets every comment
+    from someone else, and whoever you reply to gets your reply."""
+    try:
+        owner = await _profile(c, row["author"], {})
+    except HTTPException:
+        return
+    link = f"\nphlio://app/moments/{owner['username']}"
+    sends: dict[str, str] = {}
+    if uid != row["author"]:
+        sends[row["author"]] = f"💬 Commented on your moment: {text}{link}"
+    if reply_to:
+        parent = await c.graph.store.get(reply_to)
+        target = parent and parent["user_id"]
+        if target and target != uid and target not in sends:
+            whose = "my" if uid == row["author"] else f"@{owner['username']}'s"
+            sends[target] = f"↩️ Replied to your comment on {whose} moment: {text}{link}"
+    for target, message in sends.items():
+        try:
+            if await c.graph.blocked(uid, target):
+                continue
+            c.messaging_service.send(uid, target, message, [])
+        except Exception:  # the comment is saved either way
+            continue
+
+
+@router.put("/{moment_id}/comments/{comment_id}")
+async def edit_comment(moment_id: str, comment_id: str, body: CommentEdit,
+                       user=Depends(get_current_user), c=Depends(get_container)):
+    row = await _viewable(c, moment_id, user.id)
+    comment = await c.graph.store.get(_comment_id(comment_id))
+    if not comment or comment["moment_id"] != row["id"]:
+        raise HTTPException(404, "That comment is gone.")
+    if comment["user_id"] != user.id:
+        raise HTTPException(403, "You can only edit your own comments.")
+    from app.api.v1.social_comments import comment_mentions
+    text = body.text.strip()
+    saved = await c.graph.store.put(comment["id"], dict(
+        comment, text=text, mentions=await comment_mentions(c, user, text), edited_at=now()))
+    by_id = {r["id"]: r for r in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]})}
+    return await _comment_out(c, saved, row, user.id, {}, by_id)
+
+
+@router.delete("/{moment_id}/comments/{comment_id}", status_code=204)
+async def delete_comment(moment_id: str, comment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    row = await _moment(c, moment_id)
+    comment = await c.graph.store.get(_comment_id(comment_id))
+    if not comment or comment["moment_id"] != row["id"]:
+        raise HTTPException(404, "That comment is gone.")
+    if user.id not in (comment["user_id"], row["author"]):
+        raise HTTPException(403, "You can't delete this comment.")
+    for reply in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]}):
+        if reply.get("reply_to") == comment["id"]:
+            await c.graph.store.delete(reply["id"])
+    await c.graph.store.delete(comment["id"])
+
+
+async def _visible_comment(c, moment_id: str, comment_id: str, viewer: str) -> tuple[dict, dict]:
+    row = await _viewable(c, moment_id, viewer)
+    comment = await c.graph.store.get(_comment_id(comment_id))
+    if not comment or comment["moment_id"] != row["id"] or await c.graph.blocked(viewer, comment["user_id"]):
+        raise HTTPException(404, "That comment is gone.")
+    return row, comment
+
+
+@router.post("/{moment_id}/comments/{comment_id}/share", status_code=201)
+async def share_comment(moment_id: str, comment_id: str, body: ShareIn,
+                        user=Depends(get_current_user), c=Depends(get_container)):
+    """Send a moment's comment to a DM, a group, a new group or a room."""
+    from app.api.v1.content import deliver_text
+    row, comment = await _visible_comment(c, moment_id, comment_id, user.id)
+    await c.cache.rate_limit(user.id, "share", 30)
+    owner = await _profile(c, row["author"], {})
+    writer = await _profile(c, comment["user_id"], {})
+    text = (f"💬 Shared a comment by @{writer['username']} on @{owner['username']}'s moment:\n"
+            f"“{comment['text']}”\nphlio://app/moments/{owner['username']}")
+    return await deliver_text(c, user, body, text, about=comment["user_id"])
+
+
+@router.post("/{moment_id}/comments/{comment_id}/report", status_code=204)
+async def report_comment(moment_id: str, comment_id: str, body: ReportIn,
+                         user=Depends(get_current_user), c=Depends(get_container)):
+    row, comment = await _visible_comment(c, moment_id, comment_id, user.id)
+    await c.cache.rate_limit(user.id, "moment_report", 30)
+    await c.graph.store.put(key("content_report", user.id, comment["id"]), dict(
+        reporter_id=user.id, moment_id=row["id"], comment_id=comment["id"], author=comment["user_id"],
+        reason=body.reason, status="pending", created_at=now()))

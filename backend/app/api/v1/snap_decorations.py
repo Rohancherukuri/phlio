@@ -16,7 +16,7 @@ def parse_snap_decorations(raw: str):
         music = 0
         for layer in layers:
             kind = layer['type']
-            if kind not in {'word', 'location', 'music', 'gif', 'sticker', 'clock', 'photo'}:
+            if kind not in {'word', 'location', 'music', 'gif', 'sticker', 'clock', 'photo', 'avatar'}:
                 raise ValueError()
             clean = {'type': kind, 'id': str(layer.get('id', ''))[:100]}
             for field, default, low, high in [('x', .5, 0, 1), ('y', .5, 0, 1),
@@ -40,6 +40,12 @@ def parse_snap_decorations(raw: str):
                 if field.endswith('url') and value and not uploaded and urlparse(value).scheme != 'https':
                     raise ValueError()
                 clean['data'][field] = value
+            if kind == 'avatar':
+                # Your Phlio avatar: the look is validated like PUT /social/avatar.
+                from app.api.v1.avatars import AvatarConfig
+                clean['data']['avatar'] = AvatarConfig.model_validate(data.get('avatar') or {}).model_dump()
+                if isinstance(data.get('name'), str):
+                    clean['data']['name'] = data['name'][:60]
             if kind == 'sticker':
                 sticker = layer.get('sticker')
                 if not isinstance(sticker, str) or len(sticker) > 100:
