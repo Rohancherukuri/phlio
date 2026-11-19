@@ -1127,7 +1127,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                 style: PhlioTypography.body.copyWith(color: Colors.white60, fontSize: 15)),
           )),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: _BarIcon.pillGap),
         ..._actions(current, liked, comments, allowComments: false),
       ]);
     }
@@ -1148,7 +1148,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
             )),
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: _BarIcon.pillGap),
         ..._actions(current, liked, comments),
       ]);
     }
@@ -1222,9 +1222,9 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
             duration: const Duration(milliseconds: 180),
             transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
             child: liked
-                ? const Icon(Icons.favorite_rounded, key: ValueKey('liked'), color: Color(0xFFFF3B5C), size: 28)
+                ? const Icon(Icons.favorite_rounded, key: ValueKey('liked'), color: Color(0xFFFF3B5C), size: _BarIcon.glyph)
                 : const Icon(Icons.favorite_border_rounded,
-                    key: ValueKey('like'), color: Colors.white, size: 28, shadows: _iconShadow),
+                    key: ValueKey('like'), color: Colors.white, size: _BarIcon.glyph, shadows: _iconShadow),
           ),
         ),
         if (allowComments)
@@ -1232,12 +1232,14 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
             tooltip: 'Comments',
             onTap: _openComments,
             badge: comments,
-            child: const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 26, shadows: _iconShadow),
+            child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: _BarIcon.glyph - 1, shadows: _iconShadow),
           ),
         _BarIcon(
           tooltip: 'Send to someone',
           onTap: _shareMoment,
-          child: const PhlioSendIcon(color: Colors.white, size: 26),
+          // The plane's ink sits a touch high in its box; nudge it to the line.
+          child: Transform.translate(
+              offset: const Offset(0, 1), child: const PhlioSendIcon(color: Colors.white, size: _BarIcon.glyph - 1)),
         ),
       ];
 
@@ -1586,7 +1588,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           right: 0,
           bottom: keyboard > 0 ? keyboard : insets.bottom,
           child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+          padding: EdgeInsets.fromLTRB(12, 8, mine ? 8 : _BarIcon.rightPad, 10),
           child: mine
               ? Column(mainAxisSize: MainAxisSize.min, children: [
                   // Bond-style: ︿, then viewers and comments in the middle.
@@ -1638,31 +1640,51 @@ class _BarIcon extends StatelessWidget {
   final String tooltip;
   final int badge;
 
+  /// Every action is a [slot] × [height] box with its glyph centred, the
+  /// same height as the "Send message" pill, so all of them share one centre
+  /// line. Glyph-to-glyph spacing is slot − glyph (18 px); [pillGap] gives
+  /// the same 18 px between the pill and the first glyph, and [rightPad]
+  /// leaves 12 px after the last glyph — the same as the left gutter.
+  static const double slot = 44, height = 48, glyph = 26;
+  static const double pillGap = 18 - (slot - glyph) / 2;
+  static const double rightPad = 12 - (slot - glyph) / 2;
+
   @override
   Widget build(BuildContext context) => Tooltip(
         message: tooltip,
         child: InkResponse(
           onTap: onTap,
-          radius: 26,
+          radius: 24,
           child: SizedBox(
-            width: 44,
-            height: 48,
-            child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
-              child,
-              if (badge > 0)
-                Positioned(
-                  right: 0,
-                  top: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    constraints: const BoxConstraints(minWidth: 16),
-                    decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(9)),
-                    child: Text(badge > 99 ? '99+' : '$badge',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
-                  ),
-                ),
-            ]),
+            width: slot,
+            height: height,
+            child: Center(
+              child: SizedBox.square(
+                dimension: glyph,
+                child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+                  child,
+                  if (badge > 0)
+                    // Pinned to the glyph's corner, so it never shifts the icon.
+                    Positioned(
+                      right: -9,
+                      top: -7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF3B5C),
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: Colors.black, width: 1.2),
+                        ),
+                        child: Text(badge > 99 ? '99+' : '$badge',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 9.5, height: 1.2, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                ]),
+              ),
+            ),
           ),
         ),
       );
