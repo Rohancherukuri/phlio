@@ -54,6 +54,7 @@ import '../../../../shared/media/phlio_look_view.dart';
 import '../../../../shared/media/photo_exif.dart';
 import '../../../../shared/media/smart_filters.dart';
 import '../../../../shared/media/story_fx_view.dart';
+import '../../../../shared/content/mentions.dart' show MentionTextEditingController;
 import '../../../rooms/presentation/widgets/note_place_picker.dart' show pickNotePlace;
 
 part 'experience_share.dart';

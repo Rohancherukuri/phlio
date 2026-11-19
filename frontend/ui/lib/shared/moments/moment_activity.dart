@@ -268,7 +268,7 @@ class _CommentsSheet extends StatefulWidget {
 }
 
 class _CommentsSheetState extends State<_CommentsSheet> {
-  final _text = TextEditingController();
+  final _text = MentionTextEditingController();
   final _focus = FocusNode();
   List<Map> items = [];
   bool loading = true, sending = false, allow = true;

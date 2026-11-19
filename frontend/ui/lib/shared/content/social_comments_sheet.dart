@@ -99,7 +99,7 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   final translations = <String, String>{};
   final translating = <String>{};
   final showTranslation = <String>{};
-  final text = TextEditingController();
+  final text = MentionTextEditingController();
   final composerFocus = FocusNode();
   final expandedThreads = <String>{};
   String? path, sticker, error;
@@ -251,6 +251,7 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                       Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: MentionText(item['text'] as String,
+                              onMention: widget.onProfileTap,
                               style:
                                   const TextStyle(fontSize: 14, height: 1.35))),
                     if (showTranslation.contains(item['id'].toString()))

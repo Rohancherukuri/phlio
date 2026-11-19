@@ -14,6 +14,7 @@ import '../media/smart_filters.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
 import 'moment_activity.dart';
+import '../content/mentions.dart' show MentionTextEditingController;
 import 'stickers/sticker_responses.dart';
 import '../media/story_fx_view.dart';
 import 'package:flutter/services.dart';
@@ -473,7 +475,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
           if (status == AnimationStatus.completed) _forward();
         });
   VideoPlayerController? video;
-  final reply = TextEditingController();
+  final reply = MentionTextEditingController();
   final replyFocus = FocusNode();
   bool paused = false, sending = false, recording = false;
   String? burst;
@@ -1053,6 +1055,141 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     );
   }
 
+  /// Hold-to-record mic (voice reply to their DMs).
+  Widget _micButton() => Tooltip(
+        message: 'Hold to record a voice message',
+        child: GestureDetector(
+          onTap: () => _say('Hold the mic to record a voice message.'),
+          onLongPressStart: (_) => _startVoice(),
+          onLongPressEnd: (_) => _stopVoice(),
+          onLongPressCancel: () => _stopVoice(cancel: true),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: recording ? 42 : 36,
+            height: recording ? 42 : 36,
+            decoration: BoxDecoration(
+                shape: BoxShape.circle, color: recording ? PhlioColors.danger : Colors.transparent),
+            child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 22),
+          ),
+        ),
+      );
+
+  /// Someone else's moment: a frosted reply pill on the left and three
+  /// evenly spaced actions on the right (like · comments · send). While
+  /// you type, the actions slide away and the pill takes the full width,
+  /// showing GIF / photo and a send button.
+  Widget _viewerBar(Map current, bool allowComments, int comments) {
+    final typing = replyFocus.hasFocus || reply.text.trim().isNotEmpty;
+    final hasText = reply.text.trim().isNotEmpty;
+    final liked = current['my_reaction'] == '❤️';
+    final name = author['username'] as String? ?? '';
+    const glass = Color(0x1FFFFFFF);
+    final pill = ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          height: 48,
+          padding: EdgeInsets.only(left: 18, right: hasText ? 4 : 6),
+          decoration: BoxDecoration(
+            color: glass,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: Colors.white.withValues(alpha: .34), width: 1),
+          ),
+          child: !allowComments
+              ? Center(
+                  child: Text('Replies are turned off',
+                      style: PhlioTypography.body.copyWith(color: Colors.white60, fontSize: 15)))
+              : Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: reply,
+                      focusNode: replyFocus,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(color: Colors.white, fontSize: 15.5),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: _send,
+                      cursorColor: Colors.white,
+                      decoration: InputDecoration(
+                        isCollapsed: true,
+                        filled: false,
+                        fillColor: Colors.transparent,
+                        hintText: name.isEmpty ? 'Send message' : 'Reply to $name…',
+                        hintMaxLines: 1,
+                        hintStyle: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w500),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  if (hasText)
+                    GestureDetector(
+                      onTap: sending ? null : () => _send(reply.text),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: const BoxDecoration(shape: BoxShape.circle, gradient: PhlioColors.brandGradient),
+                        child: sending
+                            ? const Padding(
+                                padding: EdgeInsets.all(11),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                            : const Icon(Icons.arrow_upward_rounded, color: PhlioColors.textOnBrand, size: 22),
+                      ),
+                    )
+                  else if (typing) ...[
+                    _PillIcon(tooltip: 'Send a GIF', icon: Icons.gif_box_outlined, onTap: _sendGif),
+                    _PillIcon(tooltip: 'Send a photo', icon: Icons.image_outlined, onTap: _sendPhoto),
+                    _micButton(),
+                  ] else
+                    _micButton(),
+                ]),
+        ),
+      ),
+    );
+    return Row(children: [
+      Expanded(child: pill),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        child: typing
+            ? const SizedBox(width: 0, height: 48)
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(width: 10),
+                _BarIcon(
+                  tooltip: liked ? 'Unlike' : 'Like',
+                  onTap: () => _react('❤️'),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+                    child: liked
+                        ? const Icon(Icons.favorite_rounded,
+                            key: ValueKey('liked'), color: Color(0xFFFF3B5C), size: 28)
+                        : const Icon(Icons.favorite_border_rounded,
+                            key: ValueKey('like'), color: Colors.white, size: 28, shadows: _iconShadow),
+                  ),
+                ),
+                if (allowComments)
+                  _BarIcon(
+                    tooltip: 'Comments',
+                    onTap: _openComments,
+                    badge: comments,
+                    child: const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 26, shadows: _iconShadow),
+                  ),
+                _BarIcon(
+                  tooltip: 'Send to someone',
+                  onTap: _shareMoment,
+                  child: const PhlioSendIcon(color: Colors.white, size: 26),
+                ),
+              ]),
+      ),
+    ]);
+  }
+
+  static const _iconShadow = [Shadow(color: Color(0x73000000), blurRadius: 10)];
+
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
@@ -1393,119 +1530,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                         icon: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 28)),
                   ]),
                 ])
-              : Row(children: [
-                  Expanded(
-                    child: !allowComments
-                        ? Container(
-                            height: 52,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(28),
-                                border: Border.all(color: Colors.white24)),
-                            child: Text('Replies are turned off',
-                                style: PhlioTypography.body
-                                    .copyWith(color: Colors.white54)),
-                          )
-                        : Container(
-                            height: 52,
-                            padding: const EdgeInsets.only(left: 20, right: 4),
-                            decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(28),
-                                border:
-                                    Border.all(color: Colors.white54, width: 1.2)),
-                            child: Row(children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: reply,
-                                  focusNode: replyFocus,
-                                  onChanged: (_) => setState(() {}),
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 16),
-                                  textInputAction: TextInputAction.send,
-                                  onSubmitted: _send,
-                                  cursorColor: Colors.white,
-                                  decoration: const InputDecoration(
-                                    isCollapsed: true,
-                                    filled: false,
-                                    fillColor: Colors.transparent,
-                                    hintText: 'Send message',
-                                    hintStyle: TextStyle(
-                                        color: Colors.white, fontSize: 16),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    disabledBorder: InputBorder.none,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ),
-                              if (reply.text.trim().isNotEmpty)
-                                TextButton(
-                                    onPressed:
-                                        sending ? null : () => _send(reply.text),
-                                    child: const Text('Send',
-                                        style: TextStyle(
-                                            color: PhlioColors.brandPeach,
-                                            fontWeight: FontWeight.w700)))
-                              else ...[
-                                _PillIcon(
-                                    tooltip: 'Send a GIF',
-                                    icon: Icons.gif_box_outlined,
-                                    onTap: _sendGif),
-                                _PillIcon(
-                                    tooltip: 'Send a photo',
-                                    icon: Icons.image_outlined,
-                                    onTap: _sendPhoto),
-                                Tooltip(
-                                  message: 'Hold to record a voice message',
-                                  child: GestureDetector(
-                                    onTap: () => _say(
-                                        'Hold the mic to record a voice message.'),
-                                    onLongPressStart: (_) => _startVoice(),
-                                    onLongPressEnd: (_) => _stopVoice(),
-                                    onLongPressCancel: () =>
-                                        _stopVoice(cancel: true),
-                                    child: AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 160),
-                                      width: recording ? 46 : 40,
-                                      height: recording ? 46 : 40,
-                                      decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: recording
-                                              ? PhlioColors.danger
-                                              : Colors.transparent),
-                                      child: const Icon(Icons.mic_none_rounded,
-                                          color: Colors.white, size: 24),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ]),
-                          ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Right-aligned actions, evenly spaced: like · comment · send.
-                  _BarIcon(
-                    tooltip: 'Like',
-                    onTap: () => _react('❤️'),
-                    child: current['my_reaction'] == '❤️'
-                        ? const Icon(Icons.favorite_rounded, color: Color(0xFFFF3B5C), size: 29)
-                        : const Icon(Icons.favorite_border_rounded, color: Colors.white, size: 29),
-                  ),
-                  if (allowComments)
-                    _BarIcon(
-                      tooltip: 'Comments',
-                      onTap: _openComments,
-                      badge: comments,
-                      child: const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 27),
-                    ),
-                  _BarIcon(
-                    tooltip: 'Send to someone',
-                    onTap: _shareMoment,
-                    child: const PhlioSendIcon(color: Colors.white, size: 27),
-                  ),
-                ]),
+              : _viewerBar(current, allowComments, comments),
         ),
         ),
       ]),

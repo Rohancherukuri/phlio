@@ -36,6 +36,7 @@ import '../../../../shared/media/smart_filter_editor.dart';
 import '../../../../shared/media/smart_filters.dart';
 import '../../../../shared/media/story_fx_catalog.dart';
 import '../../../../shared/media/story_fx_view.dart';
+import '../../../../shared/content/mentions.dart' show MentionTextEditingController;
 import '../../../../shared/moments/moments.dart';
 import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart';
@@ -134,7 +135,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   ];
 
   final _canvasKey = GlobalKey();
-  final caption = TextEditingController();
+  final caption = MentionTextEditingController();
   final layers = <_Layer>[];
   String? mediaPath;
   bool isVideo = false, createMode = false;

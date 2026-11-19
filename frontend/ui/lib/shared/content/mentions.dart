@@ -11,8 +11,10 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/router/app_router.dart' show routerProvider;
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/widgets/phlio_card.dart';
@@ -21,6 +23,46 @@ import '../../design_system/widgets/phlio_card.dart';
 final mentionPattern = RegExp(r'@([A-Za-z0-9_](?:[A-Za-z0-9_.]*[A-Za-z0-9_])?)');
 
 const mentionColor = Color(0xFF9DB4FF);
+
+/// A text field controller that colours @mentions while you type — the
+/// "@" turns blue the moment you type it, and the handle stays blue as it
+/// grows. Use it for every comment / caption box.
+class MentionTextEditingController extends TextEditingController {
+  MentionTextEditingController({super.text});
+
+  static final _live = RegExp(r'(?<![A-Za-z0-9_.])@[A-Za-z0-9_.]*');
+
+  @override
+  TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
+    final value = text;
+    if (!value.contains('@')) {
+      return super.buildTextSpan(context: context, style: style, withComposing: withComposing);
+    }
+    final spans = <InlineSpan>[];
+    var last = 0;
+    for (final m in _live.allMatches(value)) {
+      if (m.start > last) spans.add(TextSpan(text: value.substring(last, m.start)));
+      spans.add(TextSpan(
+          text: m.group(0),
+          style: const TextStyle(color: mentionColor, fontWeight: FontWeight.w600)));
+      last = m.end;
+    }
+    if (last < value.length) spans.add(TextSpan(text: value.substring(last)));
+    return TextSpan(style: style, children: spans);
+  }
+}
+
+/// Opens a profile from a mention, also from places outside the app's
+/// router (the full-screen video player sits above it).
+void openMentionProfile(BuildContext context, String username) {
+  final location = '/creator/${Uri.encodeComponent(username)}';
+  final router = GoRouter.maybeOf(context);
+  if (router != null) {
+    router.push(location);
+  } else {
+    ProviderScope.containerOf(context, listen: false).read(routerProvider).push(location);
+  }
+}
 
 /// The partial handle being typed right before the cursor ("" just after
 /// "@"), or null when the cursor isn't in a mention.
@@ -138,7 +180,7 @@ class _MentionTextState extends State<MentionText> {
           if (widget.onMention != null) {
             widget.onMention!(username);
           } else {
-            GoRouter.of(context).push('/creator/${Uri.encodeComponent(username)}');
+            openMentionProfile(context, username);
           }
         };
       _taps.add(tap);

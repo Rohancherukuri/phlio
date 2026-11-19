@@ -55,7 +55,7 @@ class ExperienceComposer extends ConsumerStatefulWidget {
 
 class _ExperienceComposerState extends ConsumerState<ExperienceComposer> {
   late final List<_ExpItem> _items = [for (final f in widget.files) _ExpItem(f)];
-  final _caption = TextEditingController();
+  final _caption = MentionTextEditingController();
   final _pager = PageController(viewportFraction: .82);
   SnapAudience _audience = const SnapAudience();
   int _page = 0;
