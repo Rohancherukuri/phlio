@@ -124,6 +124,9 @@ class AuthController extends AsyncNotifier<UserEntity?> {
     state = const AsyncData(null);
   }
 
+  /// Re-reads your profile from the server (e.g. after a new profile photo).
+  Future<void> reloadProfile() => _refreshInBackground();
+
   Future<void> _refreshInBackground() async {
     try {
       await future;

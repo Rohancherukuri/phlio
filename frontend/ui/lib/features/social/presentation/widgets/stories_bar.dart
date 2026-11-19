@@ -319,14 +319,22 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                   decoration: const BoxDecoration(
                       color: Color(0xff44464B), shape: BoxShape.circle)));
         final author = people[index];
+        final inner = size - 2 * RimLight.insetFor(size);
+        // Your own circle uses your current profile photo (the copy stored
+        // with your moments can be older, or missing).
+        final isMe =
+            author['id'] == ref.watch(authControllerProvider).valueOrNull?.id;
         final ring = RimLight(
             size: size,
             unseen: groups[index]['unseen'] == true,
-            child: PhlioAvatar(
-                name: author['display_name'] as String? ?? '',
-                imageUrl: author['avatar_url'] as String?,
-                showMomentRing: false,
-                size: size - 2 * RimLight.insetFor(size)));
+            child: isMe
+                ? MeAvatar(
+                    name: author['display_name'] as String? ?? '', size: inner)
+                : PhlioAvatar(
+                    name: author['display_name'] as String? ?? '',
+                    imageUrl: author['avatar_url'] as String?,
+                    showMomentRing: false,
+                    size: inner));
         return GestureDetector(
             onTap: () => openMomentGroups(context, groups, start: index),
             child: ring);

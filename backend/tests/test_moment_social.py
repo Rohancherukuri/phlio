@@ -282,3 +282,21 @@ async def test_moment_mentions_and_applied_look(client: AsyncClient, auth_header
     bad = await client.post("/api/v1/social/moments", headers=auth_headers, files={"file": ("m.png", png(), "image/png")},
                             data={"mentions": json.dumps({"a": 1})})
     assert bad.status_code == 422
+
+
+async def test_profile_photo_upload(client: AsyncClient, auth_headers: dict) -> None:
+    r = await client.put("/api/v1/auth/me/avatar", headers=auth_headers, files={"file": ("me.png", png(), "image/png")})
+    assert r.status_code == 200, r.text
+    url = r.json()["avatar_url"]
+    assert url.startswith("/media/avatars/") and url.endswith(".jpg")
+    me = (await client.get("/api/v1/auth/me", headers=auth_headers)).json()
+    assert me["avatar_url"] == url
+    # Moments now carry the new photo (story rail, rings, viewer).
+    await moment(client, auth_headers)
+    feed = (await client.get("/api/v1/social/moments/feed", headers=auth_headers)).json()
+    mine = next(g for g in feed if g["author"]["username"] == "arjun")
+    assert mine["author"]["avatar_url"] == url
+    bad = await client.put("/api/v1/auth/me/avatar", headers=auth_headers, files={"file": ("x.png", b"nope", "image/png")})
+    assert bad.status_code == 422
+    gone = await client.delete("/api/v1/auth/me/avatar", headers=auth_headers)
+    assert gone.status_code == 200 and gone.json()["avatar_url"] is None
