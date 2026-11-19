@@ -41,6 +41,7 @@ import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
 import 'moment_activity.dart';
+import 'moment_meta.dart';
 import '../content/mentions.dart' show MentionTextEditingController;
 import 'stickers/sticker_responses.dart';
 import '../media/story_fx_view.dart';
@@ -506,9 +507,6 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
       }
     });
     if (widget.active) _show();
-    _musicLine = Timer.periodic(const Duration(milliseconds: 2600), (_) {
-      if (mounted) setState(() => _showReshare = !_showReshare);
-    });
   }
 
   @override
@@ -1251,10 +1249,6 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     final current = item;
     final created = DateTime.tryParse(current['created_at'] as String? ?? '');
     final allowComments = current['allow_comments'] != false;
-    final song = current['music'] is Map ? current['music'] as Map : null;
-    final reshare =
-        current['reshared_from'] is Map ? current['reshared_from'] as Map : null;
-    final showReshare = reshare != null && (song == null || _showReshare);
     final insets = MediaQuery.paddingOf(context);
     // Read straight from the window, so no ancestor can hide the keyboard height.
     // (MediaQuery.viewInsetsOf also subscribes this build to keyboard changes.)
@@ -1428,53 +1422,22 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                               const _Chip('AI info'),
                             ],
                           ]),
-                          if (song != null || reshare != null)
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 280),
-                              child: showReshare
-                                  ? Row(
-                                      key: const ValueKey('reshare'),
-                                      children: [
-                                        const Icon(Icons.repeat_rounded,
-                                            size: 14, color: Colors.white70),
-                                        const SizedBox(width: 6),
-                                        PhlioAvatar(
-                                            name: reshare['display_name']
-                                                    as String? ??
-                                                '',
-                                            imageUrl: reshare['avatar_url']
-                                                as String?,
-                                            size: 16),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                              reshare['username'] as String? ??
-                                                  '',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: PhlioTypography.caption
-                                                  .copyWith(
-                                                      color: Colors.white,
-                                                      fontSize: 13)),
-                                        ),
-                                      ])
-                                  : Row(
-                                      key: const ValueKey('song'),
-                                      children: [
-                                        _EqualizerBars(playing: !paused),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                              '${song!['artist']} · ${song['title']}',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: PhlioTypography.caption
-                                                  .copyWith(
-                                                      color: Colors.white,
-                                                      fontSize: 13)),
-                                        ),
-                                      ]),
+                          // Song · reshared from · mentions · effect · filter,
+                          // a new one every 3 seconds (Instagram).
+                          RotatingMeta(
+                            key: ValueKey('meta-${current['id']}'),
+                            paused: replyFocus.hasFocus || recording,
+                            lines: momentMetaLines(
+                              current,
+                              playing: !paused,
+                              onSong: _about,
+                              onProfile: (username) {
+                                final router = GoRouter.of(context);
+                                Navigator.of(context).maybePop();
+                                router.push('/creator/${Uri.encodeComponent(username)}');
+                              },
                             ),
+                          ),
                         ],
                       ),
                     ),

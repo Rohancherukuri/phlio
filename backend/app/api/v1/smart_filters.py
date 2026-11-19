@@ -103,6 +103,8 @@ class FilterSpec(BaseModel):
     fx: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,32}$")
     fx_amount: float = Field(default=1, ge=0, le=1)
     adjust: dict[str, float] = Field(default_factory=dict)
+    # The filter baked into a photo, kept so viewers can still name it.
+    applied_look: str | None = Field(default=None, pattern=NAME)
 
     @field_validator("adjust")
     @classmethod

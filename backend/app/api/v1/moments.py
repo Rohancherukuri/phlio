@@ -74,6 +74,19 @@ def _public(row, seen, viewer):
     return safe
 
 
+async def _tagged(c, user, raw: str, caption: str) -> list[dict]:
+    """Profiles of the people a moment mentions (stickers + caption)."""
+    from app.api.v1.social_comments import comment_mentions
+    try:
+        names = json.loads(raw or "[]")
+        if not isinstance(names, list) or len(names) > 20 or not all(isinstance(n, str) for n in names):
+            raise ValueError()
+    except ValueError as exc:
+        raise HTTPException(422, "Invalid mentions.") from exc
+    text = " ".join([caption or "", *("@" + n.lstrip("@") for n in names)])
+    return [p for p in await comment_mentions(c, user, text) if p["id"] != user.id]
+
+
 async def _profile(c, uid, cache):
     if uid not in cache:
         cache[uid] = c.graph.profile(await c.graph.user(uid))
@@ -94,6 +107,7 @@ async def create_moment(
     ai_label: bool = Form(default=False),
     music: str = Form(default=""),
     edits: str = Form(default=""),
+    mentions: str = Form(default="[]", max_length=2000),
     user=Depends(get_current_user),
     c=Depends(get_container),
 ):
@@ -109,6 +123,7 @@ async def create_moment(
         raise HTTPException(422, "Invalid moment settings.")
     from app.api.v1.media_edits import apply_video_edits, parse_media_edits
     video_edits = parse_media_edits(edits)
+    tagged = await _tagged(c, user, mentions, caption)
     policy = await validate_audience(c, user.id, choice)
     await c.cache.rate_limit(user.id, "create_moment", 30)
 
@@ -186,6 +201,8 @@ async def create_moment(
         allow_comments=allow_comments,
         ai_label=ai_label,
         music=song,
+        # People tagged with mention stickers or @ in the caption.
+        mentions=tagged,
         **policy,
         created_at=created.isoformat(),
         expires_at=(created + LIFETIME).isoformat(),

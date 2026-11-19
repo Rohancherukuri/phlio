@@ -270,3 +270,15 @@ async def test_content_comment_share(client: AsyncClient, auth_headers: dict) ->
     assert bad.status_code == 404
     listed = (await client.get(f"/api/v1/social/content/{pid}/comments", headers=auth_headers)).json()["items"]
     assert "liked_by_author" in listed[0]
+
+
+
+async def test_moment_mentions_and_applied_look(client: AsyncClient, auth_headers: dict) -> None:
+    spec = {"look": "normal", "applied_look": "clarendon", "fx": "vhs"}
+    m = await moment(client, auth_headers, caption="with @artbykiara", mentions=json.dumps(["neha", "@neha", "arjun"]),
+                     filter_spec=json.dumps(spec))
+    assert sorted(p["username"] for p in m["mentions"]) == ["artbykiara", "neha"]
+    assert m["filter_spec"]["applied_look"] == "clarendon"
+    bad = await client.post("/api/v1/social/moments", headers=auth_headers, files={"file": ("m.png", png(), "image/png")},
+                            data={"mentions": json.dumps({"a": 1})})
+    assert bad.status_code == 422

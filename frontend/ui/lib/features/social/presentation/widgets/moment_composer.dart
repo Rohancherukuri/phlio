@@ -730,7 +730,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               if (_music != null) 'music': jsonEncode(_music),
               // Photos: the look is baked into the PNG; the effect plays live.
               'filter': isVideo ? joinMomentFilter(filter, effect) : joinMomentFilter('normal', effect),
-              if (smart.overlays.isNotEmpty || fx != null)
+              if (smart.overlays.isNotEmpty || fx != null || filter != 'normal' || effect != 'none')
                 'filter_spec': jsonEncode((FilterSpec(
                   look: isVideo ? filter : 'normal',
                   effect: effect == 'none' ? null : effect,
@@ -738,7 +738,18 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                   overlays: smart.overlays,
                   fx: fx,
                   fxAmount: fxAmount,
+                  // Photos bake the filter in; keep its name for the viewer.
+                  appliedLook: isVideo ? null : filter,
                 )).toJson()),
+              // Who's tagged (mention layers are flattened into photos), so
+              // the viewer can show "@a, @b" under your name.
+              'mentions': jsonEncode([
+                for (final l in layers)
+                  if (l.type == 'mention' && l.text.trim().isNotEmpty)
+                    l.text.trim().replaceFirst('@', '')
+                  else if (l.item?.type == StickerType.mention)
+                    '${l.item!.data['text'] ?? ''}'.replaceFirst('@', '')
+              ].where((u) => u.isNotEmpty).toList()),
               // Boomerang, slow motion… rendered into the clip by the server.
               if (isVideo && motion != null) 'edits': jsonEncode({'motion': motion}),
               'highlight': saveToHighlights ? 'Highlights' : '',

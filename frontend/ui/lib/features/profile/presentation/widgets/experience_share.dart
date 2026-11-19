@@ -1034,15 +1034,34 @@ class _ExperienceViewerState extends ConsumerState<ExperienceViewer> {
             ),
             title: Text('${author['display_name'] ?? author['username'] ?? 'Friend'}',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-            subtitle: Text(
-                [
-                  if (t != null) _weekdays[t.weekday - 1],
-                  if (current['location'] is Map) '${(current['location'] as Map)['name']}',
-                  if (caption.isNotEmpty) caption,
-                ].join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white60)),
+            // When · where · with whom · mentions · effect · filter, a new
+            // one every 3 seconds (Instagram), then the caption.
+            subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(height: 2),
+              RotatingMeta(
+                key: ValueKey('exp-meta-${current['id']}'),
+                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                lines: [
+                  if (t != null)
+                    MetaLine(
+                        key: 'day',
+                        lead: const Icon(Icons.schedule_rounded, size: 14, color: Colors.white70),
+                        text: '${_weekdays[t.weekday - 1]} · ${TimeOfDay.fromDateTime(t).format(context)}'),
+                  ...experienceMetaLines(
+                    current,
+                    collaborators: _team,
+                    onPlace: places.isEmpty ? null : () => showExperienceMap(context, places, focus: current),
+                    onProfile: (u) => openMentionProfile(context, u),
+                  ),
+                ],
+              ),
+              if (caption.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: MentionText(caption,
+                      style: const TextStyle(color: Colors.white60, fontSize: 13.5)),
+                ),
+            ]),
             trailing: (current['reactions'] as List? ?? const []).isEmpty
                 ? null
                 : Text((current['reactions'] as List).map((r) => r['emoji']).take(4).join(' '),

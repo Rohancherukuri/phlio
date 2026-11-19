@@ -125,6 +125,7 @@ class FilterSpec {
     this.fx,
     this.fxAmount = 1,
     Map<String, double>? adjust,
+    this.appliedLook,
   })  : overlays = overlays ?? [],
         adjust = adjust ?? {};
 
@@ -140,6 +141,9 @@ class FilterSpec {
   /// Adjust sliders from the editors (exposure, contrast, warmth…), -1..1.
   final Map<String, double> adjust;
 
+  /// The filter that was baked into a photo (so it can still be named).
+  String? appliedLook;
+
   bool get isEmpty =>
       overlays.isEmpty && look == 'normal' && (effect == null || effect == 'none') && fx == null && adjust.isEmpty;
 
@@ -150,7 +154,8 @@ class FilterSpec {
       overlays: [for (final o in overlays) o.copy()],
       fx: fx,
       fxAmount: fxAmount,
-      adjust: {...adjust});
+      adjust: {...adjust},
+      appliedLook: appliedLook);
 
   Map<String, dynamic> toJson() => {
         'look': look,
@@ -160,6 +165,7 @@ class FilterSpec {
         if (fx != null) 'fx': fx,
         if (fx != null) 'fx_amount': fxAmount.clamp(0.0, 1.0),
         if (adjust.isNotEmpty) 'adjust': {for (final e in adjust.entries) if (e.value.abs() > 1e-4) e.key: e.value.clamp(-1.0, 1.0)},
+        if (appliedLook != null && appliedLook != 'normal') 'applied_look': appliedLook,
       };
 
   static FilterSpec? fromJson(Object? j) {
@@ -175,6 +181,7 @@ class FilterSpec {
       adjust: adjust is Map
           ? {for (final e in adjust.entries) if (e.value is num) '${e.key}': (e.value as num).toDouble()}
           : null,
+      appliedLook: j['applied_look'] as String?,
     );
   }
 }
