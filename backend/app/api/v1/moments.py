@@ -714,8 +714,35 @@ async def add_comment(moment_id: str, body: CommentIn, user=Depends(get_current_
     saved = await c.graph.store.put(cid, dict(
         moment_id=row["id"], author=row["author"], user_id=user.id, text=text, reply_to=reply_to,
         created_at=now()))
+    await _comment_dms(c, row, user.id, text, reply_to)
     by_id = {r["id"]: r for r in await c.graph.store.rows("moment_comment", {"moment_id": row["id"]})}
     return await _comment_out(c, saved, row, user.id, {}, by_id)
+
+
+async def _comment_dms(c, row: dict, uid: str, text: str, reply_to: str | None) -> None:
+    """Comments go straight to DMs: the moment's author gets every comment
+    from someone else, and whoever you reply to gets your reply."""
+    try:
+        owner = await _profile(c, row["author"], {})
+    except HTTPException:
+        return
+    link = f"\nphlio://app/moments/{owner['username']}"
+    sends: dict[str, str] = {}
+    if uid != row["author"]:
+        sends[row["author"]] = f"💬 Commented on your moment: {text}{link}"
+    if reply_to:
+        parent = await c.graph.store.get(reply_to)
+        target = parent and parent["user_id"]
+        if target and target != uid and target not in sends:
+            whose = "my" if uid == row["author"] else f"@{owner['username']}'s"
+            sends[target] = f"↩️ Replied to your comment on {whose} moment: {text}{link}"
+    for target, message in sends.items():
+        try:
+            if await c.graph.blocked(uid, target):
+                continue
+            c.messaging_service.send(uid, target, message, [])
+        except Exception:  # the comment is saved either way
+            continue
 
 
 @router.put("/{moment_id}/comments/{comment_id}")

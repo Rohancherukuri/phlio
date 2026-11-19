@@ -83,6 +83,15 @@ async def test_comments_thread_permissions(client: AsyncClient, auth_headers: di
     assert b["reply_to"] == q["id"]
     late = (await client.post(base, headers=kiara, json={"text": "Lovely"})).json()
 
+    # Comments land in DMs: the author got Neha's and Kiara's; Neha got the replies to her.
+    arjun_dms = (await client.get("/api/v1/messaging/peers/neha/messages", headers=auth_headers)).json()
+    texts = [m["text"] for m in (arjun_dms["items"] if isinstance(arjun_dms, dict) else arjun_dms)]
+    assert any(t.startswith("💬 Commented on your moment: Which part was your fave?") for t in texts)
+    assert any(t.startswith("↩️ Replied to your comment on my moment: When we made the dough") for t in texts)
+    kiara_dms = (await client.get("/api/v1/messaging/peers/artbykiara/messages", headers=auth_headers)).json()
+    ktexts = [m["text"] for m in (kiara_dms["items"] if isinstance(kiara_dms, dict) else kiara_dms)]
+    assert any("Commented on your moment: Lovely" in t for t in ktexts)
+
     listed = (await client.get(base, headers=kiara)).json()
     assert listed["count"] == 4 and [i["id"] for i in listed["items"]] == [q["id"], a["id"], b["id"], late["id"]]
     assert listed["items"][0]["can_delete"] is False

@@ -897,12 +897,17 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     if (mounted) setState(() => burst = null);
   }
 
+  /// Viewers / Comments sheet is up (the moment shrinks to a card).
+  bool _sheetOpen = false;
+
   /// People icon: who watched, with their reactions.
   Future<void> _openViewers() async {
     final current = item;
     _pause();
+    setState(() => _sheetOpen = true);
+    var thenComments = false;
     await showMomentViewers(context, current,
-        onComments: _openComments,
+        onComments: () => thenComments = true,
         onCounts: (c) {
           if (!mounted) return;
           setState(() {
@@ -911,6 +916,8 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
             current['comment_count'] = c['comments'];
           });
         });
+    if (mounted) setState(() => _sheetOpen = false);
+    if (thenComments && mounted) return _openComments();
     _resume();
   }
 
@@ -918,9 +925,11 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
   Future<void> _openComments() async {
     final current = item;
     _pause();
+    setState(() => _sheetOpen = true);
     await showMomentComments(context, current, isAuthor: mine, onCount: (n) {
       if (mounted) setState(() => current['comment_count'] = n);
     });
+    if (mounted) setState(() => _sheetOpen = false);
     _resume();
   }
 
@@ -1058,7 +1067,16 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final barSpace = (mine ? 92.0 : 76.0) + insets.bottom;
     final comments = (current['comment_count'] as num?)?.toInt() ?? 0;
-    return Stack(fit: StackFit.expand, children: [
+    // While Viewers / Comments is open the moment shrinks into a card at
+    // the top (Bond style), so you still see what people are reacting to.
+    return AnimatedScale(
+      scale: _sheetOpen ? .4 : 1,
+      alignment: Alignment(0, -1 + (insets.top + 24) / MediaQuery.sizeOf(context).height * 2),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_sheetOpen ? 34 : 0),
+        child: Stack(fit: StackFit.expand, children: [
               _framedMediaFor(current, video),
               for (final layer in (current['overlays'] as List? ?? const []))
                 if (current['media_kind'] == 'video')
@@ -1489,7 +1507,9 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                 ]),
         ),
         ),
-      ]);
+      ]),
+      ),
+    );
   }
 }
 

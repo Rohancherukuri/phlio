@@ -7,6 +7,9 @@
 //     (one level of replies). Write, reply, edit your own, delete your own
 //     — the author can delete any.
 //
+// Every comment also lands in the moment author's DMs (and a reply lands
+// in the DMs of the person replied to) — the server sends it.
+//
 // Backend: backend/app/api/v1/moments.py (viewers, reaction, comments).
 
 import 'package:flutter/material.dart';
@@ -41,6 +44,7 @@ Future<void> showMomentViewers(BuildContext context, Map item,
       useSafeArea: true,
       backgroundColor: _sheetColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      barrierColor: Colors.black26,
       builder: (_) => _ViewersSheet(item: item, onComments: onComments, onCounts: onCounts),
     );
 
@@ -91,7 +95,7 @@ class _ViewersSheetState extends State<_ViewersSheet> {
     ];
     return DraggableScrollableSheet(
         expand: false,
-        initialChildSize: .62,
+        initialChildSize: .58,
         minChildSize: .35,
         maxChildSize: .95,
         builder: (context, scroll) => Column(children: [
@@ -243,6 +247,7 @@ Future<void> showMomentComments(BuildContext context, Map item, {required bool i
       useSafeArea: true,
       backgroundColor: _sheetColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      barrierColor: Colors.black26,
       builder: (_) => _CommentsSheet(item: item, isAuthor: isAuthor, onCount: onCount),
     );
 
@@ -355,7 +360,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     return Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * .7,
+          height: MediaQuery.sizeOf(context).height * .58,
           child: Column(children: [
             const SizedBox(height: 10),
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
