@@ -10,6 +10,8 @@ import 'router/app_router.dart';
 import '../features/social/presentation/widgets/social_video_player.dart';
 import '../features/rooms/presentation/widgets/incoming_call_banner.dart';
 import 'theme/app_theme.dart';
+import '../shared/notifications/notification_center.dart';
+import '../shared/notifications/phlio_island.dart';
 
 class PhlioApp extends ConsumerWidget {
   const PhlioApp({super.key});
@@ -17,6 +19,8 @@ class PhlioApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    // Starts polling once signed in; the island shows what arrives.
+    ref.watch(notificationCenterProvider.select((_) => 0));
 
     return MaterialApp.router(
       title: 'Phlio',
@@ -33,6 +37,7 @@ class PhlioApp extends ConsumerWidget {
           child!,
           const SocialVideoPlayer(),
           IncomingCallBanner(router: router),
+          const PhlioIsland(),
         ],
       )),
     );

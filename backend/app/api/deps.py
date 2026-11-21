@@ -30,7 +30,16 @@ from app.infrastructure.security.jwt import decode_token
 def get_container(request: Request) -> Container:
     """Retrieves the single `Container` built at startup (see
     `app/main.py`'s lifespan handler) off of `app.state`."""
-    return request.app.state.container
+    container = request.app.state.container
+    if not getattr(container, "_notify_hooks", False):
+        # Every DM and room message also notifies its recipients.
+        from app.api.v1.notifications import install_hooks
+        install_hooks(container)
+        try:
+            container._notify_hooks = True
+        except (AttributeError, TypeError):  # frozen / slotted container: hooks are idempotent anyway
+            pass
+    return container
 
 
 def get_identity_service(container: Container = Depends(get_container)) -> IdentityService:

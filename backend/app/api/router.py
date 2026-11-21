@@ -53,6 +53,8 @@ api_router.include_router(agent.router)
 api_router.include_router(book.router)
 api_router.include_router(pay.router)
 api_router.include_router(activity.router)
+from app.api.v1 import notifications  # noqa: E402
+api_router.include_router(notifications.router)
 api_router.include_router(stickers.router)
 
 api_router.include_router(messaging.router)

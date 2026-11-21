@@ -49,6 +49,8 @@ TABLES = {
     "moment_response",
     "moment_reaction",
     "moment_comment",
+    "phlio_notification",
+    "notification_state",
     "live_location",
     "profile_style",
     "chat_theme",

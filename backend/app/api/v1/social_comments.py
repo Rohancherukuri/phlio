@@ -81,6 +81,11 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
             target.write_bytes(raw)
             row['image_url']='/media/social_comments/'+target.name
         saved=await c.graph.store.put(cid,row)
+        from app.api.v1.notifications import notify_comment
+        parent = None
+        if parent_id:
+            parent = next((r for r in existing['items'] if r['id'] == parent_id), None)
+        await notify_comment(c, user, obj, saved, mentioned, parent)
         return dict(saved,author=c.graph.profile(user))
     except Exception:
         if target: target.unlink(missing_ok=True)

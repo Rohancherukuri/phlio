@@ -51,6 +51,7 @@ import '../shell/profile_dashboard_screen.dart';
 import '../shell/profile_screen.dart';
 import '../shell/settings_screen.dart';
 import '../shell/account_switcher.dart';
+import '../../shared/notifications/notifications_screen.dart';
 import '../../features/rooms/presentation/screens/chats_inbox_screen.dart';
 
 /// Bridges Riverpod state changes to `GoRouter`'s `Listenable`-based
@@ -157,6 +158,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/signup',
         pageBuilder: (context, state) => _fadeThroughPage(const SignupScreen()),
+      ),
+      GoRoute(
+        path: '/notifications',
+        pageBuilder: (context, state) =>
+            _fadeThroughPage(const NotificationsScreen()),
       ),
       GoRoute(
         path: '/activity',
