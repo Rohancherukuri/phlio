@@ -156,6 +156,17 @@ class NotificationCenter extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> refresh() => _poll(force: true);
 
+  /// One sample banner of each kind (Messages, Rooms, Shop, News, a song,
+  /// a movie / show) to try the island out. Returns what was created.
+  Future<List<String>> preview() async {
+    final res = await getIt<ApiClient>().dio.post('/notifications/preview');
+    while (_loading) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await _poll();
+    return [for (final x in ((res.data as Map)['created'] as List? ?? const [])) '$x'];
+  }
+
   Future<void> _poll({bool initial = false, bool force = false}) async {
     if (_loading && !force) return;
     _loading = true;

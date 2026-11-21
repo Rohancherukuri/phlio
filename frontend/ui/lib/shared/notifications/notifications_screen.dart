@@ -36,6 +36,22 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
+          IconButton(
+            tooltip: 'Preview banners',
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                final made = await center.preview();
+                messenger.showSnackBar(SnackBar(
+                    content: Text(made.isEmpty
+                        ? 'Nothing to preview yet'
+                        : 'Sending ${made.length} sample banners: tap or pull one down to expand it')));
+              } catch (_) {
+                messenger.showSnackBar(const SnackBar(content: Text('Could not start the preview')));
+              }
+            },
+            icon: const Icon(Icons.play_circle_outline_rounded),
+          ),
           if (center.unread > 0)
             TextButton(onPressed: center.markAllRead, child: const Text('Mark all read')),
           IconButton(

@@ -114,3 +114,13 @@ async def test_room_message_notifies_members(client: AsyncClient, auth_headers: 
     assert rooms and rooms[0]["title"] == "Film club" and rooms[0]["data"]["room_id"] == rid
     assert "Tonight 9pm?" in rooms[0]["body"]
     assert not [n for n in (await feed(client, neha))["items"] if n["platform"] == "rooms"]
+
+
+async def test_preview_creates_one_of_each(client: AsyncClient, auth_headers: dict) -> None:
+    r = await client.post("/api/v1/notifications/preview", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    created = r.json()["created"]
+    assert "dm" in created and "shop" in created
+    items = (await feed(client, auth_headers))["items"]
+    dm = next(n for n in items if n["platform"] == "dm")
+    assert dm["data"]["preview"] is True and dm["actor"]["username"] != "arjun"

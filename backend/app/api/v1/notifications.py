@@ -31,6 +31,7 @@ Endpoints (``/api/v1/notifications``):
   POST   /read      {ids?: [...], group?: "dm:<user id>"}
   POST   /read-all
   DELETE /{id}
+  POST   /preview   one sample banner of each kind, for trying the island
 """
 
 from __future__ import annotations
@@ -219,9 +220,9 @@ def install_hooks(c) -> None:
 
 # -- suggestions ("pulse") ------------------------------------------------------------------
 
-async def _content_rows(c, platform: str) -> list[dict]:
+async def _content_rows(c, platform: str, *, demo: bool = False) -> list[dict]:
     return [r for r in await c.graph.store.rows("platform_content", {"platform": platform})
-            if not (r.get("demo") and not r.get("source_url"))]
+            if demo or not (r.get("demo") and not r.get("source_url"))]
 
 
 async def _pulse_news(c, user, seen: set) -> dict | None:
@@ -395,3 +396,90 @@ async def remove(notification_id: str, user=Depends(get_current_user), c=Depends
     if not row or row["user_id"] != user.id:
         raise HTTPException(404, "Notification unavailable.")
     await c.graph.store.delete(notification_id)
+
+
+# -- preview ------------------------------------------------------------------------------------
+
+_PREVIEW_PEOPLE = ("artbykiara", "neha", "arjun", "meera", "kabir", "zara")
+
+
+@router.post("/preview")
+async def preview(user=Depends(get_current_user), c=Depends(get_container)):
+    """A sample of every kind of banner, for trying the island out.
+
+    Only notification rows are created for *you* — nobody else is messaged.
+    Replies you send from them are real (to that person / your room); the
+    News, Stream and Shop ones use real catalogue items.
+    """
+    made: list[str] = []
+    friend = None
+    for name in _PREVIEW_PEOPLE:
+        person = await c.identity_repository.get_by_username(name)
+        if person and person.id != user.id:
+            friend = person
+            break
+    if friend is None:
+        friend = next((p for p in await c.identity_repository.search_users("a", limit=10) if p.id != user.id), None)
+    if friend:
+        await notify(c, user.id, "dm", "message", friend.full_name or friend.username,
+                     "Are we still on for tonight? 🍿", actor=friend.id, group=f"preview:dm:{uuid.uuid4().hex[:6]}",
+                     data=dict(peer=friend.username, message_id=None, attachment=None, preview=True))
+        made.append("dm")
+    try:
+        rooms = await c.rooms_service.my_rooms(user.id)
+    except Exception:
+        rooms = []
+    if rooms:
+        room = rooms[0]
+        others = [m for m in await _room_members(c, room) if m != user.id]
+        author = (await c.identity_repository.get_by_id(others[0])) if others else friend
+        if author:
+            await notify(c, user.id, "rooms", "message", room.name,
+                         f"{author.full_name or author.username}: who's joining the call later?",
+                         actor=author.id, group=f"preview:room:{uuid.uuid4().hex[:6]}",
+                         data=dict(room_id=room.id, room_name=room.name, message_id=None, attachment=None,
+                                   preview=True))
+            made.append("rooms")
+    seen: set = set()
+    try:
+        if await _pulse_shop(c, user, seen):
+            made.append("shop")
+    except Exception:
+        logger.exception("notifications.preview_failed platform=shop")
+    news = sorted(await _content_rows(c, "news", demo=True), key=lambda r: str(r.get("published_at") or ""), reverse=True)
+    for row in news[:20]:
+        oid = row.get("object_id") or key("phlio_object", "news", row["domain_ref"])
+        obj = await c.graph.store.get(oid)
+        if obj:
+            await notify(c, user.id, "news", "story", row.get("publisher") or "Phlio News", obj["title"],
+                         data=dict(path=f"news/{row['domain_ref']}", ref=row["domain_ref"],
+                                   image_url=row.get("image_url"), publisher=row.get("publisher")))
+            made.append("news")
+            break
+    # One song and one movie / show.
+    rows = await _content_rows(c, "stream", demo=True)
+    for want in ("song", "title"):
+        if want == "song":
+            pool = [r for r in rows if r.get("kind") == "song" and r.get("media_url")]
+        else:
+            pool = [r for r in rows if r.get("kind") in {"movie", "series"} and r.get("image_url")]
+        random.shuffle(pool)
+        for row in pool[:20]:
+            oid = row.get("object_id") or key("phlio_object", "stream", row["domain_ref"])
+            obj = await c.graph.store.get(oid)
+            if not obj:
+                continue
+            path = f"stream/{row['domain_ref']}"
+            if want == "song":
+                await notify(c, user.id, "stream", "song", "Song for you", f"{obj['title']} · {row.get('publisher') or ''}",
+                             data=dict(path=path, ref=row["domain_ref"], title=obj["title"],
+                                       artist=row.get("publisher") or "", image_url=row.get("image_url"),
+                                       media_url=row.get("media_url")))
+            else:
+                await notify(c, user.id, "stream", "title",
+                             "New series to watch" if row.get("kind") == "series" else "Movie night", obj["title"],
+                             data=dict(path=path, ref=row["domain_ref"], image_url=row.get("image_url"),
+                                       kind=row.get("kind"), category=row.get("category")))
+            made.append(f"stream:{want}")
+            break
+    return {"created": made}
