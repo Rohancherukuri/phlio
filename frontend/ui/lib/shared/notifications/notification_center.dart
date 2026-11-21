@@ -138,7 +138,7 @@ class NotificationCenter extends ChangeNotifier with WidgetsBindingObserver {
     if (_routeListener != null) return;
     final router = ref.read(routerProvider);
     _routeListener = () {
-      final path = router.routerInformationProvider.value.uri.path;
+      final path = router.routerDelegate.currentConfiguration.uri.path;
       final dm = RegExp(r'^/dm/([^/]+)').firstMatch(path)?.group(1);
       final room = RegExp(r'^/rooms/([^/]+)').firstMatch(path)?.group(1);
       if (dm != null) markWhere((n) => n.platform.id == 'dm' && '${n.data['peer']}' == Uri.decodeComponent(dm));
@@ -149,7 +149,7 @@ class NotificationCenter extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Where you are right now — a banner for that chat would be noise.
   bool _isOpen(PhlioNotification n) {
-    final path = ref.read(routerProvider).routerInformationProvider.value.uri.path;
+    final path = ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
     final route = n.route;
     return route != null && (n.platform.id == 'dm' || n.platform.id == 'rooms') && Uri.decodeComponent(path) == Uri.decodeComponent(route);
   }
