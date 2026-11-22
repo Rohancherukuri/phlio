@@ -1,11 +1,8 @@
-// The bell, colour-coded by platform: the badge takes the colour of the
+// The bell: its badge (the dot with the count) takes the colour of the
 // newest unread notification's platform, so you can tell at a glance where
 // it's from — pink Messages, violet Social, teal Rooms, orange Shop, blue
 // News, red Stream, rose Book, gold Pay, peach Foxy (the same colours as the
-// island and the notifications screen; NotifPlatform). When more than one
-// platform is waiting, a small ring of their colours goes round the bell.
-
-import 'dart:math' as math;
+// island and the notifications screen; NotifPlatform).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,21 +30,7 @@ class PhlioNotificationsButton extends ConsumerWidget {
       tooltip: total == 0 ? 'Notifications' : 'Notifications: $total new from $names',
       onPressed: () => context.push('/notifications'),
       icon: Stack(clipBehavior: Clip.none, children: [
-        if (platforms.length > 1)
-          Positioned.fill(
-            child: Transform.scale(
-              scale: 1.55,
-              child: CustomPaint(painter: _Ring([for (final p in platforms.take(6)) p.color])),
-            ),
-          ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          child: Icon(
-            total > 0 ? Icons.notifications_rounded : Icons.notifications_outlined,
-            key: ValueKey(lead?.id),
-            color: lead?.color,
-          ),
-        ),
+        const Icon(Icons.notifications_outlined),
         if (total > 0)
           Positioned(
             right: -7,
@@ -64,7 +47,7 @@ class PhlioNotificationsButton extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 5),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  gradient: (lead ?? NotifPlatform.of('social')).gradient,
+                  color: (lead ?? NotifPlatform.of('social')).color,
                   borderRadius: BorderRadius.circular(9),
                   border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
                 ),
@@ -76,25 +59,4 @@ class PhlioNotificationsButton extends ConsumerWidget {
       ]),
     );
   }
-}
-
-/// Thin ring split into the colours of the platforms waiting.
-class _Ring extends CustomPainter {
-  _Ring(this.colors);
-  final List<Color> colors;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromCircle(center: size.center(Offset.zero), radius: size.shortestSide / 2 - 1);
-    final sweep = math.pi * 2 / colors.length;
-    for (var i = 0; i < colors.length; i++) {
-      canvas.drawArc(rect, -math.pi / 2 + i * sweep + .12, sweep - .24, false, Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round
-        ..color = colors[i]);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_Ring old) => old.colors.length != colors.length || !Iterable.generate(colors.length).every((i) => old.colors[i] == colors[i]);
 }

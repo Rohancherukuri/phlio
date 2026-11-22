@@ -62,7 +62,7 @@ class _SocialExploreState extends ConsumerState<SocialExploreVideosView> {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-        length: 4,
+        length: 3,
         child: Column(
           children: [
             Padding(
@@ -117,15 +117,15 @@ class _SocialExploreState extends ConsumerState<SocialExploreVideosView> {
                 Tab(text: 'Posts'),
                 Tab(text: 'Videos'),
                 Tab(text: 'Clips'),
-                Tab(text: 'Places'),
               ],
             ),
+            // Places that match the search, on a map (tap to open it).
+            if (search.text.trim().length >= 2) ExplorePlacesCard(query: query),
             Expanded(
               child: switch (tab) {
                 0 => posts(),
                 1 => videos(),
-                2 => SocialClipsGrid(key: ValueKey(query), query: query),
-                _ => ExplorePlaces(query: search.text.trim().isEmpty ? '' : query),
+                _ => SocialClipsGrid(key: ValueKey(query), query: query),
               },
             ),
           ],

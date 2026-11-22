@@ -26,6 +26,7 @@ import '../../../../design_system/widgets/phlio_fox.dart';
 import '../../../../shared/location/location_service.dart';
 import '../../../../shared/location/location_share_screen.dart' show phlioMapStyle;
 import '../../../../shared/location/places_api.dart';
+import '../../../../shared/location/place_map.dart';
 
 /// Answers per (category, ~1 km area), kept 10 minutes.
 final _cache = <String, (DateTime, List<Place>, int)>{};
@@ -84,6 +85,72 @@ class _FoxyMapsScreenState extends State<FoxyMapsScreen> {
   String? _question;
   List<Place> _results = const [];
   int _selected = 0;
+
+  /// Photo / labelled markers (place_map.dart): answers by index, and
+  /// places people posted from nearby.
+  final _icons = <String, BitmapDescriptor>{};
+  List<Map<String, dynamic>> _phlio = const [];
+  int _paintRun = 0;
+
+  Map<String, dynamic> _asMap(Place p) => {
+        'id': '${p.lat.toStringAsFixed(5)},${p.lng.toStringAsFixed(5)}',
+        'name': p.name,
+        'address': p.address,
+        'lat': p.lat,
+        'lng': p.lng,
+        'posts': 0,
+      };
+
+  /// The place's page (posts people made there, directions, save).
+  void _openPlace(Map<String, dynamic> place) {
+    final me = _me;
+    showPlaceSheet(
+      context,
+      place,
+      position: me == null
+          ? null
+          : Position(
+              latitude: me.latitude,
+              longitude: me.longitude,
+              timestamp: DateTime.now(),
+              accuracy: 0,
+              altitude: 0,
+              altitudeAccuracy: 0,
+              heading: 0,
+              headingAccuracy: 0,
+              speed: 0,
+              speedAccuracy: 0,
+            ),
+    );
+  }
+
+  /// Answers get their name under the pin; posted-from places get photos.
+  Future<void> _paintMarkers() async {
+    final run = ++_paintRun;
+    for (var i = 0; i < _results.length; i++) {
+      final p = _results[i];
+      final hit = _phlio.where((x) => distanceMetres(p.lat, p.lng, (x['lat'] as num).toDouble(), (x['lng'] as num).toDouble()) < 80).firstOrNull;
+      final cover = hit?['cover'] as Map?;
+      final icon = await placeMarker(
+        label: p.name,
+        photoUrl: cover != null && cover['media_kind'] != 'video' ? '${cover['image_url']}' : null,
+        big: i == _selected,
+      );
+      if (!mounted || run != _paintRun) return;
+      setState(() => _icons['r$i|${i == _selected}'] = icon);
+    }
+    for (final p in _phlio) {
+      final cover = p['cover'] as Map?;
+      final posts = (p['posts'] as num?)?.toInt() ?? 0;
+      final icon = await placeMarker(
+        label: '${p['name']}',
+        photoUrl: cover != null && cover['media_kind'] != 'video' ? '${cover['image_url']}' : null,
+        more: posts > 1 ? posts - 1 : 0,
+      );
+      if (!mounted || run != _paintRun) return;
+      setState(() => _icons['p${p['id']}'] = icon);
+    }
+  }
 
   @override
   void initState() {
@@ -230,6 +297,14 @@ class _FoxyMapsScreenState extends State<FoxyMapsScreen> {
         _selected = 0;
         _answer = answer;
       });
+      // Places people posted from around the answers, as photos.
+      final centre = places.isEmpty ? at : LatLng(places.first.lat, places.first.lng);
+      areaPlaces(centre, radiusKm: radius / 1000 + 2).then((found) {
+        if (!mounted) return;
+        setState(() => _phlio = found);
+        _paintMarkers();
+      });
+      _paintMarkers();
       if (places.isNotEmpty) {
         _fitAll(at, places);
         if (_cards.hasClients) _cards.jumpToPage(0);
@@ -256,6 +331,7 @@ class _FoxyMapsScreenState extends State<FoxyMapsScreen> {
   void _focus(int i) {
     if (i < 0 || i >= _results.length) return;
     setState(() => _selected = i);
+    _paintMarkers();
     final p = _results[i];
     _map?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(p.lat, p.lng), 16));
   }
@@ -287,13 +363,32 @@ class _FoxyMapsScreenState extends State<FoxyMapsScreen> {
               if (_me != null) c.moveCamera(CameraUpdate.newLatLngZoom(_me!, 15));
             },
             markers: {
+              for (final p in _phlio)
+                if (!_results.any((r) => distanceMetres(r.lat, r.lng, (p['lat'] as num).toDouble(), (p['lng'] as num).toDouble()) < 80))
+                  Marker(
+                    markerId: MarkerId('phlio-${p['id']}'),
+                    position: placeLatLng(p),
+                    icon: _icons['p${p['id']}'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose),
+                    anchor: Offset(.5, _icons['p${p['id']}'] == null ? 1 : markerAnchorY(_icons['p${p['id']}']!)),
+                    onTap: () => _openPlace(p),
+                  ),
               for (var i = 0; i < _results.length; i++)
                 Marker(
                   markerId: MarkerId('p$i'),
                   position: LatLng(_results[i].lat, _results[i].lng),
-                  icon: BitmapDescriptor.defaultMarkerWithHue(i == _selected ? BitmapDescriptor.hueViolet : BitmapDescriptor.hueOrange),
-                  zIndex: i == _selected ? 2 : 1,
+                  icon: _icons['r$i|${i == _selected}'] ??
+                      _icons['r$i|${i != _selected}'] ??
+                      BitmapDescriptor.defaultMarkerWithHue(i == _selected ? BitmapDescriptor.hueViolet : BitmapDescriptor.hueOrange),
+                  anchor: Offset(.5, () {
+                    final icon = _icons['r$i|${i == _selected}'] ?? _icons['r$i|${i != _selected}'];
+                    return icon == null ? 1.0 : markerAnchorY(icon);
+                  }()),
+                  zIndex: i == _selected ? 3 : 2,
                   onTap: () {
+                    if (i == _selected) {
+                      _openPlace(_asMap(_results[i]));
+                      return;
+                    }
                     _focus(i);
                     if (_cards.hasClients) {
                       _cards.animateToPage(i, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -352,6 +447,7 @@ class _FoxyMapsScreenState extends State<FoxyMapsScreen> {
                     distance: me == null ? null : distanceMetres(me.latitude, me.longitude, _results[i].lat, _results[i].lng),
                     selected: i == _selected,
                     onDirections: () => _directions(_results[i]),
+                    onOpen: () => _openPlace(_asMap(_results[i])),
                   ),
                 ),
               ),
@@ -472,16 +568,19 @@ class _Glass extends StatelessWidget {
 }
 
 class _PlaceCard extends StatelessWidget {
-  const _PlaceCard({required this.place, required this.distance, required this.selected, required this.onDirections});
+  const _PlaceCard({required this.place, required this.distance, required this.selected, required this.onDirections, required this.onOpen});
 
   final Place place;
   final double? distance;
   final bool selected;
   final VoidCallback onDirections;
 
+  /// Opens the place's page: photos people posted there, save, share.
+  final VoidCallback onOpen;
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
+    return GestureDetector(onTap: onOpen, child: AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       margin: EdgeInsets.fromLTRB(5, selected ? 0 : 8, 5, selected ? 0 : 8),
       padding: const EdgeInsets.all(14),
@@ -523,6 +622,6 @@ class _PlaceCard extends StatelessWidget {
           ),
         ),
       ]),
-    );
+    ));
   }
 }
