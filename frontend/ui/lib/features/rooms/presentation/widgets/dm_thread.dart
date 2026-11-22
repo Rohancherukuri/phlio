@@ -26,6 +26,7 @@ import '../widgets/attachment_preview.dart';
 import '../widgets/chat_composer.dart';
 import 'chat_policy.dart';
 import 'message_sticker_canvas.dart';
+import 'dm_say_hello.dart';
 
 /// Private conversation core for the pushed DM screen: the polling history, the send/upload pipeline
 /// (text, files, voice, Foxy stickers/GIFs via the composer) and
@@ -875,31 +876,17 @@ class _DmThreadState extends ConsumerState<DmThread> {
 
   Widget _empty(String name) {
     final peer = ref.watch(dmPeerProvider(widget.username)).valueOrNull;
-    return ListView(padding: const EdgeInsets.all(24), children: [
-      const SizedBox(height: 32),
-      Center(
-          child: PhlioAvatar(
-              profileId: widget.username,
-              name: name,
-              imageUrl: peer?['avatar_url'] as String?,
-              size: 112)),
-      const SizedBox(height: 18),
-      Text(name,
-          textAlign: TextAlign.center,
-          style: PhlioTypography.bodyStrong.copyWith(fontSize: 24)),
-      const SizedBox(height: 6),
-      Text(peer?['username'] as String? ?? widget.username,
-          textAlign: TextAlign.center, style: PhlioTypography.body),
-      const SizedBox(height: 14),
-      Center(
-          child: FilledButton.tonal(
-              onPressed: () => context
-                  .push('/creator/${Uri.encodeComponent(widget.username)}'),
-              child: const Text('View profile'))),
-      const SizedBox(height: 32),
-      const Text('Say hello with a message or sticker',
-          textAlign: TextAlign.center),
-    ]);
+    // Foxy says hi, with stickers to start the chat in one tap.
+    return DmSayHello(
+      username: widget.username,
+      name: name,
+      handle: peer?['username'] as String?,
+      avatarUrl: peer?['avatar_url'] as String?,
+      compact: widget.compact,
+      onSticker: (id, label) => _send('', attachments: [
+        {'kind': 'sticker', 'name': label, 'value': id},
+      ]),
+    );
   }
 }
 

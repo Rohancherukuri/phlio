@@ -29,6 +29,7 @@ import '../../features/authentication/presentation/controllers/auth_controller.d
 import '../config/app_config.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
+import 'dashboard/phlio_dashboard.dart';
 
 // -- Data ---------------------------------------------------------------------------------
 
@@ -127,6 +128,65 @@ class _ProfileDashboardScreenState
   _Metric? _open;
   _Prefs? _prefs;
 
+  /// All of Phlio, or one platform ('social' is the original insights).
+  String _tab = 'all';
+  final _scroll = ScrollController();
+
+  void _openTab(String tab) {
+    setState(() => _tab = tab);
+    if (_scroll.hasClients && _scroll.offset > 200) {
+      _scroll.animateTo(120, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Every platform other than Social, from GET /profile/dashboard.
+  Widget _phlio() {
+    final async = ref.watch(phlioDashboardProvider(_days));
+    final data = async.valueOrNull;
+    Widget child;
+    if (data == null) {
+      child = async.hasError
+          ? Center(
+              child: TextButton(
+                onPressed: () => ref.invalidate(phlioDashboardProvider(_days)),
+                child: const Text('Could not load your dashboard. Retry'),
+              ),
+            )
+          : const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()));
+    } else if (_tab == 'all') {
+      child = DashboardOverview(data: data, onOpen: _openTab);
+    } else {
+      final section = (data['sections'] as List).cast<Map>().firstWhere((s) => s['id'] == _tab);
+      child = DashboardSection(section: section.cast<String, dynamic>(), days: _days);
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 380),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, .04), end: Offset.zero).animate(animation),
+            child: child,
+          ),
+        ),
+        layoutBuilder: (current, previous) => Stack(
+          alignment: Alignment.topCenter,
+          children: [...previous, if (current != null) current],
+        ),
+        child: KeyedSubtree(key: ValueKey('$_tab-$_days-${data != null}'), child: child),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -217,8 +277,12 @@ class _ProfileDashboardScreenState
     final data = async.valueOrNull;
     return RefreshIndicator(
       key: const ValueKey('on'),
-      onRefresh: () => ref.refresh(_insightsProvider(_days).future),
+      onRefresh: () async {
+        ref.invalidate(phlioDashboardProvider(_days));
+        await ref.refresh(_insightsProvider(_days).future);
+      },
       child: ListView(
+        controller: _scroll,
         padding: const EdgeInsets.only(bottom: 40),
         children: [
           Padding(
@@ -251,7 +315,11 @@ class _ProfileDashboardScreenState
                     onTurnOff: () => _setOff(true),
                   ),
           ),
-          if (async.hasError && data == null)
+          const SizedBox(height: 6),
+          DashboardTabs(selected: _tab, onChanged: _openTab),
+          if (_tab != 'social')
+            _phlio()
+          else if (async.hasError && data == null)
             Padding(
               padding: const EdgeInsets.all(24),
               child: Center(
@@ -287,6 +355,7 @@ class _ProfileDashboardScreenState
               _TopContent(items: (data['top_content'] as List).cast()),
             ],
           ],
+          if (_tab == 'all' || _tab == 'social') ...[
           const _Divider(),
           _section('Your tools'),
           _ToolRow(
@@ -324,6 +393,7 @@ class _ProfileDashboardScreenState
             title: 'Monetization',
             onTap: () => _showMonetization(context),
           ),
+          ],
         ],
       ),
     );

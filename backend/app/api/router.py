@@ -89,6 +89,8 @@ api_router.include_router(pay_gateway.router)
 
 from app.api.v1 import appearance
 api_router.include_router(appearance.router)
+from app.api.v1 import dashboard
+api_router.include_router(dashboard.router)
 # Seasonal festival / event banners (public).
 from app.api.v1 import events
 api_router.include_router(events.router)

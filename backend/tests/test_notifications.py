@@ -124,3 +124,46 @@ async def test_preview_creates_one_of_each(client: AsyncClient, auth_headers: di
     items = (await feed(client, auth_headers))["items"]
     dm = next(n for n in items if n["platform"] == "dm")
     assert dm["data"]["preview"] is True and dm["actor"]["username"] != "arjun"
+
+
+async def test_push_payload_and_test_endpoint(client: AsyncClient, auth_headers: dict, settings, monkeypatch) -> None:
+    from app.infrastructure import onesignal
+
+    r = await client.get("/api/v1/notifications/push/status")
+    assert r.json() == {"enabled": False, "app_id": None}
+    assert (await client.post("/api/v1/notifications/push/test", headers=auth_headers, json={})).status_code == 503
+
+    settings.onesignal_app_id = "app-123"
+    settings.onesignal_rest_api_key = "secret"
+    settings.public_base_url = "https://phlio.example"
+    sent: list[dict] = []
+
+    async def fake_send(s, row, actor=None):
+        sent.append(onesignal.payload(s, row, actor))
+        return True
+
+    monkeypatch.setattr(onesignal, "send", fake_send)
+    r = await client.post("/api/v1/notifications/push/test", headers=auth_headers, json={"delay_seconds": 0})
+    assert r.status_code == 200, r.text
+    for _ in range(40):
+        await asyncio.sleep(0.05)
+        if len(sent) >= 3:
+            break
+    platforms = {p["data"]["platform"] for p in sent}
+    assert {"dm", "shop"} <= platforms
+    dm = next(p for p in sent if p["data"]["platform"] == "dm")
+    assert dm["include_aliases"]["external_id"] and dm["small_icon"] == "ic_stat_dm"
+    assert dm["android_accent_color"] == "FFFF5FA2" and dm["data"]["route"].startswith("/dm/")
+    assert [b["id"] for b in dm["buttons"]] == ["reply", "react"]
+    shop = next(p for p in sent if p["data"]["platform"] == "shop")
+    assert shop["buttons"][0]["id"] == "bag" and shop["data"]["product_id"]
+    # Relative media becomes an absolute https URL; plain http is dropped.
+    assert onesignal.absolute(settings, "/media/x.jpg") == "https://phlio.example/media/x.jpg"
+    assert onesignal.absolute(settings, "http://insecure/x.jpg") is None
+    # A real DM pushes too; suggestions made while polling don't.
+    before = len(sent)
+    neha = await login(client, "neha")
+    await client.post("/api/v1/messaging/peers/neha/messages", headers=auth_headers, json={"text": "yo"})
+    await asyncio.sleep(0.2)
+    assert any(p["data"]["platform"] == "dm" and p["contents"]["en"].startswith("yo") for p in sent[before:])
+    assert neha

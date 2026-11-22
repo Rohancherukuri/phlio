@@ -19,6 +19,7 @@ import '../../app/router/app_router.dart' show routerProvider;
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
+import 'push.dart';
 
 /// How each platform looks in a notification.
 class NotifPlatform {
@@ -92,7 +93,14 @@ class NotificationCenter extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _auth = ref.listen(authControllerProvider.select((v) => v.valueOrNull?.id), (_, id) {
       _reset();
-      if (id != null) _start();
+      if (id != null) {
+        _start();
+        // Pushes for when the app is closed; while it's open the island
+        // shows them, so a push that arrives now just triggers a poll.
+        PhlioPush.instance.signIn(ref, id, onForeground: () => _poll());
+      } else {
+        PhlioPush.instance.signOut();
+      }
     }, fireImmediately: true);
   }
 
@@ -184,8 +192,10 @@ class NotificationCenter extends ChangeNotifier with WidgetsBindingObserver {
         // Grouped chats update in place: drop the older copy.
         final ids = {for (final n in fresh) n.id};
         items = [...fresh, ...items.where((n) => !ids.contains(n.id))];
+        final stale = DateTime.now().subtract(const Duration(seconds: 45));
         for (final n in fresh.reversed) {
-          if (n.read || _isOpen(n)) continue;
+          // Old news by now (it came as a push while you were away).
+          if (n.read || _isOpen(n) || n.at.isBefore(stale)) continue;
           queue.removeWhere((q) => q.id == n.id);
           queue.add(n);
         }

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../design_system/widgets/phlio_card.dart';
 import 'notification_center.dart';
+import 'push.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -52,6 +53,20 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             },
             icon: const Icon(Icons.play_circle_outline_rounded),
           ),
+          if (PhlioPush.supported)
+            IconButton(
+              tooltip: 'Test push notifications',
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final text = await PhlioPush.instance.test();
+                  messenger.showSnackBar(SnackBar(content: Text(text)));
+                } catch (_) {
+                  messenger.showSnackBar(const SnackBar(content: Text('Could not send test pushes')));
+                }
+              },
+              icon: const Icon(Icons.notifications_active_outlined),
+            ),
           if (center.unread > 0)
             TextButton(onPressed: center.markAllRead, child: const Text('Mark all read')),
           IconButton(

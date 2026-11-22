@@ -118,6 +118,13 @@ class Settings(BaseSettings):
     # so state must not live there. Same endpoint and keys as the media bucket.
     object_store_state_bucket: str = ""
     media_public_url: str = ""
+    # Push notifications through OneSignal (app/infrastructure/onesignal.py).
+    # Both empty = push off; in-app notifications still work.
+    onesignal_app_id: str = ""
+    onesignal_rest_api_key: str = Field(default="", repr=False)
+    # Public base URL for absolute image links in pushes (default:
+    # RENDER_EXTERNAL_URL, then the request's own host is not known here).
+    public_base_url: str = ""
     state_sync_interval: float = 60  # seconds between backups to the bucket
     # Free hosting sleeps after 15 idle minutes; see app/infrastructure/keep_awake.py.
     keep_awake: bool = False

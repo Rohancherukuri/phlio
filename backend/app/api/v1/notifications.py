@@ -48,6 +48,7 @@ from pydantic import BaseModel, Field
 from app.api.deps import get_container, get_current_user
 from app.domains.graph.service import key
 from app.domains.graph.store import now
+from app.infrastructure import onesignal
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 logger = logging.getLogger("phlio.notifications")
@@ -64,8 +65,10 @@ def _time(value) -> dt.datetime:
 
 
 async def notify(c, user_id: str, platform: str, kind: str, title: str, body: str, *,
-                 actor: str | None = None, data: dict | None = None, group: str | None = None) -> dict | None:
-    """Adds (or, with ``group``, updates the unread) notification for ``user_id``."""
+                 actor: str | None = None, data: dict | None = None, group: str | None = None,
+                 push: bool = True) -> dict | None:
+    """Adds (or, with ``group``, updates the unread) notification for
+    ``user_id``, and sends it as a push when OneSignal is set up."""
     if platform not in PLATFORMS or not user_id or user_id == actor:
         return None
     if actor and await c.graph.blocked(user_id, actor):
@@ -78,16 +81,31 @@ async def notify(c, user_id: str, platform: str, kind: str, title: str, body: st
         rid = key("phlio_notification", user_id, group)
         existing = await c.graph.store.get(rid)
         if existing and not existing.get("read"):
-            return await c.graph.store.put(rid, dict(
+            saved = await c.graph.store.put(rid, dict(
                 existing, title=title, body=body, actor=actor, data=data or {}, kind=kind,
                 count=int(existing.get("count") or 1) + 1, at=stamp))
+            if push:
+                _spawn(_push(c, saved))
+            return saved
     else:
         rid = "phlio_notification:" + uuid.uuid4().hex
     saved = await c.graph.store.put(rid, dict(
         user_id=user_id, platform=platform, kind=kind, title=title, body=body, actor=actor,
         data=data or {}, group=group, count=1, read=False, created_at=stamp, at=stamp))
     await _trim(c, user_id)
+    if push:
+        _spawn(_push(c, saved))
     return saved
+
+
+async def _push(c, row: dict) -> None:
+    if not onesignal.enabled(c.settings):
+        return
+    actor = None
+    if row.get("actor"):
+        person = await c.identity_repository.get_by_id(row["actor"])
+        actor = c.graph.profile(person) if person else None
+    await onesignal.send(c.settings, row, actor)
 
 
 async def _trim(c, user_id):
@@ -235,7 +253,7 @@ async def _pulse_news(c, user, seen: set) -> dict | None:
         seen.add(oid)
         return await notify(c, user.id, "news", "story", row.get("publisher") or "Phlio News", obj["title"],
                             data=dict(path=f"news/{row['domain_ref']}", ref=row["domain_ref"],
-                                      image_url=row.get("image_url"), publisher=row.get("publisher")))
+                                      image_url=row.get("image_url"), publisher=row.get("publisher")), push=False)
     return None
 
 
@@ -257,11 +275,11 @@ async def _pulse_stream(c, user, seen: set) -> dict | None:
                 return await notify(c, user.id, "stream", "song", "Song for you", f"{obj['title']} · {row.get('publisher') or ''}",
                                     data=dict(path=path, ref=row["domain_ref"], title=obj["title"],
                                               artist=row.get("publisher") or "", image_url=row.get("image_url"),
-                                              media_url=row.get("media_url")))
+                                              media_url=row.get("media_url")), push=False)
             label = "New series to watch" if row.get("kind") == "series" else "Movie night"
             return await notify(c, user.id, "stream", "title", label, obj["title"],
                                 data=dict(path=path, ref=row["domain_ref"], image_url=row.get("image_url"),
-                                          kind=row.get("kind"), category=row.get("category")))
+                                          kind=row.get("kind"), category=row.get("category")), push=False)
     return None
 
 
@@ -270,7 +288,7 @@ def _product(p) -> dict:
                 image_url=(p.image_urls or [None])[0], category=str(p.category))
 
 
-async def _pulse_shop(c, user, seen: set) -> dict | None:
+async def _pulse_shop(c, user, seen: set, push: bool = False) -> dict | None:
     cart = [r["product_id"] for r in await c.graph.store.rows("shop_cart", {"user_id": user.id})]
     anchor = None
     for pid in cart:
@@ -292,7 +310,7 @@ async def _pulse_shop(c, user, seen: set) -> dict | None:
     return await notify(c, user.id, "shop", "similar_items",
                         "Similar to your bag" if anchor else "Picked for you",
                         f"Like “{because}”" if because else "New finds on Phlio Shop",
-                        data=dict(because=because, products=[_product(p) for p in picks]))
+                        data=dict(because=because, products=[_product(p) for p in picks]), push=push)
 
 
 async def _pulse(c, user) -> None:
@@ -403,14 +421,8 @@ async def remove(notification_id: str, user=Depends(get_current_user), c=Depends
 _PREVIEW_PEOPLE = ("artbykiara", "neha", "arjun", "meera", "kabir", "zara")
 
 
-@router.post("/preview")
-async def preview(user=Depends(get_current_user), c=Depends(get_container)):
-    """A sample of every kind of banner, for trying the island out.
+async def _make_preview(c, user, *, push: bool) -> list[str]:
 
-    Only notification rows are created for *you* — nobody else is messaged.
-    Replies you send from them are real (to that person / your room); the
-    News, Stream and Shop ones use real catalogue items.
-    """
     made: list[str] = []
     friend = None
     for name in _PREVIEW_PEOPLE:
@@ -423,7 +435,7 @@ async def preview(user=Depends(get_current_user), c=Depends(get_container)):
     if friend:
         await notify(c, user.id, "dm", "message", friend.full_name or friend.username,
                      "Are we still on for tonight? 🍿", actor=friend.id, group=f"preview:dm:{uuid.uuid4().hex[:6]}",
-                     data=dict(peer=friend.username, message_id=None, attachment=None, preview=True))
+                     data=dict(peer=friend.username, message_id=None, attachment=None, preview=True), push=push)
         made.append("dm")
     try:
         rooms = await c.rooms_service.my_rooms(user.id)
@@ -438,11 +450,11 @@ async def preview(user=Depends(get_current_user), c=Depends(get_container)):
                          f"{author.full_name or author.username}: who's joining the call later?",
                          actor=author.id, group=f"preview:room:{uuid.uuid4().hex[:6]}",
                          data=dict(room_id=room.id, room_name=room.name, message_id=None, attachment=None,
-                                   preview=True))
+                                   preview=True), push=push)
             made.append("rooms")
     seen: set = set()
     try:
-        if await _pulse_shop(c, user, seen):
+        if await _pulse_shop(c, user, seen, push=push):
             made.append("shop")
     except Exception:
         logger.exception("notifications.preview_failed platform=shop")
@@ -453,7 +465,7 @@ async def preview(user=Depends(get_current_user), c=Depends(get_container)):
         if obj:
             await notify(c, user.id, "news", "story", row.get("publisher") or "Phlio News", obj["title"],
                          data=dict(path=f"news/{row['domain_ref']}", ref=row["domain_ref"],
-                                   image_url=row.get("image_url"), publisher=row.get("publisher")))
+                                   image_url=row.get("image_url"), publisher=row.get("publisher")), push=push)
             made.append("news")
             break
     # One song and one movie / show.
@@ -474,12 +486,49 @@ async def preview(user=Depends(get_current_user), c=Depends(get_container)):
                 await notify(c, user.id, "stream", "song", "Song for you", f"{obj['title']} · {row.get('publisher') or ''}",
                              data=dict(path=path, ref=row["domain_ref"], title=obj["title"],
                                        artist=row.get("publisher") or "", image_url=row.get("image_url"),
-                                       media_url=row.get("media_url")))
+                                       media_url=row.get("media_url")), push=push)
             else:
                 await notify(c, user.id, "stream", "title",
                              "New series to watch" if row.get("kind") == "series" else "Movie night", obj["title"],
                              data=dict(path=path, ref=row["domain_ref"], image_url=row.get("image_url"),
-                                       kind=row.get("kind"), category=row.get("category")))
+                                       kind=row.get("kind"), category=row.get("category")), push=push)
             made.append(f"stream:{want}")
             break
-    return {"created": made}
+    return made
+
+
+@router.post("/preview")
+async def preview(user=Depends(get_current_user), c=Depends(get_container)):
+    """A sample of every kind of banner, for trying the island out.
+
+    Only notification rows are created for *you* — nobody else is messaged.
+    Replies you send from them are real (to that person / your room); the
+    News, Stream and Shop ones use real catalogue items.
+    """
+    return {"created": await _make_preview(c, user, push=False)}
+
+
+class PushTestIn(BaseModel):
+    delay_seconds: int = Field(default=10, ge=0, le=120)
+
+
+@router.get("/push/status")
+async def push_status(c=Depends(get_container)):
+    """Whether the server can send pushes, and the OneSignal app id the app
+    should use (public; the REST key never leaves the server)."""
+    return {"enabled": onesignal.enabled(c.settings), "app_id": c.settings.onesignal_app_id or None}
+
+
+@router.post("/push/test")
+async def push_test(body: PushTestIn, user=Depends(get_current_user), c=Depends(get_container)):
+    """The same samples as /preview, sent as real pushes after
+    ``delay_seconds`` — time to lock the phone or leave the app."""
+    if not onesignal.enabled(c.settings):
+        raise HTTPException(503, "Push isn't set up on the server: add ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY.")
+
+    async def later():
+        await asyncio.sleep(body.delay_seconds)
+        await _make_preview(c, user, push=True)
+
+    _spawn(later())
+    return {"scheduled": True, "delay_seconds": body.delay_seconds}

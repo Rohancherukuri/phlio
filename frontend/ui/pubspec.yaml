@@ -85,6 +85,8 @@ dependencies:
   # Foxy's state-machine animation (assets/rive/foxy.riv when present).
   rive: ^0.13.20
   razorpay_flutter: 1.4.7
+  # Push notifications (shared/notifications/push.dart).
+  onesignal_flutter: ^5.6.4
   # Sign in with Google / Apple (ID tokens verified by the backend).
   google_sign_in: ^6.2.2
   sign_in_with_apple: ^6.1.4
