@@ -1668,3 +1668,80 @@ class _TopList extends StatelessWidget {
         ),
       );
 }
+
+/// Social tab, under the original insights: your Phlio Social messages (DMs)
+/// — sent, received, people, media, a day-by-day line and your top chats.
+class SocialMessagesBlock extends StatelessWidget {
+  const SocialMessagesBlock({required this.section, super.key});
+  final Map<String, dynamic> section;
+
+  static const _ids = {'messages_sent', 'messages_received', 'chats', 'media'};
+
+  @override
+  Widget build(BuildContext context) {
+    final s = dashStyle('dm');
+    final currency = currencyByCode('INR');
+    final kpis = [for (final k in (section['kpis'] as List).cast<Map>()) if (_ids.contains(k['id'])) k];
+    final series = section['series'] as Map?;
+    final tops = [for (final t in (section['tops'] as List? ?? const [])) t as Map];
+    final hasLine = series != null && (series['keys'] as List).any((k) => (k as Map)['id'] == 'messages');
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Reveal(
+        index: 0,
+        child: Row(children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(gradient: s.gradient, borderRadius: BorderRadius.circular(11)),
+            child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Text('Your messages', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      LayoutBuilder(builder: (context, box) {
+        final w = (box.maxWidth - 10) / 2;
+        return Wrap(spacing: 10, runSpacing: 10, children: [
+          for (final (n, k) in kpis.indexed)
+            SizedBox(width: w, child: _KpiTile(kpi: k.cast<String, dynamic>(), currency: currency, color: s.color, index: n + 1)),
+        ]);
+      }),
+      if (hasLine) ...[
+        const SizedBox(height: 14),
+        Reveal(
+          index: 5,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: _card(),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const _Title('Messages over time', trailing: Text('drag to explore', style: TextStyle(color: Colors.white38, fontSize: 12))),
+              LineChart(
+                keys: const [(id: 'messages', label: 'Messages')],
+                days: (series['days'] as List).cast<Map>(),
+                colors: [s.color],
+                format: 'count',
+                currency: currency,
+              ),
+            ]),
+          ),
+        ),
+      ],
+      for (final t in tops)
+        if ((t['items'] as List).isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Reveal(
+            index: 6,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: _card(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _Title('${t['title']}'),
+                _TopList(items: (t['items'] as List).cast<Map>(), color: s.color, currency: currency),
+              ]),
+            ),
+          ),
+        ],
+    ]);
+  }
+}

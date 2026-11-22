@@ -355,6 +355,17 @@ class _ProfileDashboardScreenState
               _TopContent(items: (data['top_content'] as List).cast()),
             ],
           ],
+          // Social also covers your DMs (from the all-in-one dashboard).
+          if (_tab == 'social')
+            Builder(builder: (context) {
+              final all = ref.watch(phlioDashboardProvider(_days)).valueOrNull;
+              final social = (all?['sections'] as List?)?.cast<Map>().where((s) => s['id'] == 'social').firstOrNull;
+              if (social == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                child: SocialMessagesBlock(section: social.cast<String, dynamic>()),
+              );
+            }),
           if (_tab == 'all' || _tab == 'social') ...[
           const _Divider(),
           _section('Your tools'),
