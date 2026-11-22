@@ -198,8 +198,16 @@ class TTask {
 String _err(Object e) {
   if (e is DioException) {
     final d = e.response?.data;
+    final code = e.response?.statusCode;
+    // FastAPI's own 404 ("Not Found") means the server doesn't have the
+    // /timeline routes yet — it's running code from before this feature.
+    if (code == 404 && (d is! Map || d['detail'] == 'Not Found')) {
+      return 'Foxy Timeline needs the latest backend — restart the server, then reopen the timeline.';
+    }
     if (d is Map && d['detail'] is String) return d['detail'] as String;
-    if (e.response?.statusCode == 404) return 'Timeline isn’t available yet — restart the backend.';
+    if (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout) {
+      return 'Can’t reach Phlio right now. Check your connection.';
+    }
   }
   return 'Something went wrong. Try again.';
 }
@@ -497,7 +505,7 @@ class _Header extends StatelessWidget {
                 Flexible(
                   child: Text.rich(
                     TextSpan(children: [
-                      TextSpan(text: '${_months[date.month - 1]} ${date.day}, ', style: PhlioTypography.headline),
+                      TextSpan(text: '${_months[date.month - 1].substring(0, 3)} ${date.day}, ', style: PhlioTypography.headline),
                       WidgetSpan(
                         alignment: PlaceholderAlignment.baseline,
                         baseline: TextBaseline.alphabetic,

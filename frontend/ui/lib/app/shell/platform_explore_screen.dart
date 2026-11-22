@@ -15,6 +15,7 @@ import 'package:phlio/shared/content/content_surface.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../design_system/colors.dart';
 import '../../design_system/radii.dart';
@@ -462,7 +463,11 @@ class _AgentExplore extends StatelessWidget {
           const SizedBox(height: PhlioSpacing.lg),
           PhlioPrimaryButton(
             label: 'Chat with Foxy',
-            onPressed: () => switchPlatform(context, PhlioPlatform.agent),
+            onPressed: () {
+              // Back to Foxy's home (the Agent chat), not just the platform.
+              switchPlatform(context, PhlioPlatform.agent);
+              context.go('/home');
+            },
           ),
           const SizedBox(height: PhlioSpacing.xxl),
         ],
@@ -485,7 +490,7 @@ class _FoxyTimelineCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
-          onTap: () => Navigator.of(context).push(
+          onTap: () => Navigator.of(context, rootNavigator: true).push(
             MaterialPageRoute<void>(builder: (_) => const FoxyTimelineScreen()),
           ),
           child: Ink(
