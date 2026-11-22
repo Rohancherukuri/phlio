@@ -1,6 +1,7 @@
 // Design-system widget tests for the Foxy mascot widgets.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phlio/design_system/widgets/foxy_puppet.dart';
 import 'package:phlio/design_system/widgets/phlio_fox.dart';
 
 void main() {
@@ -10,9 +11,15 @@ void main() {
     expect(PhlioFoxPose.journey.assetPath, 'assets/images/foxy/foxy_journey.png');
   });
 
-  test('PhlioFoxLoop assets point at looping GIF paths', () {
-    expect(PhlioFoxLoop.wave.assetPath, 'assets/animations/foxy_wave.gif');
-    expect(PhlioFoxLoop.moods.assetPath, 'assets/animations/foxy_moods.gif');
+  // Loops are no longer GIFs: they play live on the rigged Foxy puppet,
+  // so each loop maps to a puppet act.
+  test('PhlioFoxLoop loops play on the rigged puppet', () {
+    expect(PhlioFoxLoop.wave.act, FoxyAct.wave);
+    expect(PhlioFoxLoop.think.act, FoxyAct.think);
+    expect(PhlioFoxLoop.sleep.act, FoxyAct.sleep);
+    expect(PhlioFoxLoop.celebrate.act, FoxyAct.cheer);
+    expect(PhlioFoxLoop.explore.act, FoxyAct.ready);
+    expect(PhlioFoxLoop.moods.act, FoxyAct.love);
   });
 
   test('sticker catalog is non-empty with unique ids', () {
