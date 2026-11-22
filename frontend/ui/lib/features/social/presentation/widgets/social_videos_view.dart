@@ -13,6 +13,7 @@ import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../controllers/video_library.dart';
 import '../controllers/video_playback_controller.dart';
+import 'moments_pull_gate.dart';
 
 /// Database-backed video feed with persistent creator subscriptions.
 /// The plain State owns no WidgetRef, preserving hot-reload compatibility.
@@ -95,6 +96,7 @@ class _SocialVideosViewState extends State<SocialVideosView> {
     // Following / Recommended / Your uploads live on Explore → Videos.
     final entries = <Object>[...fromFollows, ...recommended];
     return RefreshIndicator(
+      notificationPredicate: socialRefreshPredicate,
       onRefresh: () => ref.refresh(socialVideoCatalogProvider.future),
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),

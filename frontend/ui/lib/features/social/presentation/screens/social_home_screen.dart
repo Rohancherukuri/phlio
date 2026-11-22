@@ -10,6 +10,7 @@ import '../widgets/social_clips_view.dart';
 import '../widgets/social_feed_view.dart';
 import '../widgets/social_videos_view.dart';
 import '../widgets/memberships.dart';
+import '../widgets/moments_pull_gate.dart';
 
 /// Scroll-linked avatar geometry, matching the continuous collapse in the reference.
 class SocialHomeScreen extends ConsumerStatefulWidget {
@@ -44,7 +45,13 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
     // Opening a locked members-only video shows the Join sheet.
     membershipGate.addListener(_membershipGate);
     _tabs.addListener(_tabChanged);
+    socialMomentsGateUsers++;
+    socialMomentsOpen.value = !_collapsed;
   }
+
+  // First pull shows moments; only a pull that starts with moments already
+  // open refreshes (see moments_pull_gate.dart).
+  void _syncOpen() => socialMomentsOpen.value = !_collapsed;
 
   @override
   void didChangeDependencies() {
@@ -62,6 +69,7 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
   void _settle(double target) {
     _foldTargets[_selected] = target;
     _collapsed = target >= .5;
+    _syncOpen();
     if (_reduceMotion) {
       _fold.value = _collapsed ? 1 : 0;
     } else {
@@ -96,6 +104,7 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
       _fold.stop();
       _foldTargets[tab] = target;
       _collapsed = target >= .5;
+      _syncOpen();
       _fold.value = _reduceMotion ? (_collapsed ? 1 : 0) : target;
     } else if (event is ScrollEndNotification) {
       _settle(_foldTargets[tab] >= .5 ? 1 : 0);
@@ -113,6 +122,7 @@ class _SocialHomeScreenState extends ConsumerState<SocialHomeScreen>
   @override
   void dispose() {
     membershipGate.removeListener(_membershipGate);
+    socialMomentsGateUsers--;
     _tabsInst?.removeListener(_tabChanged);
     _tabsInst?.dispose();
     _foldInst?.dispose();

@@ -19,6 +19,7 @@ import '../../../../shared/widgets/error_view.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../controllers/feed_controller.dart';
 import '../widgets/post_card.dart';
+import 'moments_pull_gate.dart';
 
 /// Opens the "New post" composer sheet and submits the result to the feed.
 /// Public so the Social home header's + button can open it too.
@@ -72,6 +73,7 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
         onRetry: () => ref.read(feedControllerProvider.notifier).refresh(),
       ),
       data: (state) => RefreshIndicator(
+        notificationPredicate: socialRefreshPredicate,
         onRefresh: () => ref.read(feedControllerProvider.notifier).refresh(),
         child: ListView(
           controller: _scrollController,
