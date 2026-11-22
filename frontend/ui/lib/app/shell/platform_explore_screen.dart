@@ -33,6 +33,7 @@ import '../../features/shop/domain/entities/product_entity.dart';
 import '../../features/shop/presentation/controllers/shop_controller.dart';
 import '../../features/shop/presentation/widgets/product_card.dart';
 import '../../features/book/presentation/screens/book_discovery_screen.dart';
+import '../../features/phlio_agent/presentation/screens/foxy_timeline_screen.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
 
@@ -435,6 +436,7 @@ class _AgentExplore extends StatelessWidget {
               child: PhlioFoxAnimation(
                   size: 140, animation: PhlioFoxLoop.explore)),
           const SizedBox(height: PhlioSpacing.lg),
+          const _FoxyTimelineCard(),
           const _CapabilityTile(
             icon: Icons.event_note_rounded,
             title: 'Plans with friends',
@@ -464,6 +466,82 @@ class _AgentExplore extends StatelessWidget {
           ),
           const SizedBox(height: PhlioSpacing.xxl),
         ],
+      ),
+    );
+  }
+}
+
+/// Featured card: opens the Foxy Timeline (day planner + calendar).
+class _FoxyTimelineCard extends StatelessWidget {
+  const _FoxyTimelineCard();
+
+  @override
+  Widget build(BuildContext context) {
+    const dots = [Color(0xFFF6B93B), Color(0xFF7BD88F), Color(0xFF8D78FF), Color(0xFFE795D7)];
+    const icons = [Icons.wb_sunny_rounded, Icons.fitness_center_rounded, Icons.menu_book_rounded, Icons.restaurant_rounded];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const FoxyTimelineScreen()),
+          ),
+          child: Ink(
+            padding: const EdgeInsets.all(PhlioSpacing.lg),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  PhlioColors.brandViolet.withValues(alpha: 0.28),
+                  PhlioColors.brandOrange.withValues(alpha: 0.18),
+                ],
+              ),
+              border: Border.all(color: PhlioColors.brandOrange.withValues(alpha: 0.4)),
+            ),
+            child: Row(children: [
+              Column(children: [
+                for (var i = 0; i < 4; i++) ...[
+                  Container(
+                    width: 30,
+                    height: i == 1 ? 44 : 30,
+                    decoration: BoxDecoration(color: dots[i], borderRadius: BorderRadius.circular(15)),
+                    child: Icon(icons[i], size: 16, color: const Color(0xFF14101E)),
+                  ),
+                  if (i < 3)
+                    Container(width: 2, height: 6, color: dots[i].withValues(alpha: 0.6)),
+                ],
+              ]),
+              const SizedBox(width: PhlioSpacing.lg),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(child: Text('Foxy Timeline', style: PhlioTypography.title)),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(gradient: PhlioColors.sunsetGradient, borderRadius: BorderRadius.circular(10)),
+                      child: Text('NEW', style: PhlioTypography.caption.copyWith(color: PhlioColors.textOnBrand, fontWeight: FontWeight.w800)),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(
+                    'A visual timeline and calendar of your day. Foxy builds it from your bookings, Spaces and a quick note — then make it yours.',
+                    style: PhlioTypography.caption,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Text('Open timeline', style: PhlioTypography.label.copyWith(color: PhlioColors.brandOrange)),
+                    const Icon(Icons.arrow_forward_rounded, size: 16, color: PhlioColors.brandOrange),
+                  ]),
+                ]),
+              ),
+            ]),
+          ),
+        ),
       ),
     );
   }

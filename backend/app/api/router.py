@@ -111,3 +111,5 @@ api_router.include_router(fact_checks.router)
 # Creator memberships (members-only videos, Razorpay test checkout).
 from app.api.v1 import memberships
 api_router.include_router(memberships.router)
+from app.api.v1 import timeline
+api_router.include_router(timeline.router)

@@ -56,6 +56,7 @@ TABLES = {
     "room_pin",
     "social_blend",
     "watch_party",
+    "timeline_task",
     "live_location",
     "profile_style",
     "chat_theme",
