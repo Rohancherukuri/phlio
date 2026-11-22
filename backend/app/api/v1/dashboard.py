@@ -11,12 +11,15 @@ period before it (for the trend arrows):
              series, average and biggest payment, spending by category
              (from notes), by weekday and hour, who you pay and who pays you
              most, open bill splits
-  messages   DMs sent / received, chats, media shared, busiest chats
-  rooms      rooms you're in, messages you sent, most active rooms
+             — and your Phlio Social messages (DMs): sent / received, people,
+             media shared, top chats
+  rooms      rooms you're in, room messages (yours and everyone's), most active rooms
   stream     watched / listened, likes, saves, playlists, what kinds
   news       stories read, bookmarks, shares, top publishers
   shop       products viewed, saved, bag value, parcels tracked, categories
   book       bookings, upcoming, estimated spend, categories
+  agent      Foxy: questions asked, conversations, plans and suggestions made,
+             files shared, average reply time, topics, recent conversations
 
 Every section has the same shape so the app can draw any of them:
 
@@ -25,6 +28,7 @@ Every section has the same shape so the app can draw any of them:
      series: {keys: [{id, label}], days: [{day, <key>: n}]},
      breakdown: {title, format, items: [{label, value}]},
      top: {title, items: [{title, subtitle, value, format, image_url}]},
+     tops: [more lists like top],
      insights: ["plain-language takeaways"], extra: {...}}
 
 ``format`` is "count", "money" (minor units, in ``currency``) or "percent".
@@ -116,9 +120,10 @@ def _kpi(id_, label, value, fmt="count", change=None, hint=None) -> dict:
 
 
 def _section(id_, label, *, headline, kpis, series=None, breakdown=None, top=None, insights=None,
-             has_data=True, currency=None, extra=None) -> dict:
+             has_data=True, currency=None, extra=None, tops=None) -> dict:
     return dict(id=id_, label=label, has_data=has_data, currency=currency, headline=headline, kpis=kpis,
-                series=series, breakdown=breakdown, top=top, insights=insights or [], extra=extra or {})
+                series=series, breakdown=breakdown, top=top, tops=tops or [], insights=insights or [],
+                extra=extra or {})
 
 
 def _empty(id_, label) -> dict:
@@ -592,17 +597,25 @@ async def _social(c, user, p: Period) -> dict:
         moments_before += period == "before"
     viewers = {v["user_id"] for v in await c.graph.store.rows("moment_view", {"author": user.id})
                if p.which(_when(v.get("seen_at"))) == "now" and v.get("user_id") != user.id}
-    series = dict(keys=[dict(id="views", label="Views"), dict(id="interactions", label="Interactions")],
-                  days=[dict(day=d["day"], views=d["views"], interactions=d["interactions"]) for d in data["series"]][-p.days:])
+    # Your Phlio Social messages (DMs) live here too.
+    dms = await _messages(c, user, p)
+    dm_days = {d["day"]: d["sent"] + d["received"] for d in dms["series"]["days"]}
+    dm = {k["id"]: k for k in dms["kpis"]}
+    series = dict(keys=[dict(id="views", label="Views"), dict(id="interactions", label="Interactions"),
+                        dict(id="messages", label="Messages")],
+                  days=[dict(day=d["day"], views=d["views"], interactions=d["interactions"],
+                             messages=dm_days.get(d["day"], 0)) for d in data["series"]][-p.days:])
     inter = data["interactions"]
     insights = [line for line in (_trend_line("views", data["views"]["change"]),
                                   _trend_line("follower growth", data["followers"]["change"])) if line]
     if data.get("peak_hour") is not None:
         h = data["peak_hour"]
         insights.append(f"Your audience is most active around {h % 12 or 12} {'AM' if h < 12 else 'PM'}.")
+    insights += dms["insights"][:2]
     return _section(
         "social", "Social",
-        has_data=bool(data["views"]["value"] or data["content"]["value"] or moments_now or data["followers"]["value"]),
+        has_data=bool(data["views"]["value"] or data["content"]["value"] or moments_now or data["followers"]["value"]
+                      or dms["has_data"]),
         headline=dict(label="Views", value=data["views"]["value"], format="count", change=data["views"]["change"]),
         kpis=[
             _kpi("views", "Views", data["views"]["value"], change=data["views"]["change"]),
@@ -611,6 +624,10 @@ async def _social(c, user, p: Period) -> dict:
             _kpi("content", "Posts shared", data["content"]["value"], change=data["content"]["change"]),
             _kpi("moments", "Moments posted", moments_now, change=_pct(moments_now, moments_before)),
             _kpi("moment_viewers", "Moment viewers", len(viewers)),
+            _kpi("messages_sent", "Messages sent", dm["sent"]["value"], change=dm["sent"].get("change")),
+            _kpi("messages_received", "Messages received", dm["received"]["value"], change=dm["received"].get("change")),
+            _kpi("chats", "People you messaged", dm["chats"]["value"]),
+            _kpi("media", "Media & stickers sent", dm["media"]["value"]),
         ],
         series=series,
         breakdown=dict(title="How people interact", format="count", items=[
@@ -619,14 +636,120 @@ async def _social(c, user, p: Period) -> dict:
         top=dict(title="Top content", items=[
             dict(title=t["title"], subtitle=str(t.get("type") or "").title(), value=t["views"], format="count",
                  image_url=t.get("image_url")) for t in data["top_content"]]),
-        insights=insights, extra=dict(active_hours=data["active_hours"]),
+        tops=[dms["top"]] if dms["top"]["items"] else [],
+        insights=insights, extra=dict(active_hours=data["active_hours"], message_hours=dms["extra"]["hours"]),
+    )
+
+
+# -- Agent (Foxy) ------------------------------------------------------------------------------------
+
+KIND_LABELS = {"room": "Rooms", "product": "Products", "post": "Posts", "book": "Places & bookings"}
+TOPICS = [
+    ("Food & dining", r"food|eat|dinner|lunch|restaurant|cafe|recipe|cook|biryani|pizza"),
+    ("Travel & trips", r"trip|travel|flight|hotel|weekend|goa|vacation|visit|tour"),
+    ("Shopping", r"buy|shop|gift|price|deal|shoe|dress|phone|laptop"),
+    ("Movies & music", r"movie|film|song|music|watch|show|series|playlist"),
+    ("Plans & events", r"plan|party|event|birthday|meet|book|ticket|concert"),
+    ("Money", r"pay|split|bill|money|budget|spend"),
+    ("News & learning", r"news|learn|explain|what is|how to|why"),
+]
+
+
+async def _agent(c, user, p: Period) -> dict:
+    repo = c.agent_repository
+    if not hasattr(repo, "list_user_messages"):
+        return _empty("agent", "Foxy")
+    msgs = await repo.list_user_messages(user.id, p.before.isoformat()[:10])
+    series = p.series([("asked", "Questions"), ("plans", "Plans made")])
+    now, before = collections.Counter(), collections.Counter()
+    kinds, topics = collections.Counter(), collections.Counter()
+    hours = [0] * 24
+    convos: dict[str, dict] = {}
+    waits = []
+    value, currency = 0, None
+    last_user: dict[str, dt.datetime] = {}
+    for m in msgs:
+        moment = _when(m.created_at)
+        period = p.which(moment)
+        if period is None:
+            continue
+        role = str(m.role)
+        bucket = now if period == "now" else before
+        if role == "user":
+            bucket["asked"] += 1
+            last_user[m.conversation_id] = moment
+        else:
+            if m.plan is not None:
+                bucket["plans"] += 1
+        if period != "now":
+            continue
+        convo = convos.setdefault(m.conversation_id, dict(title=None, count=0, last=moment, plans=0))
+        convo["count"] += 1
+        convo["last"] = max(convo["last"], moment)
+        if role == "user":
+            p.add(series, moment, "asked")
+            hours[moment.hour] += 1
+            convo["title"] = convo["title"] or (m.text or "").strip()[:80] or "Attachment"
+            now["files"] += len(m.attachments or [])
+            low = (m.text or "").lower()
+            topic = next((name for name, pat in TOPICS if re.search(pat, low)), None)
+            topics[topic or "Everything else"] += 1
+        else:
+            asked = last_user.get(m.conversation_id)
+            if asked and moment >= asked:
+                waits.append((moment - asked).total_seconds())
+            if m.plan is not None:
+                p.add(series, moment, "plans")
+                convo["plans"] += 1
+                for item in m.plan.items:
+                    kinds[KIND_LABELS.get(str(item.kind), str(item.kind).title())] += 1
+                now["suggestions"] += len(m.plan.items)
+                value += (m.plan.estimated_total_min_minor_units + m.plan.estimated_total_max_minor_units) // 2
+                currency = currency or m.plan.currency
+    asked = now["asked"]
+    avg_wait = round(sum(waits) / len(waits), 1) if waits else None
+    insights = []
+    if topics:
+        top_topic, n = topics.most_common(1)[0]
+        if top_topic != "Everything else":
+            insights.append(f"You ask Foxy about {top_topic.lower()} the most ({n} question{'s' if n != 1 else ''}).")
+    if now["plans"]:
+        insights.append(f"Foxy made {now['plans']} plan{'s' if now['plans'] != 1 else ''} with {now['suggestions']} suggestions for you.")
+    if line := _trend_line("Foxy usage", _pct(asked, before["asked"])):
+        insights.append(line)
+    if avg_wait is not None:
+        insights.append(f"Foxy answered in {avg_wait:g} seconds on average.")
+    recent = sorted(convos.values(), key=lambda v: v["last"], reverse=True)[:6]
+    return _section(
+        "agent", "Foxy", currency=currency, has_data=asked > 0,
+        headline=dict(label="Questions asked", value=asked, format="count", change=_pct(asked, before["asked"])),
+        kpis=[
+            _kpi("asked", "Questions asked", asked, change=_pct(asked, before["asked"])),
+            _kpi("conversations", "Conversations", len(convos)),
+            _kpi("plans", "Plans made", now["plans"], change=_pct(now["plans"], before["plans"])),
+            _kpi("suggestions", "Suggestions", now["suggestions"], hint="Rooms, products, posts, places"),
+            _kpi("files", "Files shared", now["files"]),
+            _kpi("value", "Plans worth (est.)", value, "money"),
+        ],
+        series=series,
+        breakdown=dict(title="What you ask about", format="count",
+                       items=[dict(label=k, value=v) for k, v in topics.most_common()]),
+        top=dict(title="Recent conversations", items=[
+            dict(title=v["title"] or "Conversation",
+                 subtitle=f"{v['count']} messages · {v['last'].strftime('%d %b')}"
+                          + (f" · {v['plans']} plan{'s' if v['plans'] != 1 else ''}" if v["plans"] else ""),
+                 value=v["count"], format="count") for v in recent]),
+        tops=[dict(title="What Foxy found for you", items=[
+            dict(title=k, subtitle="from Foxy's plans", value=v, format="count") for k, v in kinds.most_common()])]
+        if kinds else [],
+        insights=insights, extra=dict(hours=hours, avg_reply_seconds=avg_wait),
     )
 
 
 # -- Endpoint --------------------------------------------------------------------------------------
 
-LABELS = {"social": "Social", "pay": "Pay", "messages": "Messages", "rooms": "Rooms", "stream": "Stream",
-          "news": "News", "shop": "Shop", "book": "Book"}
+LABELS = {"social": "Social", "pay": "Pay", "rooms": "Rooms", "stream": "Stream",
+          "news": "News", "shop": "Shop", "book": "Book", "agent": "Foxy"}
 
 
 @router.get("/profile/dashboard")
@@ -640,12 +763,12 @@ async def dashboard(days: int = Query(30, ge=7, le=90), user=Depends(get_current
     makers = {
         "social": lambda: _social(c, user, p),
         "pay": lambda: _pay(c, user, p),
-        "messages": lambda: _messages(c, user, p),
         "rooms": lambda: _rooms(c, user, p),
         "stream": lambda: _stream(c, user, p, acts),
         "news": lambda: _news(c, user, p, acts),
         "shop": lambda: _shop(c, user, p, acts),
         "book": lambda: _book(c, user, p, acts),
+        "agent": lambda: _agent(c, user, p),
     }
     sections = {}
     for name, make in makers.items():
@@ -675,11 +798,11 @@ async def dashboard(days: int = Query(30, ge=7, le=90), user=Depends(get_current
         if name == "pay":
             return section["extra"].get("daily_count") or []
         days_ = (section.get("series") or {}).get("days") or []
-        # Messages: everything sent and received; rooms: your own messages.
-        field = {"messages": ("sent", "received"), "rooms": ("mine",)}[name]
+        # Social: your DMs; Rooms: your own messages; Foxy: questions asked.
+        field = {"social": ("messages",), "rooms": ("mine",), "agent": ("asked",)}[name]
         return [sum(d.get(f, 0) for f in field) for d in days_]
 
-    for name in ("pay", "messages", "rooms"):
+    for name in ("pay", "social", "rooms", "agent"):
         for i, n in enumerate(per_day(name)):
             if n:
                 tally(name, dt.datetime.fromisoformat(p.labels[i]).replace(tzinfo=dt.UTC, hour=12), n)

@@ -42,6 +42,16 @@ class SurrealAgentRepository:
         rows = await self._db.rows(
             "SELECT * FROM agent_message WHERE user_id = $u AND conversation_id = $c ORDER BY created_at ASC",
             {"u": user_id, "c": conversation_id})
+        return self._messages(rows)
+
+    async def list_user_messages(self, user_id: str, since: str | None = None) -> list[AgentMessage]:
+        """Every message of every conversation (the dashboard's Agent tab)."""
+        rows = await self._db.rows(
+            "SELECT * FROM agent_message WHERE user_id = $u AND created_at >= $s ORDER BY created_at ASC",
+            {"u": user_id, "s": since or ""})
+        return self._messages(rows)
+
+    def _messages(self, rows) -> list[AgentMessage]:
         out = []
         for r in rows:
             plan = r.get("plan")

@@ -13,6 +13,8 @@ async def test_dashboard_covers_every_platform(client: AsyncClient, auth_headers
         r = await client.post("/api/v1/pay/transactions", headers=auth_headers,
                               json={"counterparty": "Neha Kapoor", "amount_minor_units": amount, "note": note})
         assert r.status_code == 201, r.text
+    r = await client.post("/api/v1/agent/messages", headers=auth_headers, json={"text": "plan a dinner and a movie"})
+    assert r.status_code == 201, r.text
     for text in ("hi", "how are you?"):
         await client.post("/api/v1/messaging/peers/neha/messages", headers=auth_headers, json={"text": text})
     products = (await client.get("/api/v1/shop/products", headers=auth_headers)).json()["items"]
@@ -24,7 +26,7 @@ async def test_dashboard_covers_every_platform(client: AsyncClient, auth_headers
     assert r.status_code == 200, r.text
     data = r.json()
     sections = {s["id"]: s for s in data["sections"]}
-    assert list(sections) == ["social", "pay", "messages", "rooms", "stream", "news", "shop", "book"]
+    assert list(sections) == ["social", "pay", "rooms", "stream", "news", "shop", "book", "agent"]
     for s in sections.values():
         assert {"headline", "kpis", "insights", "has_data"} <= set(s)
         if s["series"]:
@@ -40,15 +42,21 @@ async def test_dashboard_covers_every_platform(client: AsyncClient, auth_headers
     assert any("% of what you spent" in line for line in pay["insights"])
     assert len(pay["extra"]["weekday"]) == 7 and len(pay["extra"]["hours"]) == 24
 
-    msgs = {k["id"]: k["value"] for k in sections["messages"]["kpis"]}
-    assert msgs["sent"] >= 2 and sections["messages"]["top"]["items"][0]["username"] == "neha"
+    social = {k["id"]: k["value"] for k in sections["social"]["kpis"]}
+    assert social["messages_sent"] >= 2 and sections["social"]["tops"][0]["items"][0]["username"] == "neha"
+    assert sum(d["messages"] for d in sections["social"]["series"]["days"]) >= 2
+
+    agent = {k["id"]: k["value"] for k in sections["agent"]["kpis"]}
+    assert agent["asked"] == 1 and agent["conversations"] == 1
+    assert sections["agent"]["top"]["items"][0]["title"].startswith("plan a dinner")
+    assert any(i["label"] == "Food & dining" for i in sections["agent"]["breakdown"]["items"])
 
     shop = {k["id"]: k["value"] for k in sections["shop"]["kpis"]}
     assert shop["viewed"] >= 1 and shop["bag"] == products[0]["price_minor_units"] * 2
 
     ov = data["overview"]
     mix = {m["id"]: m["value"] for m in ov["mix"]}
-    assert mix["pay"] >= 2 and mix["messages"] >= 2 and mix["shop"] >= 1
+    assert mix["pay"] >= 2 and mix["social"] >= 2 and mix["shop"] >= 1 and mix["agent"] == 1
     assert ov["active_days"] >= 1 and ov["favourite"] in mix
     assert len(ov["headlines"]) == 8
 

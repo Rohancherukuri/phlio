@@ -51,6 +51,7 @@ TABLES = {
     "moment_comment",
     "phlio_notification",
     "notification_state",
+    "saved_place",
     "live_location",
     "profile_style",
     "chat_theme",

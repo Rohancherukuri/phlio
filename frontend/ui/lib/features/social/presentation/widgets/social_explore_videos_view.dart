@@ -9,6 +9,7 @@ import '../controllers/video_playback_controller.dart';
 import 'social_clips_grid.dart';
 import 'social_explore_posts_view.dart';
 import 'social_videos_view.dart';
+import 'explore_places.dart';
 
 // Read every cursor page so discovery can find posts beyond the home page.
 final explorePostsProvider =
@@ -61,7 +62,7 @@ class _SocialExploreState extends ConsumerState<SocialExploreVideosView> {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-        length: 3,
+        length: 4,
         child: Column(
           children: [
             Padding(
@@ -78,7 +79,7 @@ class _SocialExploreState extends ConsumerState<SocialExploreVideosView> {
                   FocusScope.of(context).unfocus();
                 },
                 decoration: InputDecoration(
-                  hintText: 'Search posts, videos and clips',
+                  hintText: 'Search posts, videos, clips and places',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: search.text.isEmpty
                       ? null
@@ -116,13 +117,15 @@ class _SocialExploreState extends ConsumerState<SocialExploreVideosView> {
                 Tab(text: 'Posts'),
                 Tab(text: 'Videos'),
                 Tab(text: 'Clips'),
+                Tab(text: 'Places'),
               ],
             ),
             Expanded(
               child: switch (tab) {
                 0 => posts(),
                 1 => videos(),
-                _ => SocialClipsGrid(key: ValueKey(query), query: query),
+                2 => SocialClipsGrid(key: ValueKey(query), query: query),
+                _ => ExplorePlaces(query: search.text.trim().isEmpty ? '' : query),
               },
             ),
           ],

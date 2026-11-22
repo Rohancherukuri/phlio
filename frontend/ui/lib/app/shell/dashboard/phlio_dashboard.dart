@@ -1,8 +1,8 @@
 // The all-in-one dashboard: every Phlio platform, not just Social.
 //
 // GET /profile/dashboard (backend/app/api/v1/dashboard.py) returns an
-// overview plus one section per platform — Social, Pay, Messages, Rooms,
-// Stream, News, Shop, Book — all in the same shape, so one set of widgets
+// overview plus one section per platform — Social (with your DMs), Pay, Rooms,
+// Stream, News, Shop, Book, Foxy (the Agent) — all in the same shape, so one set of widgets
 // draws them all:
 //
 //   [DashboardTabs]     platform chips in each platform's colour; the
@@ -50,17 +50,17 @@ NotifPlatform dashStyle(String id) => switch (id) {
       _ => NotifPlatform.of(id),
     };
 
-const _tabs = ['all', 'social', 'pay', 'messages', 'rooms', 'stream', 'news', 'shop', 'book'];
+const _tabs = ['all', 'social', 'pay', 'rooms', 'stream', 'news', 'shop', 'book', 'agent'];
 const _tabLabels = {
   'all': 'All',
   'social': 'Social',
   'pay': 'Pay',
-  'messages': 'Messages',
   'rooms': 'Rooms',
   'stream': 'Stream',
   'news': 'News',
   'shop': 'Shop',
   'book': 'Book',
+  'agent': 'Foxy',
 };
 
 /// A second colour for two-line charts (in vs out, sent vs received…).
@@ -507,6 +507,8 @@ class DashboardSection extends StatelessWidget {
     final series = section['series'] as Map?;
     final breakdown = section['breakdown'] as Map?;
     final top = section['top'] as Map?;
+    // More lists: top chats (Social), what Foxy found (Agent)…
+    final tops = [for (final t in (section['tops'] as List? ?? const [])) t as Map];
     final insights = (section['insights'] as List).cast<String>();
     final extra = ((section['extra'] as Map?) ?? const {}).cast<String, dynamic>();
     final spend = id == 'pay';
@@ -611,6 +613,21 @@ class DashboardSection extends StatelessWidget {
           ),
         ),
       ],
+      for (final t in tops)
+        if ((t['items'] as List).isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Reveal(
+            index: i++,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: _card(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _Title('${t['title']}'),
+                _TopList(items: (t['items'] as List).cast<Map>(), color: _partner(s.color), currency: currency),
+              ]),
+            ),
+          ),
+        ],
     ]);
   }
 

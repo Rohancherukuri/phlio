@@ -21,3 +21,9 @@ class InMemoryAgentRepository:
 
     async def list_messages(self, user_id: str, conversation_id: str) -> list[AgentMessage]:
         return list(self._messages.get((user_id, conversation_id), []))
+
+    async def list_user_messages(self, user_id: str, since: str | None = None) -> list[AgentMessage]:
+        """Every message of every conversation (the dashboard's Agent tab)."""
+        out = [m for (uid, _), msgs in self._messages.items() if uid == user_id for m in msgs
+               if not since or m.created_at.isoformat() >= since]
+        return sorted(out, key=lambda m: m.created_at)

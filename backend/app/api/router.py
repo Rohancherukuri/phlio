@@ -91,6 +91,8 @@ from app.api.v1 import appearance
 api_router.include_router(appearance.router)
 from app.api.v1 import dashboard
 api_router.include_router(dashboard.router)
+from app.api.v1 import explore_places
+api_router.include_router(explore_places.router)
 # Seasonal festival / event banners (public).
 from app.api.v1 import events
 api_router.include_router(events.router)
