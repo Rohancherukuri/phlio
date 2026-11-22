@@ -1188,7 +1188,8 @@ class _ServicesExplore extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            childAspectRatio: .82,
+            // Tall enough for the tile plus a two-line label at any text scale.
+            childAspectRatio: .68,
             children: [
               for (final (i, (id, color)) in _tiles.indexed)
                 if (verticalById(id) case final v?)
@@ -1212,10 +1213,14 @@ class _ServicesExplore extends StatelessWidget {
                           child: Center(child: BookGlyph(v.glyph, size: 28, color: color)),
                         ),
                         const SizedBox(height: 6),
-                        Text(v.label,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            style: PhlioTypography.caption.copyWith(color: PhlioColors.textPrimary, fontWeight: FontWeight.w600)),
+                        Flexible(
+                          child: Text(v.label,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: PhlioTypography.caption.copyWith(
+                                  color: PhlioColors.textPrimary, fontWeight: FontWeight.w600, height: 1.15)),
+                        ),
                       ]),
                     ),
                   ),
