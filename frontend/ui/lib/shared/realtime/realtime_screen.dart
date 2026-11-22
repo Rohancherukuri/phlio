@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart' as lk;
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
+import '../watch/watch_together.dart';
 
 Future<void> openRealtime(BuildContext context,
         {required String endpoint,
@@ -15,7 +16,8 @@ Future<void> openRealtime(BuildContext context,
         bool rooms = false,
         bool video = true,
         bool record = false,
-        List<String> topics = const []}) =>
+        List<String> topics = const [],
+        WatchCtx? watch}) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
         builder: (_) => RealtimeScreen(
             endpoint: endpoint,
@@ -23,7 +25,8 @@ Future<void> openRealtime(BuildContext context,
             rooms: rooms,
             video: video,
             record: record,
-            topics: topics)));
+            topics: topics,
+            watch: watch)));
 
 /// One SFU connection per screen; adaptive subscriptions and simulcast are
 /// managed by LiveKit, including reconnects after a network change.
@@ -35,8 +38,13 @@ class RealtimeScreen extends StatefulWidget {
       this.video = true,
       this.topics = const [],
       this.record = false,
+      this.watch,
       super.key});
   final String endpoint, title;
+
+  /// Calls and room voice: watch together on a shared player above the
+  /// participants (watch_together.dart).
+  final WatchCtx? watch;
   final bool rooms, video;
 
   /// Spaces: host chose "Record Space" (shown as a REC badge to listeners).
@@ -47,6 +55,30 @@ class RealtimeScreen extends StatefulWidget {
 }
 
 class _RealtimeScreenState extends State<RealtimeScreen> {
+  final _watchStage = GlobalKey<WatchStageState>();
+  bool _watching = false;
+
+  /// The shared player on top, the call below (Instagram / Discord).
+  Widget _withWatch(Widget body) {
+    final w = widget.watch;
+    if (w == null || fullscreen) return body;
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: WatchStage(
+          key: _watchStage,
+          w: w,
+          compact: true,
+          onParty: (on) {
+            if (on != _watching && mounted) setState(() => _watching = on);
+          },
+        ),
+      ),
+      if (_watching) WatchReactions(onReact: (e) => _watchStage.currentState?.react(e)),
+      Expanded(child: body),
+    ]);
+  }
+
   bool fullscreen = false, sound = true, viewerPaused = false;
   final startedAt = DateTime.now();
   Timer? clock;
@@ -286,7 +318,7 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
                           onPressed: closing ? null : leave,
                           icon: const Icon(Icons.close))
                     ]),
-          body: error != null
+          body: _withWatch(error != null
               ? Center(
                   child: Padding(
                       padding: const EdgeInsets.all(24),
@@ -457,7 +489,7 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
                                         width: 110,
                                         height: 165,
                                         child: _ParticipantTile(local)),
-                                ]),
+                                ])),
           bottomNavigationBar: fullscreen && !publishing
               ? null
               : SafeArea(
@@ -519,6 +551,11 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
                                             }),
                                     icon: const Icon(Icons.cameraswitch)),
                             ],
+                            if (widget.watch != null)
+                              IconButton.filledTonal(
+                                  tooltip: 'Watch together',
+                                  onPressed: () => showWatchPicker(context, widget.watch!),
+                                  icon: const Icon(Icons.smart_display_rounded)),
                             FilledButton.icon(
                                 style: FilledButton.styleFrom(
                                     backgroundColor: const Color(0xFFB83D52)),

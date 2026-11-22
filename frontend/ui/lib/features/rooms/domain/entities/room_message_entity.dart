@@ -75,7 +75,16 @@ class RoomMessageEntity extends Equatable {
     this.authorName = '',
     this.attachments = const [],
     this.reactions = const [],
+    this.replyTo,
+    this.pinned = false,
   });
+
+  /// Discord-style reply: {id, author_id, author_name, text, kind}.
+  final Map<String, dynamic>? replyTo;
+  final bool pinned;
+
+  /// "phlio-system:pin:<id>" and similar lines drawn as system rows.
+  bool get isSystem => text.startsWith('phlio-system:');
 
   final String id;
   final String roomId;
@@ -89,7 +98,7 @@ class RoomMessageEntity extends Equatable {
   final List<MessageAttachmentEntity> attachments;
   final List<MessageReactionEntity> reactions;
 
-  RoomMessageEntity copyWith({List<MessageReactionEntity>? reactions}) =>
+  RoomMessageEntity copyWith({List<MessageReactionEntity>? reactions, bool? pinned}) =>
       RoomMessageEntity(
         id: id,
         roomId: roomId,
@@ -99,9 +108,11 @@ class RoomMessageEntity extends Equatable {
         createdAt: createdAt,
         attachments: attachments,
         reactions: reactions ?? this.reactions,
+        replyTo: replyTo,
+        pinned: pinned ?? this.pinned,
       );
 
   @override
   List<Object?> get props =>
-      [id, roomId, authorId, text, createdAt, attachments, reactions];
+      [id, roomId, authorId, text, createdAt, attachments, reactions, replyTo, pinned];
 }

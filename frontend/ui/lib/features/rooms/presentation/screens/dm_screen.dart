@@ -9,6 +9,8 @@ import '../../data/datasources/messaging_api.dart';
 import '../controllers/messaging_controller.dart';
 import '../widgets/dm_thread.dart';
 import '../../../../shared/appearance/chat_theme_sheet.dart';
+import '../../../../shared/blend/blend.dart';
+import '../../../../shared/watch/watch_together.dart';
 
 /// Private conversation with media, voice/video calls and message reactions.
 /// Profile Chat uses its own public creator channel.
@@ -69,14 +71,20 @@ class _DmScreenState extends ConsumerState<DmScreen> {
             PhlioAvatar(
                 name: name, imageUrl: peer?['avatar_url'] as String?, size: 36),
             const SizedBox(width: 10),
+            // Instagram header: bold name with a chevron, handle below.
             Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PhlioTypography.title),
+                  Row(children: [
+                    Flexible(
+                      child: Text(name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PhlioTypography.title.copyWith(fontWeight: FontWeight.w800)),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, size: 20, color: PhlioColors.textMuted),
+                  ]),
                   Text(peer?['username'] as String? ?? widget.username,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -95,14 +103,28 @@ class _DmScreenState extends ConsumerState<DmScreen> {
               icon: const Icon(Icons.videocam_outlined),
               onPressed:
                   peer == null || _calling ? null : () => _call(true, name)),
-          IconButton(
-              tooltip: 'Chat theme',
-              icon: const Icon(Icons.palette_outlined),
-              onPressed: () => showChatThemeSheet(context, widget.username)),
-          IconButton(
-              tooltip: 'Search messages',
-              icon: const Icon(Icons.search_rounded),
-              onPressed: () => setState(() => _searching = !_searching)),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (v) {
+              switch (v) {
+                case 'watch':
+                  openWatchTogether(context, WatchCtx('dm', widget.username, title: name));
+                case 'blend':
+                  startBlendWith(context, widget.username);
+                case 'theme':
+                  showChatThemeSheet(context, widget.username);
+                case 'search':
+                  setState(() => _searching = !_searching);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'watch', child: ListTile(leading: Icon(Icons.smart_display_outlined), title: Text('Watch together'))),
+              PopupMenuItem(value: 'blend', child: ListTile(leading: Icon(Icons.join_inner_rounded), title: Text('Blend'))),
+              PopupMenuItem(value: 'theme', child: ListTile(leading: Icon(Icons.palette_outlined), title: Text('Chat theme'))),
+              PopupMenuItem(value: 'search', child: ListTile(leading: Icon(Icons.search_rounded), title: Text('Search'))),
+            ],
+          ),
         ],
       ),
       body: SafeArea(

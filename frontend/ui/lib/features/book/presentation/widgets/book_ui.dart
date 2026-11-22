@@ -61,6 +61,14 @@ const bookVerticals = <BookVertical>[
       blurb: 'Melas, markets and festivals'),
   BookVertical('meetups', 'Meetups', 'meetups', {'meetups'},
       blurb: 'Meet your communities offline'),
+  BookVertical('home', 'Home services', 'home', {'home'},
+      blurb: 'Cleaning, repairs, salon at home'),
+  BookVertical('restaurants', 'Restaurants', 'restaurants', {'restaurants'},
+      blurb: 'Reserve a table'),
+  BookVertical('stays', 'Stays', 'stays', {'stays'},
+      blurb: 'Hotels, cottages and hostels'),
+  BookVertical('tours', 'Travel services', 'tours', {'tours'},
+      blurb: 'Tours, holidays, transfers and visas'),
 ];
 
 BookVertical? verticalById(String id) {

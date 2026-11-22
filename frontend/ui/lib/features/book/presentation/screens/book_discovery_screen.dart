@@ -1087,6 +1087,12 @@ class _BookExploreState extends ConsumerState<_BookExplore> {
                           ref.invalidate(listingsControllerProvider),
                       child: const Text('Could not load. Retry'))),
               data: (all) {
+                if (_query.isEmpty && _vertical == null) {
+                  return _ServicesExplore(
+                    all: all,
+                    onPick: (v) => setState(() => _vertical = v),
+                  );
+                }
                 final words = _query.split(' ').where((w) => w.isNotEmpty);
                 final shown = all.where((l) {
                   if (_vertical != null && !_vertical!.has(l)) return false;
@@ -1141,4 +1147,146 @@ class _BookExploreState extends ConsumerState<_BookExplore> {
           ),
         ),
       );
+}
+
+/// Explore with nothing typed: services first — home services, travel
+/// services, restaurants, music concerts and more — each a tile and a
+/// shelf of real listings.
+class _ServicesExplore extends StatelessWidget {
+  const _ServicesExplore({required this.all, required this.onPick});
+  final List<BookListingEntity> all;
+  final ValueChanged<BookVertical> onPick;
+
+  static const _tiles = [
+    ('home', Color(0xFF3DD6C6)),
+    ('tours', Color(0xFF4C9BFF)),
+    ('restaurants', Color(0xFFFF9F5A)),
+    ('concerts', Color(0xFFFF5FA2)),
+    ('stays', Color(0xFF8D78FF)),
+    ('doctor', Color(0xFF3DD6A0)),
+    ('sports', Color(0xFFF6C343)),
+    ('cab', Color(0xFFFF7A59)),
+  ];
+
+  static const _shelves = [
+    ('Home services', 'home', 'Cleaning, repairs and salon at your door'),
+    ('Travel services', 'tours', 'Tours, holidays, airport transfers, visas'),
+    ('Restaurants', 'restaurants', 'Reserve a table tonight'),
+    ('Music concerts', 'concerts', 'Live music this month'),
+    ('Stays', 'stays', 'Hotels, cottages and hostels'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 32),
+        children: [
+          Text('Services', style: PhlioTypography.title.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: .82,
+            children: [
+              for (final (i, (id, color)) in _tiles.indexed)
+                if (verticalById(id) case final v?)
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: Duration(milliseconds: 300 + 50 * i),
+                    curve: Curves.easeOutBack,
+                    builder: (_, t, child) => Transform.scale(scale: .7 + .3 * t, child: Opacity(opacity: t.clamp(0.0, 1.0), child: child)),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () => onPick(v),
+                      child: Column(children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: .16),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: color.withValues(alpha: .35)),
+                          ),
+                          child: Center(child: BookGlyph(v.glyph, size: 28, color: color)),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(v.label,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            style: PhlioTypography.caption.copyWith(color: PhlioColors.textPrimary, fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
+            ],
+          ),
+          for (final (title, id, blurb) in _shelves)
+            if (verticalById(id) case final v?)
+              if (all.where(v.has).toList() case final items when items.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(title, style: PhlioTypography.title.copyWith(fontWeight: FontWeight.w800)),
+                      Text(blurb, style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted)),
+                    ]),
+                  ),
+                  TextButton(onPressed: () => onPick(v), child: const Text('See all')),
+                ]),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 214,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: items.length.clamp(0, 10),
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (_, i) => _ServiceCard(listing: items[i], onTap: () => _open(context, items[i])),
+                  ),
+                ),
+              ],
+        ],
+      );
+}
+
+class _ServiceCard extends StatelessWidget {
+  const _ServiceCard({required this.listing, required this.onTap});
+  final BookListingEntity listing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = listing;
+    final packages = l.metaMaps('packages');
+    final from = l.isFree && l.priceMaxMinorUnits == 0
+        ? 'Free'
+        : 'From ${rupees(packages.isEmpty ? l.priceMinMinorUnits : packages.map((p) => (p['price'] as num).toInt() * 100).where((p) => p > 0).fold<int>(l.priceMaxMinorUnits, (a, b) => b < a ? b : a))}';
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 200,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(height: 120, width: 200, child: BookImage(url: l.imageUrl, glyph: l.vertical, radius: 16)),
+          const SizedBox(height: 8),
+          Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: PhlioTypography.bodyStrong.copyWith(color: PhlioColors.textPrimary)),
+          Text(l.venue, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted)),
+          const SizedBox(height: 4),
+          Row(children: [
+            if (l.rating != null) ...[
+              const BookGlyph('star', size: 14, color: Color(0xFFF6C343)),
+              const SizedBox(width: 3),
+              Text(l.rating!.toStringAsFixed(1), style: PhlioTypography.caption.copyWith(color: PhlioColors.textPrimary)),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(from, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: PhlioTypography.caption.copyWith(color: PhlioColors.brandPeach, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
 }

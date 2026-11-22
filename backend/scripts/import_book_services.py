@@ -1,5 +1,8 @@
 """Phlio Book as a booking super-app: sports venues, doctor appointments,
-flights, trains, buses, rides, concerts, festivals, events and meetups.
+flights, trains, buses, rides, concerts, festivals, events and meetups —
+plus services: home services (cleaning, repairs, salon at home…),
+restaurant tables, stays, and travel services (tours, holiday packages,
+airport transfers, visa help).
 
 Idempotent (listings are upserted by id; rerun any time).
 
@@ -245,6 +248,105 @@ MEETUPS = [
 ]
 
 
+# -- Services: home services, restaurants, stays, tours & travel help -------------------
+# Booked by appointment / table / check-in slot with a package (sample providers,
+# fictional names, estimated prices).
+# id, vertical, title, provider, area, rating, unit, (open, close, slot min),
+# packages (name, ₹), photo search, about, tags
+SERVICES = [
+    # Home services
+    ("home_deep_clean", "home", "Full Home Deep Cleaning", "SparkleNest Cleaners", "Kondapur", 4.7, "home",
+     ("08:00", "18:00", 120), [("1 BHK", 2499), ("2 BHK", 3499), ("3 BHK", 4699)],
+     "house cleaning service", "Kitchen, bathrooms, floors and windows, with eco-friendly products.", ["Cleaning"]),
+    ("home_bathroom", "home", "Bathroom Cleaning", "SparkleNest Cleaners", "Kondapur", 4.6, "bathroom",
+     ("08:00", "19:00", 60), [("Classic", 499), ("Intense stain removal", 799)],
+     "bathroom cleaning tiles", "Tiles, fittings and descaling.", ["Cleaning"]),
+    ("home_ac", "home", "AC Service & Repair", "CoolCare Technicians", "Madhapur", 4.5, "AC",
+     ("09:00", "20:00", 60), [("Jet service", 599), ("Gas refill", 2499), ("Repair visit", 299)],
+     "air conditioner repair technician", "Split and window ACs; parts billed separately.", ["Appliances"]),
+    ("home_plumber", "home", "Plumber on Call", "FixFlow Plumbing", "Gachibowli", 4.4, "visit",
+     ("08:00", "21:00", 60), [("Inspection visit", 199), ("Tap / mixer fix", 349), ("Blockage removal", 599)],
+     "plumber fixing sink", "Leaks, taps, blockages and fittings.", ["Repairs"]),
+    ("home_electrician", "home", "Electrician", "BrightWire Electricals", "Kukatpally", 4.5, "visit",
+     ("08:00", "21:00", 60), [("Inspection visit", 199), ("Fan / light install", 299), ("Wiring fault", 499)],
+     "electrician repairing wiring", "Switches, fans, lights and wiring faults.", ["Repairs"]),
+    ("home_pest", "home", "Pest Control", "SafeHome Pest Care", "Miyapur", 4.3, "home",
+     ("09:00", "18:00", 120), [("Cockroach (1 BHK)", 999), ("Termite treatment", 3999), ("General (2 BHK)", 1599)],
+     "pest control spraying home", "Odourless, child-safe treatments with a 30-day warranty.", ["Cleaning"]),
+    ("home_salon", "home", "Salon at Home", "GlowUp Home Salon", "Jubilee Hills", 4.8, "person",
+     ("09:00", "20:00", 60), [("Haircut", 399), ("Facial", 1199), ("Mani + pedi", 899)],
+     "salon hair styling", "Trained stylists, sanitised kits, at your doorstep.", ["Beauty"]),
+    ("home_painting", "home", "Home Painting", "ColourCraft Painters", "Manikonda", 4.4, "room",
+     ("09:00", "17:00", 120), [("Site visit + quote", 0), ("1 room repaint", 4999)],
+     "house painting wall roller", "Free colour consultation and site visit.", ["Repairs"]),
+    ("home_appliance", "home", "Appliance Repair", "FixRight Appliances", "Ameerpet", 4.3, "appliance",
+     ("09:00", "20:00", 60), [("Washing machine", 349), ("Refrigerator", 399), ("Microwave", 299)],
+     "appliance repair washing machine", "Visit charge; repairs quoted on inspection.", ["Appliances"]),
+    ("home_laundry", "home", "Laundry & Dry Clean Pickup", "FreshFold Laundry", "Madhapur", 4.5, "bag",
+     ("08:00", "20:00", 60), [("Wash & fold (5 kg)", 349), ("Dry clean (3 items)", 449)],
+     "laundry folded clothes", "Pickup and delivery in 48 hours.", ["Cleaning"]),
+    # Restaurants (table reservations)
+    ("rest_biryani", "restaurants", "Dum Pukht Biryani House", "Old City Kitchens", "Banjara Hills", 4.6, "guest",
+     ("12:00", "23:00", 90), [("Table reservation", 0), ("Biryani tasting menu (per guest)", 899)],
+     "hyderabadi biryani restaurant", "Slow-cooked dum biryani, haleem and kebabs. Cost for two ~₹1,200.", ["Hyderabadi", "Biryani"]),
+    ("rest_rooftop", "restaurants", "Skyline Rooftop Grill", "Skyline Hospitality", "HITEC City", 4.5, "guest",
+     ("18:00", "23:30", 90), [("Table reservation", 0), ("Sunset grill platter (per guest)", 1499)],
+     "rooftop restaurant night city", "Grills, mocktails and city views. Cost for two ~₹2,000.", ["Grill", "Rooftop"]),
+    ("rest_south", "restaurants", "Tiffin Tales", "Tiffin Tales", "Kondapur", 4.4, "guest",
+     ("07:00", "22:00", 60), [("Table reservation", 0)],
+     "south indian dosa breakfast", "Dosas, idlis and filter coffee. Cost for two ~₹400.", ["South Indian", "Breakfast"]),
+    ("rest_italian", "restaurants", "Trattoria Lucca", "Lucca Group", "Jubilee Hills", 4.7, "guest",
+     ("12:00", "23:00", 90), [("Table reservation", 0), ("Chef's pasta tasting (per guest)", 1799)],
+     "italian restaurant pasta table", "Hand-rolled pasta and wood-fired pizza. Cost for two ~₹2,400.", ["Italian"]),
+    ("rest_cafe", "restaurants", "Brew & Bloom Café", "Brew & Bloom", "Gachibowli", 4.5, "guest",
+     ("08:00", "22:00", 60), [("Table reservation", 0), ("Brunch for two", 1199)],
+     "cafe interior plants coffee", "All-day brunch, specialty coffee, board games. Cost for two ~₹900.", ["Café"]),
+    ("rest_asian", "restaurants", "Wok & Roll Pan-Asian", "Wok & Roll", "Madhapur", 4.3, "guest",
+     ("12:00", "23:00", 90), [("Table reservation", 0), ("Dim sum unlimited (per guest)", 999)],
+     "asian restaurant dim sum", "Dim sum, ramen and stir-fries. Cost for two ~₹1,600.", ["Pan-Asian"]),
+    # Stays
+    ("stay_boutique", "stays", "The Courtyard Boutique Stay", "Courtyard Stays", "Banjara Hills", 4.6, "night",
+     ("12:00", "13:00", 60), [("Deluxe room", 4200), ("Suite", 7800)],
+     "boutique hotel room", "Heritage-style rooms with breakfast. Check-in 12 PM.", ["Hotel"]),
+    ("stay_business", "stays", "Cityline Business Hotel", "Cityline Hotels", "HITEC City", 4.4, "night",
+     ("12:00", "13:00", 60), [("Standard", 3600), ("Executive", 5200)],
+     "business hotel room city", "Walk to offices, airport shuttle, co-working lounge.", ["Hotel"]),
+    ("stay_lake", "stays", "Lakeside Cottages", "Green Retreats", "Shamirpet", 4.7, "night",
+     ("12:00", "13:00", 60), [("Garden cottage", 5500), ("Lake-view cottage", 7900)],
+     "lake cottage resort", "Weekend getaway 40 minutes from the city, with bonfire nights.", ["Resort"]),
+    ("stay_hostel", "stays", "Backpacker's Nest Hostel", "Nest Hostels", "Begumpet", 4.5, "night",
+     ("12:00", "13:00", 60), [("Dorm bed", 699), ("Private room", 1999)],
+     "hostel dorm beds", "Social hostel with rooftop, lockers and city walks.", ["Hostel"]),
+    # Tours & travel services
+    ("tour_heritage", "tours", "Old City Heritage Walk", "Wanderlore Tours", "Charminar", 4.8, "traveller",
+     ("06:00", "08:00", 60), [("Group walk", 799), ("Private guide", 2499)],
+     "charminar heritage walk", "Charminar, Laad Bazaar and Chowmahalla with a local storyteller.", ["Guided tour"]),
+    ("tour_goa", "tours", "Goa Beach Getaway · 3N/4D", "Phlio Holidays", "Hyderabad", 4.5, "traveller",
+     ("09:00", "10:00", 60), [("Standard", 14999), ("Premium (sea view)", 21999)],
+     "goa beach holiday", "Flights, beach resort, breakfasts and a sunset cruise.", ["Holiday package"]),
+    ("tour_kerala", "tours", "Kerala Backwaters · 4N/5D", "Phlio Holidays", "Hyderabad", 4.7, "traveller",
+     ("09:00", "10:00", 60), [("Houseboat + hill stay", 23999), ("Luxury", 34999)],
+     "kerala backwaters houseboat", "Munnar tea hills and an Alleppey houseboat night.", ["Holiday package"]),
+    ("tour_airport", "tours", "Airport Transfer", "SkyRide Transfers", "Hyderabad", 4.6, "car",
+     ("00:00", "23:59", 60), [("Sedan", 1199), ("SUV", 1699)],
+     "airport car transfer", "Flight-tracked pickups with a name board.", ["Transfers"]),
+    ("tour_visa", "tours", "Visa Application Help", "PassPort Assist", "Somajiguda", 4.4, "application",
+     ("10:00", "18:00", 60), [("Tourist visa (Schengen)", 2999), ("Document check", 699)],
+     "passport visa documents", "Form filling, appointment booking and document review.", ["Visa"]),
+    ("tour_ramoji", "tours", "Film City Day Tour", "Wanderlore Tours", "Ramoji", 4.5, "traveller",
+     ("08:00", "09:00", 60), [("Day tour", 1499), ("Tour + lunch", 1999)],
+     "film studio tour", "Studio sets, live shows and a pickup from the city.", ["Day trip"]),
+]
+
+# More live music for the Explore services row.
+TICKETS += [
+    ("c_rock", "concerts", "Rock the Lake", "Lakeside Amphitheatre", "Hussain Sagar", 11, 19,
+     [("General", 899), ("Fan pit", 1799)], "rock concert guitar stage", "Four rock bands and a lakeside sunset."),
+    ("c_symphony", "concerts", "Movie Symphony Night", "Shilpakala Vedika", "Madhapur", 21, 19,
+     [("Balcony", 999), ("Stalls", 1799)], "orchestra concert hall", "A 60-piece orchestra plays film scores live."),
+]
+
+
 COMMONS = "https://commons.wikimedia.org/w/api.php"
 SEARCH_CACHE: dict = {}  # query -> results, persisted in search_cache.json
 _last_search = [0.0]
@@ -429,6 +531,18 @@ def build():
             duration_label="3 hours", starts_at=at(days, hour), is_free=max(prices) == 0,
             tags=[{"concerts": "Music", "festive": "Festive", "events": "Experiences"}[vertical]]),
             vertical, "ticket", dict(tiers=[dict(name=n, price=p) for n, p in tiers], area=area), q))
+    for sid, vertical, title, provider, area, rating, unit, (open_, close, step), packages, q, about, tags in SERVICES:
+        prices = [p for _, p in packages]
+        label = {"home": "Home services", "restaurants": "Restaurants", "stays": "Stays", "tours": "Travel services"}[vertical]
+        out.append((BookListing(
+            id=f"pb_svc_{sid}", title=title, category=TR if vertical in {"stays", "tours"} else SV, venue=provider,
+            location_note=f"{area}, {CITY}", description=about,
+            price_min_minor_units=min(prices) * 100, price_max_minor_units=max(prices) * 100,
+            duration_label={"night": "per night", "guest": "table", "traveller": "per traveller"}.get(unit, "per visit"),
+            rating=rating, is_free=max(prices) == 0, tags=[label] + tags),
+            vertical, "slot",
+            dict(area=area, unit=unit, open=open_, close=close, slot_minutes=step, provider=provider,
+                 packages=[dict(name=n, price=p) for n, p in packages], service=label), q))
     for mid, title, group, room, venue, area, days, hour, cap, going, q, about in MEETUPS:
         out.append((BookListing(
             id=f"pb_meet_{mid}", title=title, category=MT, venue=venue, location_note=area,

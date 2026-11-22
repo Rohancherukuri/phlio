@@ -10,6 +10,8 @@ class RoomMessageModel {
     this.authorName = '',
     this.attachments = const [],
     this.reactions = const [],
+    this.replyTo,
+    this.pinned = false,
   });
 
   factory RoomMessageModel.fromJson(Map<String, dynamic> json) {
@@ -38,8 +40,13 @@ class RoomMessageModel {
                 userId: r['user_id'] as String? ?? '',
               ))
           .toList(),
+      replyTo: json['reply_to'] is Map ? Map<String, dynamic>.from(json['reply_to'] as Map) : null,
+      pinned: json['pinned'] == true,
     );
   }
+
+  final Map<String, dynamic>? replyTo;
+  final bool pinned;
 
   final String id;
   final String roomId;
@@ -59,5 +66,7 @@ class RoomMessageModel {
         createdAt: createdAt,
         attachments: attachments,
         reactions: reactions,
+        replyTo: replyTo,
+        pinned: pinned,
       );
 }

@@ -101,6 +101,9 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
     return out;
   }
 
+  /// Service packages (home services, restaurants, stays, tours).
+  List<Map<String, dynamic>> get _packages => l.metaMaps('packages');
+
   bool _peak(String slot) =>
       l.vertical == 'sports' &&
       slot.compareTo(l.metaString('peak_after', '99:99')) >= 0;
@@ -113,6 +116,9 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
 
   int get _total {
     switch (l.kind) {
+      case 'slot' when _packages.isNotEmpty:
+        final price = (_packages[_option.clamp(0, _packages.length - 1)]['price'] as num).toInt();
+        return price * 100 * _count;
       case 'slot':
         final base = l.priceMinMinorUnits;
         return _slot != null && _peak(_slot!)
@@ -150,7 +156,14 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
         'rsvp' => 'Attend',
         'trip' => 'Book ${_count > 1 ? '$_count seats' : 'seat'}',
         'ticket' => _count > 1 ? 'Get $_count tickets' : 'Get ticket',
-        _ => l.vertical == 'doctor' ? 'Book appointment' : 'Book slot',
+        _ => switch (l.vertical) {
+            'doctor' => 'Book appointment',
+            'home' => 'Book service',
+            'restaurants' => 'Reserve table',
+            'stays' => 'Book stay',
+            'tours' => 'Book now',
+            _ => 'Book slot',
+          },
       };
 
   Future<void> _confirm() async {
@@ -162,7 +175,12 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
       case 'slot':
         final p = _slot!.split(':');
         time = DateTime(2026, 1, 1, int.parse(p[0]), int.parse(p[1]));
-        if (l.vertical == 'doctor') {
+        if (_packages.isNotEmpty) {
+          details['package'] = '${_packages[_option.clamp(0, _packages.length - 1)]['name']}';
+          details['units'] = '$_count';
+          details['unit'] = l.metaString('unit', 'visit');
+          participants = l.metaString('unit') == 'guest' || l.metaString('unit') == 'traveller' ? _count : 1;
+        } else if (l.vertical == 'doctor') {
           details['consult'] =
               _option == 1 ? 'Video consult' : 'In-clinic visit';
           participants = 1;
@@ -547,6 +565,48 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
 
   List<Widget> _form() {
     switch (l.kind) {
+      case 'slot' when _packages.isNotEmpty:
+        final slots = _slots();
+        final unit = l.metaString('unit', 'visit');
+        final stay = l.vertical == 'stays';
+        return [
+          _label(stay ? 'Room type' : l.vertical == 'restaurants' ? 'Reservation' : 'Choose a package'),
+          Wrap(children: [
+            for (final (i, p) in _packages.indexed)
+              _choice('${p['name']}', _option == i, () => setState(() => _option = i),
+                  sub: (p['price'] as num) == 0 ? 'Free' : rupees((p['price'] as num).toInt() * 100)),
+          ]),
+          _label(stay ? 'Check-in date' : 'Pick a date'),
+          _days(stay || l.vertical == 'tours' ? 30 : 7),
+          if (slots.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('Nothing left for today. Try another date.', style: PhlioTypography.caption),
+            ),
+          if (slots.length > 1) ...[
+            _label(l.vertical == 'restaurants' ? 'Pick a time' : 'Pick a slot'),
+            Wrap(children: [
+              for (final s in slots) _choice(clockText(s), _slot == s, () => setState(() => _slot = s)),
+            ]),
+          ] else if (slots.length == 1 && _slot == null)
+            Builder(builder: (_) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _slot == null) setState(() => _slot = slots.first);
+              });
+              return const SizedBox.shrink();
+            }),
+          const SizedBox(height: 16),
+          _stepper(
+              switch (unit) {
+                'guest' => 'Guests',
+                'night' => 'Nights',
+                'traveller' => 'Travellers',
+                'person' => 'People',
+                _ => '${unit[0].toUpperCase()}${unit.substring(1)}s',
+              },
+              1,
+              unit == 'guest' || unit == 'traveller' ? 10 : 6),
+        ];
       case 'slot':
         final slots = _slots();
         final sports = l.metaList('sports');

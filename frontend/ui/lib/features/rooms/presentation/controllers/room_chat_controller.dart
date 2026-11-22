@@ -7,7 +7,10 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/di/service_locator.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/result/result.dart';
+import '../../data/models/room_message_model.dart';
 import '../../domain/entities/room_message_entity.dart';
 import '../../domain/repositories/rooms_repository.dart';
 import '../../domain/usecases/get_room_messages_usecase.dart';
@@ -20,6 +23,10 @@ final roomChatControllerProvider = AsyncNotifierProvider.family<
     RoomChatController, List<RoomMessageEntity>, String>(
   RoomChatController.new,
 );
+
+/// The message the composer is replying to, per room (Discord's reply bar).
+final roomReplyingProvider =
+    StateProvider.family<RoomMessageEntity?, String>((ref, roomId) => null);
 
 class RoomChatController
     extends FamilyAsyncNotifier<List<RoomMessageEntity>, String> {
@@ -44,6 +51,32 @@ class RoomChatController
       success: (page) => page.items.reversed.toList(),
       failure: (failure) => throw failure,
     );
+  }
+
+  /// A Discord-style reply to [replyTo].
+  Future<Result<void>> reply(String text, String replyTo) async {
+    try {
+      final res = await getIt<ApiClient>()
+          .dio
+          .post('/rooms/$arg/messages', data: {'text': text, 'reply_to': replyTo});
+      final message = RoomMessageModel.fromJson(res.data as Map<String, dynamic>).toEntity();
+      state = AsyncData([...(state.valueOrNull ?? []), message]);
+      return const Result.success(null);
+    } catch (_) {
+      return Result.failure(const Failure.unknown());
+    }
+  }
+
+  /// Pin / unpin; pinning also posts the "pinned a message" line.
+  Future<void> pin(String messageId, bool pinned) async {
+    await getIt<ApiClient>()
+        .dio
+        .put('/rooms/$arg/messages/$messageId/pin', data: {'pinned': pinned});
+    state = AsyncData([
+      for (final m in state.valueOrNull ?? <RoomMessageEntity>[])
+        m.id == messageId ? m.copyWith(pinned: pinned) : m
+    ]);
+    if (pinned) ref.invalidateSelf();
   }
 
   Future<Result<void>> sendMessage(String text) async {

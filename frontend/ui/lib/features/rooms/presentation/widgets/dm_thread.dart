@@ -27,6 +27,8 @@ import '../widgets/chat_composer.dart';
 import 'chat_policy.dart';
 import 'message_sticker_canvas.dart';
 import 'dm_say_hello.dart';
+import '../../../../shared/blend/blend.dart';
+import '../../../../shared/watch/watch_together.dart';
 
 /// Private conversation core for the pushed DM screen: the polling history, the send/upload pipeline
 /// (text, files, voice, Foxy stickers/GIFs via the composer) and
@@ -504,8 +506,17 @@ class _DmThreadState extends ConsumerState<DmThread> {
   }
 
   /// Shared Phlio object card or the regular chat bubble.
-  Widget _bubble(Map<String, dynamic> message, bool mine) {
+  Widget _bubble(Map<String, dynamic> message, bool mine, {bool above = false, bool below = false}) {
     final attachments = message['attachments'] as List;
+    // Blend invites and watch-together cards.
+    if (attachments.isEmpty) {
+      if (blendIdIn(message['text'] as String?) case final blend?) {
+        return BlendInviteCard(blendId: blend, mine: mine);
+      }
+      if (isWatchMessage(message['text'] as String?)) {
+        return WatchChatCard(text: message['text'] as String, w: WatchCtx('dm', widget.username));
+      }
+    }
     // Completed Phlio Pay payments: a receipt card, tap for details.
     if (attachments.isEmpty) {
       if (parsePaymentMessage(message['text'] as String?) case final payment?) {
@@ -544,21 +555,30 @@ class _DmThreadState extends ConsumerState<DmThread> {
         ],
       );
     }
+    // Instagram bubbles: fully round, with the corners that join the
+    // neighbouring messages from the same person tucked in.
+    const round = Radius.circular(22), tucked = Radius.circular(5);
     return Container(
       padding: attachments.isEmpty
-          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
-          : const EdgeInsets.all(3),
+          ? const EdgeInsets.symmetric(horizontal: 15, vertical: 10)
+          : const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: attachments.isNotEmpty
             ? Colors.transparent
             : mine
-                ? PhlioColors.brandViolet.withValues(alpha: .65)
-                : PhlioColors.surfaceElevated,
+                ? null
+                : const Color(0xFF262A33),
+        gradient: attachments.isEmpty && mine
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF7B4DFF), Color(0xFF6236F5)])
+            : null,
         borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(20),
-          topRight: const Radius.circular(20),
-          bottomLeft: Radius.circular(mine ? 20 : 5),
-          bottomRight: Radius.circular(mine ? 5 : 20),
+          topLeft: !mine && above ? tucked : round,
+          bottomLeft: !mine && below ? tucked : round,
+          topRight: mine && above ? tucked : round,
+          bottomRight: mine && below ? tucked : round,
         ),
       ),
       child: MessageStickerCanvas(
@@ -566,6 +586,22 @@ class _DmThreadState extends ConsumerState<DmThread> {
         child: _messageBody(message, mine),
       ),
     );
+  }
+
+  /// "12:31 AM", "Yesterday 9:41 PM", "Mon 9:41 PM", "12 Oct, 9:41 PM".
+  String _igTime(DateTime t) {
+    final now = DateTime.now();
+    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final clock = '$h:${t.minute.toString().padLeft(2, '0')} ${t.hour < 12 ? 'AM' : 'PM'}';
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(t.year, t.month, t.day);
+    final diff = today.difference(day).inDays;
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (diff == 0) return clock;
+    if (diff == 1) return 'Yesterday $clock';
+    if (diff < 7) return '${days[t.weekday - 1]} $clock';
+    return '${t.day} ${months[t.month - 1]}, $clock';
   }
 
   Widget _replyQuote(Map reply, bool mine, String? me, String name) {
@@ -750,69 +786,87 @@ class _DmThreadState extends ConsumerState<DmThread> {
                     for (final raw in (message['reactions'] as List? ?? []))
                       Map<String, dynamic>.from(raw as Map),
                   ];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Align(
-                      alignment:
-                          mine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.sizeOf(context).width * .82,
+                  // Instagram layout: a centred time when the chat resumes
+                  // after a gap, consecutive messages from one person
+                  // stacked tight, their photo beside the last one only.
+                  DateTime at(Map m) => DateTime.parse(m['created_at'] as String).toLocal();
+                  final prev = i > 0 ? messages[i - 1] : null;
+                  final next = i + 1 < messages.length ? messages[i + 1] : null;
+                  final gapBefore = prev == null || at(message).difference(at(prev)).inMinutes.abs() >= 15;
+                  bool joined(Map? a, Map? b) =>
+                      a != null &&
+                      b != null &&
+                      a['sender_id'] == b['sender_id'] &&
+                      at(b).difference(at(a)).inMinutes.abs() < 3 &&
+                      at(b).difference(at(a)).inMinutes.abs() < 15;
+                  final above = !gapBefore && joined(prev, message) && message['reply_to'] is! Map;
+                  final below = next != null &&
+                      at(next).difference(at(message)).inMinutes.abs() < 15 &&
+                      joined(message, next) &&
+                      next['reply_to'] is! Map;
+                  final bubble = ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .74),
+                    child: Column(
+                      crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        if (message['reply_to'] is Map) _replyQuote(message['reply_to'] as Map, mine, me, name),
+                        GestureDetector(
+                          onLongPress: () => _showMessageActions(message, mine),
+                          onDoubleTap: () => _react(id, '❤️'),
+                          child: _bubble(message, mine, above: above, below: below),
                         ),
-                        child: Column(
-                          crossAxisAlignment: mine
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
+                        if (reactions.isNotEmpty)
+                          Transform.translate(
+                            offset: const Offset(0, -4),
+                            child: _ReactionChips(reactions: reactions, myId: me),
+                          ),
+                        if (message['pinned'] == true)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.push_pin_rounded, size: 11, color: PhlioColors.textMuted),
+                              SizedBox(width: 3),
+                              Text('Pinned', style: TextStyle(fontSize: 10.5, color: PhlioColors.textMuted)),
+                            ]),
+                          ),
+                      ],
+                    ),
+                  );
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (gapBefore)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 14, bottom: 12),
+                          child: Text(_igTime(at(message)),
+                              textAlign: TextAlign.center,
+                              style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted, fontWeight: FontWeight.w600)),
+                        ),
+                      Padding(
+                        padding: EdgeInsets.only(bottom: below ? 2 : 10),
+                        child: Row(
+                          mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            if (message['reply_to'] is Map)
-                              _replyQuote(
-                                  message['reply_to'] as Map, mine, me, name),
-                            GestureDetector(
-                              onLongPress: () =>
-                                  _showMessageActions(message, mine),
-                              onDoubleTap: () => _react(id, '❤️'),
-                              child: _bubble(message, mine),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (!mine) ...[
-                                      PhlioAvatar(
-                                          name: name,
-                                          imageUrl:
-                                              peer?['avatar_url'] as String?,
-                                          profileId: widget.username,
-                                          size: 22),
-                                      const SizedBox(width: 6),
-                                    ],
-                                    if (message['pinned'] == true) ...[
-                                      const Icon(Icons.push_pin_rounded,
-                                          size: 12,
-                                          color: PhlioColors.textMuted),
-                                      const SizedBox(width: 4),
-                                    ],
-                                    Text(
-                                      timeago.format(
-                                        DateTime.parse(
-                                          message['created_at'] as String,
-                                        ),
-                                      ),
-                                      style: PhlioTypography.caption
-                                          .copyWith(fontSize: 10),
-                                    )
-                                  ]),
-                            ),
-                            if (reactions.isNotEmpty)
-                              _ReactionChips(
-                                reactions: reactions,
-                                myId: me,
+                            if (!mine) ...[
+                              SizedBox(
+                                width: 28,
+                                child: below
+                                    ? null
+                                    : PhlioAvatar(
+                                        name: name,
+                                        imageUrl: peer?['avatar_url'] as String?,
+                                        profileId: widget.username,
+                                        size: 28,
+                                        showMomentRing: false),
                               ),
+                              const SizedBox(width: 8),
+                            ],
+                            Flexible(child: bubble),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   );
                 },
               );

@@ -55,6 +55,7 @@ class BookService:
         participants: int,
         details: dict[str, str] | None = None,
         unit_multiplier: int = 1,
+        price_minor_units: int | None = None,
     ) -> Booking:
         if participants < 1 or participants > MAX_PARTICIPANTS:
             raise ValidationAppError(f"Participants must be between 1 and {MAX_PARTICIPANTS}.")
@@ -82,8 +83,11 @@ class BookService:
             date=date,
             time=time,
             participants=participants,
-            estimated_total_min_minor_units=listing.price_min_minor_units * max(1, unit_multiplier),
-            estimated_total_max_minor_units=listing.price_max_minor_units * max(1, unit_multiplier),
+            # A chosen package (services) has its own price.
+            estimated_total_min_minor_units=price_minor_units if price_minor_units is not None
+            else listing.price_min_minor_units * max(1, unit_multiplier),
+            estimated_total_max_minor_units=price_minor_units if price_minor_units is not None
+            else listing.price_max_minor_units * max(1, unit_multiplier),
             currency=listing.currency,
             status=BookingStatus.CONFIRMED,
             details=dict(details or {}),

@@ -119,6 +119,13 @@ async def _trim(c, user_id):
 
 def _describe(text: str, attachments: list) -> tuple[str, str | None]:
     text = (text or "").strip()
+    # Cards the app draws from markers: say what they are instead.
+    if "phlio-blend:" in text:
+        return "invited you to a Blend 🎬", None
+    if "phlio-watch:" in text:
+        return text.split("\n", 1)[0], None
+    if text.startswith("phlio-system:pin:"):
+        return "pinned a message 📌", None
     kinds = [str((a or {}).get("kind") or "") for a in attachments or []]
     if text:
         return text, (kinds[0] if kinds else None)

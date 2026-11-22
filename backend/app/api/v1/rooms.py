@@ -141,6 +141,12 @@ class ReactionResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     text: str = Field(default="", max_length=4000)
     attachments: list[AttachmentIn] = Field(default_factory=list, max_length=10)
+    # Discord-style reply: the message this one answers (same room).
+    reply_to: str | None = Field(default=None, max_length=80)
+
+
+class PinRequest(BaseModel):
+    pinned: bool = True
 
 
 class ReactionRequest(BaseModel):
@@ -157,9 +163,13 @@ class RoomMessageResponse(BaseModel):
     created_at: dt.datetime
     attachments: list[AttachmentResponse] = []
     reactions: list[ReactionResponse] = []
+    # {id, author_id, author_name, text, kind} of the message replied to.
+    reply_to: dict | None = None
+    pinned: bool = False
 
     @classmethod
-    def from_entity(cls, message: RoomMessage, author_name: str = "") -> RoomMessageResponse:
+    def from_entity(cls, message: RoomMessage, author_name: str = "", *, reply_to: dict | None = None,
+                    pinned: bool = False) -> RoomMessageResponse:
         return cls(
             id=message.id,
             room_id=message.room_id,
@@ -169,7 +179,20 @@ class RoomMessageResponse(BaseModel):
             created_at=message.created_at,
             attachments=[AttachmentResponse.from_entity(a) for a in message.attachments],
             reactions=[ReactionResponse.from_entity(r) for r in message.reactions],
+            reply_to=reply_to,
+            pinned=pinned,
         )
+
+
+async def _reply_preview(container, room_id: str, message_id: str, names: dict) -> dict | None:
+    original = await container.rooms_repository.get_message(room_id, message_id)
+    if original is None:
+        return dict(id=message_id, author_id=None, author_name="", text="Original message was deleted", kind=None)
+    if original.author_id not in names:
+        person = await container.identity_repository.get_by_id(original.author_id)
+        names[original.author_id] = person.full_name if person else "Member"
+    return dict(id=original.id, author_id=original.author_id, author_name=names[original.author_id],
+                text=original.text[:140], kind=original.attachments[0].kind if original.attachments else None)
 
 
 @router.get("/discover", response_model=Page[RoomResponse])
@@ -249,7 +272,14 @@ async def list_messages(
         if message.author_id not in authors:
             author = await container.identity_repository.get_by_id(message.author_id)
             authors[message.author_id] = author.full_name if author else "Member"
-    items = [RoomMessageResponse.from_entity(m, authors[m.author_id]) for m in messages]
+    replies = {row["message_id"]: row["reply_to"] for row in
+               await container.graph.store.get_many([key("room_reply", m.id) for m in messages])}
+    pins = {row["message_id"] for row in
+            await container.graph.store.get_many([key("room_pin", room_id, m.id) for m in messages])}
+    items = [RoomMessageResponse.from_entity(
+        m, authors[m.author_id], pinned=m.id in pins,
+        reply_to=await _reply_preview(container, room_id, replies[m.id], authors) if m.id in replies else None)
+        for m in messages]
     return Page(items=items, meta=PageMeta(next_cursor=next_cursor, has_more=next_cursor is not None))
 
 
@@ -259,6 +289,7 @@ async def send_message(
     body: SendMessageRequest,
     rooms_service: RoomsService = Depends(get_rooms_service),
     current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
 ) -> RoomMessageResponse:
     if not body.text.strip() and not body.attachments:
         # 422 from the model would also catch this; a friendly message reads
@@ -281,7 +312,50 @@ async def send_message(
             for a in body.attachments
         ],
     )
-    return RoomMessageResponse.from_entity(message, current_user.full_name)
+    reply = None
+    if body.reply_to and await container.rooms_repository.get_message(room_id, body.reply_to):
+        await container.graph.store.put(key("room_reply", message.id),
+                                        dict(message_id=message.id, room_id=room_id, reply_to=body.reply_to))
+        reply = await _reply_preview(container, room_id, body.reply_to, {})
+    return RoomMessageResponse.from_entity(message, current_user.full_name, reply_to=reply)
+
+
+@router.put("/{room_id}/messages/{message_id}/pin")
+async def pin_message(
+    room_id: str,
+    message_id: str,
+    body: PinRequest,
+    rooms_service: RoomsService = Depends(get_rooms_service),
+    current_user: User = Depends(get_current_user),
+    container: Container = Depends(get_container),
+):
+    """Pin / unpin a message (members). Pinning posts Discord's
+    "X pinned a message to this channel" line."""
+    if not await container.rooms_repository.is_member(room_id, current_user.id):
+        raise HTTPException(403, "Join the room to pin messages.")
+    if not await container.rooms_repository.get_message(room_id, message_id):
+        raise HTTPException(404, "Message not found.")
+    pid = key("room_pin", room_id, message_id)
+    if body.pinned:
+        if not await container.graph.store.get(pid):
+            await container.graph.store.put(pid, dict(room_id=room_id, message_id=message_id,
+                                                      by=current_user.id, at=dt.datetime.now(dt.UTC).isoformat()))
+            await rooms_service.send_message(room_id=room_id, author_id=current_user.id,
+                                             text=f"phlio-system:pin:{message_id}", attachments=[])
+    else:
+        await container.graph.store.delete(pid)
+    return {"pinned": body.pinned}
+
+
+@router.get("/{room_id}/pins")
+async def pinned_messages(room_id: str, container: Container = Depends(get_container)):
+    rows = sorted(await container.graph.store.rows("room_pin", {"room_id": room_id}), key=lambda r: r["at"], reverse=True)
+    names: dict = {}
+    out = []
+    for row in rows:
+        preview = await _reply_preview(container, room_id, row["message_id"], names)
+        out.append(dict(preview, pinned_at=row["at"]))
+    return {"items": out}
 
 
 @router.post(

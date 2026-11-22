@@ -25,6 +25,8 @@ import '../widgets/rooms_layout.dart';
 import '../widgets/direct_messages_panel.dart';
 import '../widgets/rooms_home.dart';
 import '../widgets/rooms_discord.dart';
+import '../widgets/rooms_discord_chat.dart';
+import '../../../../shared/watch/watch_together.dart';
 import '../widgets/rooms_hub_panels.dart';
 
 class RoomsScreen extends ConsumerStatefulWidget {
@@ -207,7 +209,8 @@ class _RoomsTwoPaneState extends ConsumerState<_RoomsTwoPane> {
           endpoint: '/realtime/rooms/${room.id}/join',
           title: room.name,
           rooms: true,
-          video: video);
+          video: video,
+          watch: WatchCtx('room', room.id, title: room.name));
     }
 
     // Discord layout: the server rail, then the selected room's channels.
@@ -253,7 +256,8 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
       endpoint: '/realtime/rooms/${widget.room.id}/join',
       title: widget.room.name,
       rooms: true,
-      video: video);
+      video: video,
+      watch: WatchCtx('room', widget.room.id, title: widget.room.name));
 
   void _showPinned() => showModalBottomSheet<void>(
         context: context,
@@ -353,7 +357,15 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                     tooltip: 'Join video', onTap: () => _call(video: true)),
                 if (!narrow)
                   RoomIconButton('pin',
-                      tooltip: 'Pinned messages', onTap: _showPinned),
+                      tooltip: 'Pinned messages',
+                      onTap: () => showRoomPins(context, widget.room.id)),
+                IconButton(
+                  tooltip: 'Watch together',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.smart_display_outlined, color: PhlioColors.textSecondary),
+                  onPressed: () => openWatchTogether(
+                      context, WatchCtx('room', widget.room.id, title: widget.room.name)),
+                ),
               ],
             ),
           ),
@@ -376,10 +388,27 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                   final previous = index > 1 ? messages[index - 2] : null;
                   final newDay = previous == null ||
                       !sameDay(previous.createdAt, message.createdAt);
+                  Widget withDay(Widget child) => newDay
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [DayDivider(message.createdAt.toLocal()), child])
+                      : child;
+                  // Discord system lines and watch-party cards.
+                  if (message.isSystem) {
+                    return withDay(DiscordSystemRow(
+                        message: message, onSeePins: () => showRoomPins(context, widget.room.id)));
+                  }
+                  if (isWatchMessage(message.text)) {
+                    return withDay(DiscordCallCard(
+                        message: message, roomId: widget.room.id, roomName: widget.room.name));
+                  }
                   // Discord groups consecutive messages from one person
                   // within a few minutes under a single name.
                   final grouped = previous != null &&
                       !newDay &&
+                      !previous.isSystem &&
+                      !isWatchMessage(previous.text) &&
+                      message.replyTo == null &&
                       previous.authorId == message.authorId &&
                       message.createdAt
                               .difference(previous.createdAt)
@@ -437,9 +466,20 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                           ),
                         ),
                       if (message.text.isNotEmpty)
-                        SharedContentText(message.text,
-                            style: PhlioTypography.body.copyWith(
-                                color: PhlioColors.textPrimary, height: 1.4)),
+                        message.text.contains('@')
+                            ? DiscordText(message.text)
+                            : SharedContentText(message.text,
+                                style: PhlioTypography.body.copyWith(
+                                    color: PhlioColors.textPrimary, height: 1.4)),
+                      if (message.pinned)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.push_pin_rounded, size: 12, color: PhlioColors.textMuted),
+                            const SizedBox(width: 3),
+                            Text('Pinned', style: PhlioTypography.caption.copyWith(fontSize: 11)),
+                          ]),
+                        ),
                       // Document/image/sticker previews with the
                       // Foxy reaction overlay riding on top.
                       if (message.attachments.isNotEmpty) ...[
@@ -464,12 +504,26 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                   );
 
                   final row = InkWell(
-                    // Long-press any message to react with Foxy.
-                    onLongPress: () =>
-                        showReactionPickerAndReact(context, onReact: react),
+                    // Long-press: reactions, Reply, Pin, Copy (Discord).
+                    onLongPress: () => showDiscordMessageActions(
+                      context,
+                      message: message,
+                      onReact: (e) => react('emoji', e),
+                      onMoreReactions: () =>
+                          showReactionPickerAndReact(context, onReact: react),
+                      onReply: () => ref
+                          .read(roomReplyingProvider(widget.room.id).notifier)
+                          .state = message,
+                      onPin: () => ref
+                          .read(roomChatControllerProvider(widget.room.id).notifier)
+                          .pin(message.id, !message.pinned),
+                    ),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(16, grouped ? 2 : 14, 16, 2),
-                      child: Row(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      if (message.replyTo != null)
+                        DiscordReplyPreview(reply: message.replyTo!),
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           SizedBox(
@@ -488,13 +542,10 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                           Expanded(child: body),
                         ],
                       ),
+                      ]),
                     ),
                   );
-                  if (!newDay) return row;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [DayDivider(message.createdAt.toLocal()), row],
-                  );
+                  return withDay(row);
                 },
               ),
             ),
@@ -590,19 +641,27 @@ class _RoomComposerState extends ConsumerState<_RoomComposer> {
     if (rooms != null && !rooms.any((room) => room.id == widget.room.id)) {
       return _previewBar();
     }
+    final replying = ref.watch(roomReplyingProvider(widget.room.id));
     return ColoredBox(
       color: PhlioColors.roomsChat,
       child: SafeArea(
         top: false,
-        child: ChatComposer(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (replying != null)
+          DiscordReplyBar(
+            message: replying,
+            onCancel: () => ref.read(roomReplyingProvider(widget.room.id).notifier).state = null,
+          ),
+        ChatComposer(
           compact: true,
           surfaceColor: PhlioColors.roomsInput,
-          hint: 'Message #${widget.room.slug}',
+          hint: replying != null ? 'Reply to ${replying.displayName}' : 'Message #${widget.room.slug}',
           onSendText: (text) async {
-            final result = await ref
-                .read(roomChatControllerProvider(widget.room.id).notifier)
-                .sendMessage(text);
+            final notifier = ref.read(roomChatControllerProvider(widget.room.id).notifier);
+            final reply = ref.read(roomReplyingProvider(widget.room.id));
+            final result = reply != null ? await notifier.reply(text, reply.id) : await notifier.sendMessage(text);
             if (result.isFailure) throw StateError('Message could not be sent');
+            ref.read(roomReplyingProvider(widget.room.id).notifier).state = null;
           },
           onSendFiles: (files, text) async {
             final notifier =
@@ -637,6 +696,7 @@ class _RoomComposerState extends ConsumerState<_RoomComposer> {
               throw StateError('Voice note could not be sent');
           },
         ),
+        ]),
       ),
     );
   }

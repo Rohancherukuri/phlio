@@ -10,6 +10,7 @@ import 'social_clips_grid.dart';
 import 'social_explore_posts_view.dart';
 import 'social_videos_view.dart';
 import 'explore_places.dart';
+import '../../../../shared/blend/blend.dart';
 
 // Read every cursor page so discovery can find posts beyond the home page.
 final explorePostsProvider =
@@ -100,6 +101,12 @@ class _SocialExploreState extends ConsumerState<SocialExploreVideosView> {
                       borderSide: BorderSide.none),
                 ),
               )),
+                // Blend: a shared feed with a friend (Instagram-style).
+                IconButton(
+                  tooltip: 'Blends',
+                  icon: const Icon(Icons.join_inner_rounded, size: 26),
+                  onPressed: () => openBlends(context),
+                ),
                 // Saved: clips, posts and collections (audio + playlists).
                 IconButton(
                   tooltip: 'Saved',

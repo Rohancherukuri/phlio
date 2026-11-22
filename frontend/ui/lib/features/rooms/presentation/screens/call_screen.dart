@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/realtime/realtime_screen.dart';
+import '../../../../shared/watch/watch_together.dart';
 import '../../data/datasources/messaging_api.dart';
 import '../controllers/messaging_controller.dart';
 
@@ -73,7 +74,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       ? RealtimeScreen(
           endpoint: '/realtime/calls/${widget.callId}/join',
           title: widget.name,
-          video: widget.video)
+          video: widget.video,
+          watch: WatchCtx('call', widget.callId, title: widget.name))
       : Scaffold(
           appBar: AppBar(title: Text(widget.name)),
           body: Center(

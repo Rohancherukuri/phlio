@@ -93,6 +93,9 @@ from app.api.v1 import dashboard
 api_router.include_router(dashboard.router)
 from app.api.v1 import explore_places
 api_router.include_router(explore_places.router)
+from app.api.v1 import blends, watch_party
+api_router.include_router(blends.router)
+api_router.include_router(watch_party.router)
 # Seasonal festival / event banners (public).
 from app.api.v1 import events
 api_router.include_router(events.router)

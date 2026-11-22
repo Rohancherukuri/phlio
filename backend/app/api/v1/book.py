@@ -232,6 +232,19 @@ async def create_booking(
     if any(len(k) > 40 or len(v) > 200 for k, v in payload.details.items()):
         raise HTTPException(422, "Booking details are too long.")
     detail = (await _details(c, [payload.listing_id])).get(payload.listing_id) or {}
+    # Services (home, restaurants, stays, tours): the package you picked sets
+    # the price, times units (rooms, guests, travellers…).
+    price = None
+    packages = (detail.get("meta") or {}).get("packages") or []
+    if packages and payload.details.get("package"):
+        hit = next((p for p in packages if p.get("name") == payload.details["package"]), None)
+        if hit is None:
+            raise HTTPException(422, "Pick one of this service's packages.")
+        try:
+            units = max(1, min(10, int(payload.details.get("units") or 1)))
+        except ValueError:
+            units = 1
+        price = int(hit["price"]) * 100 * units
     booking = await book_service.create_booking(
         user_id=current_user.id,
         listing_id=payload.listing_id,
@@ -240,6 +253,7 @@ async def create_booking(
         participants=payload.participants,
         details=payload.details,
         unit_multiplier=payload.participants if detail.get("booking_kind") in PER_HEAD else 1,
+        price_minor_units=price,
     )
     # You now count as going (and appear in the avatar stack).
     try:
