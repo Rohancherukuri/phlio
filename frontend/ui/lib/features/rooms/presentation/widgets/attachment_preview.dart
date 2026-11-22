@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'document_viewer.dart';
 import 'package:video_player/video_player.dart';
 import 'package:xml/xml.dart';
 
@@ -364,6 +365,12 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
     if (_path == null &&
         (widget.loadPrivateFile != null || a.kind == 'document')) await _load();
     if (!mounted || _unavailable) return;
+    // Documents open full screen, Discord-style.
+    if (a.kind == 'document' && _path != null) {
+      await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
+          builder: (_) => DocumentViewerScreen(path: _path!, name: a.name, sizeLabel: attachmentSize(a.size))));
+      return;
+    }
     Widget content;
     if (a.kind == 'document' &&
         _path != null &&
@@ -424,8 +431,67 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
           icon: const Icon(Icons.visibility_outlined),
           label: const Text('Load preview')));
 
+  /// Discord's document card: file header, then the inline preview — tap
+  /// either to open the document full screen.
+  Widget _documentCard() {
+    final a = widget.attachment;
+    final viewable = docViewable(a.name) && AttachmentPreviewPolicy.canPreview(a.size);
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 400),
+      decoration: BoxDecoration(
+        color: PhlioColors.roomsSidebar,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: PhlioColors.borderSubtle),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        DocFileHeader(name: a.name, sizeLabel: attachmentSize(a.size), onOpen: viewable ? _openPreview : null),
+        if (viewable)
+          GestureDetector(
+            onTap: _openPreview,
+            child: Container(
+              height: widget.compact ? 90 : 170,
+              decoration: const BoxDecoration(
+                color: PhlioColors.roomsInput,
+                border: Border(top: BorderSide(color: PhlioColors.borderSubtle)),
+              ),
+              child: Stack(fit: StackFit.expand, children: [
+                _body(),
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 46,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x00182231), Color(0xF2182231)],
+                      ),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  right: 10,
+                  bottom: 8,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.fullscreen_rounded, size: 16, color: PhlioColors.textSecondary),
+                    SizedBox(width: 4),
+                    Text('Tap to view', style: TextStyle(fontSize: 11.5, color: PhlioColors.textSecondary)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+      ]),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => widget.attachment.kind == 'document' && !widget.mediaOnly
+      ? _documentCard()
+      : Container(
         constraints: const BoxConstraints(maxWidth: 360),
         decoration: BoxDecoration(
             color: PhlioColors.roomsInput,

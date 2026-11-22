@@ -9,6 +9,7 @@ import 'stream_similar.dart' show MoreLikeThis;
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'dart:ui' show FontFeature;
 import 'social_comments_sheet.dart';
+import '../social/profile_share_card.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1783,29 +1784,125 @@ class ContentDetailScreen extends ConsumerWidget {
               ])));
 }
 
+/// Message text where anything from inside Phlio is a card, never a link:
+/// shared posts / videos / clips / products / titles become the content
+/// card, shared profiles the profile card, moments a moment card. Other
+/// phlio:// links are dropped from the text. Only real external links
+/// (http / https, beyond Phlio) stay links — tap to open them outside.
 class SharedContentText extends StatelessWidget {
-  const SharedContentText(this.text, {super.key, this.style});
+  const SharedContentText(this.text, {super.key, this.style, this.mine = false});
   final String text;
   final TextStyle? style;
+  final bool mine;
+
+  static final _anyPhlio = RegExp(r'phlio://\S+');
+  static final _moment = RegExp(r'phlio://app/moments/([A-Za-z0-9_.\-%]+)');
+  static final _creator = RegExp(r'phlio://(?:app/creator|profile)/([A-Za-z0-9_.\-%]+)');
+  static final _web = RegExp(r'https?://[^\s]+');
+
   @override
   Widget build(BuildContext context) {
-    final match = RegExp(r'phlio://(?:content/|app/shared/)([a-z]+)/([^\s]+)')
-        .firstMatch(text);
-    if (match == null) return Text(text, style: style);
-    String decoded;
-    try {
-      decoded = Uri.decodeComponent(match[2]!);
-    } on ArgumentError {
-      return Text(text, style: style);
+    final path = sharedContentPath(text);
+    final creator = _creator.firstMatch(text)?.group(1);
+    final moment = _moment.firstMatch(text)?.group(1);
+    // The words around the link ("Shared: …" boilerplate removed).
+    final caption = text
+        .split('\n')
+        .map((line) => line.replaceAll(_anyPhlio, '').trimRight())
+        .where((line) => line.trim().isNotEmpty && !line.startsWith('Shared: '))
+        .join('\n')
+        .trim();
+    Widget? card;
+    if (path != null) {
+      card = SharedContentCard(path: path, mine: mine);
+    } else if (creator != null) {
+      card = ProfileShareCard(username: Uri.decodeComponent(creator), mine: mine);
+    } else if (moment != null) {
+      card = _MomentShareCard(username: Uri.decodeComponent(moment));
     }
-    final path = '${match[1]}/$decoded';
-    return OutlinedButton.icon(
-        onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ContentDetailScreen(path: path))),
-        icon: const Icon(Icons.link),
-        label: Text(text.split('\n').first,
-            maxLines: 3, overflow: TextOverflow.ellipsis));
+    final words = caption.isEmpty || (card != null && caption.startsWith('Check out @'))
+        ? null
+        : _LinkText(caption, style: style);
+    if (card == null) return words ?? Text(text.replaceAll(_anyPhlio, '').trim(), style: style);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        if (words != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: words),
+        card,
+      ],
+    );
   }
+}
+
+/// Plain text with external web links tappable (opened outside Phlio).
+class _LinkText extends StatelessWidget {
+  const _LinkText(this.text, {this.style});
+  final String text;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = SharedContentText._web.allMatches(text).toList();
+    if (matches.isEmpty) return Text(text, style: style);
+    final spans = <InlineSpan>[];
+    var last = 0;
+    for (final m in matches) {
+      if (m.start > last) spans.add(TextSpan(text: text.substring(last, m.start)));
+      final url = m.group(0)!;
+      spans.add(WidgetSpan(
+        alignment: PlaceholderAlignment.baseline,
+        baseline: TextBaseline.alphabetic,
+        child: GestureDetector(
+          onTap: () {
+            final uri = Uri.tryParse(url);
+            if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+          },
+          child: Text(url,
+              style: (style ?? const TextStyle()).copyWith(
+                  color: const Color(0xFF6FB3FF), decoration: TextDecoration.underline, decorationColor: const Color(0xFF6FB3FF))),
+        ),
+      ));
+      last = m.end;
+    }
+    if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
+    return Text.rich(TextSpan(style: style, children: spans));
+  }
+}
+
+/// A shared moment: the person's photo with "Moment" — opens their moments.
+class _MomentShareCard extends StatelessWidget {
+  const _MomentShareCard({required this.username});
+  final String username;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: PhlioColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => GoRouter.of(context).push('/creator/${Uri.encodeComponent(username)}'),
+          child: Container(
+            width: 230,
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(shape: BoxShape.circle, gradient: PhlioColors.sunsetGradient),
+                child: PhlioAvatar(profileId: username, name: username, size: 42, showMomentRing: false),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('@$username', maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: PhlioTypography.bodyStrong.copyWith(color: PhlioColors.textPrimary)),
+                  Text('Moment', style: PhlioTypography.caption.copyWith(color: PhlioColors.textMuted)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: PhlioColors.textMuted),
+            ]),
+          ),
+        ),
+      );
 }
 
 class PlatformCatalogScreen extends ConsumerWidget {

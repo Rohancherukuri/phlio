@@ -466,7 +466,7 @@ class _RoomChatPaneState extends ConsumerState<_RoomChatPane> {
                           ),
                         ),
                       if (message.text.isNotEmpty)
-                        message.text.contains('@')
+                        message.text.contains('@') && !message.text.contains('phlio://')
                             ? DiscordText(message.text)
                             : SharedContentText(message.text,
                                 style: PhlioTypography.body.copyWith(

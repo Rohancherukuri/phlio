@@ -126,6 +126,18 @@ def _describe(text: str, attachments: list) -> tuple[str, str | None]:
         return text.split("\n", 1)[0], None
     if text.startswith("phlio-system:pin:"):
         return "pinned a message 📌", None
+    # Things shared from inside Phlio arrive as cards, not links.
+    if "phlio://" in text:
+        words = [line for line in text.split("\n") if "phlio://" not in line and line.strip()]
+        shared = next((w[len("Shared: "):] for w in words if w.startswith("Shared: ")), None)
+        rest = [w for w in words if not w.startswith("Shared: ")]
+        if rest:
+            return " ".join(rest)[:300], None
+        if "phlio://profile/" in text or "phlio://app/creator/" in text:
+            return "shared a profile", None
+        if "phlio://app/moments/" in text:
+            return "shared a moment", None
+        return (f"shared “{shared}”" if shared else "shared a post"), None
     kinds = [str((a or {}).get("kind") or "") for a in attachments or []]
     if text:
         return text, (kinds[0] if kinds else None)
