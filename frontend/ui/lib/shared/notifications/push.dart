@@ -19,6 +19,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,7 +52,10 @@ class PhlioPush {
       if (!_ready) {
         final status = (await getIt<ApiClient>().dio.get('/notifications/push/status')).data as Map;
         final appId = status['app_id'] as String?;
-        if (status['enabled'] != true || appId == null || appId.isEmpty) return;
+        if (status['enabled'] != true || appId == null || appId.isEmpty) {
+          debugPrint('Push: off — set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY in backend/.env and restart it.');
+          return;
+        }
         OneSignal.Debug.setLogLevel(kDebugMode ? OSLogLevel.warn : OSLogLevel.none);
         OneSignal.initialize(appId);
         OneSignal.Notifications.addForegroundWillDisplayListener((event) {
@@ -70,9 +74,24 @@ class PhlioPush {
       if (!OneSignal.Notifications.permission) {
         await OneSignal.Notifications.requestPermission(true);
       }
+    } on DioException catch (e) {
+      // Not fatal: in-app notifications keep working; we try again the next
+      // time the app comes back to the foreground.
+      if (e.response?.statusCode == 404) {
+        debugPrint('Push: the server has no /notifications/push/status yet — '
+            'restart (or redeploy) the backend to pick up the push code.');
+      } else {
+        debugPrint('Push: could not reach the server (${e.type.name}); will retry.');
+      }
     } catch (e) {
       debugPrint('Push setup failed: $e');
     }
+  }
+
+  /// Retries setup when the app returns to the foreground, if it failed.
+  Future<void> retry(Ref ref, String userId, {required VoidCallback onForeground}) async {
+    if (_ready && _user == userId) return;
+    await signIn(ref, userId, onForeground: onForeground);
   }
 
   Future<void> signOut() async {

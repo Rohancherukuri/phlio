@@ -139,6 +139,10 @@ class NotificationCenter extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     if (_foreground && _since != null) _poll();
+    final id = ref.read(authControllerProvider).valueOrNull?.id;
+    if (_foreground && id != null) {
+      PhlioPush.instance.retry(ref, id, onForeground: () => _poll());
+    }
   }
 
   /// Opening a chat or a room clears its notifications.
