@@ -32,6 +32,7 @@ import '../../core/network/api_client.dart';
 import '../../design_system/colors.dart';
 import '../../design_system/widgets/phlio_card.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'package:phlio/core/orientation/phlio_orientation.dart';
 
 /// Where the party lives: `dm/<username>`, `call/<callId>` or `room/<roomId>`.
 class WatchCtx {
@@ -639,6 +640,9 @@ class _WatchPartyScreenState extends State<WatchPartyScreen> {
   @override
   void initState() {
     super.initState();
+    // Watching together (Social posts/videos/clips, Stream movies & shows):
+    // the phone may rotate to landscape here.
+    PhlioOrientation.allowRotation();
     unawaited(_postParty(widget.w, 'join').then((_) {}, onError: (_) {}));
     if (widget.pickFirst) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -651,6 +655,7 @@ class _WatchPartyScreenState extends State<WatchPartyScreen> {
 
   @override
   void dispose() {
+    PhlioOrientation.releaseRotation();
     unawaited(_postParty(widget.w, 'leave').then((_) {}, onError: (_) {}));
     super.dispose();
   }

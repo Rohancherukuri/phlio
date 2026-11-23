@@ -58,6 +58,18 @@ class _SocialVideoPlayerState extends ConsumerState<SocialVideoPlayer>
       locked = false;
       audioOnly = false;
     }
+    // Turning the phone sideways while watching goes fullscreen; turning it
+    // back returns to the normal player (only for that auto fullscreen).
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (landscape && c.mode == SocialPlayerMode.expanded && !c.rotationSuppressed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (c.mode == SocialPlayerMode.expanded) c.setMode(SocialPlayerMode.fullscreen, auto: true);
+      });
+    } else if (!landscape && c.mode == SocialPlayerMode.fullscreen && c.autoFullscreen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (c.mode == SocialPlayerMode.fullscreen && c.autoFullscreen) c.setMode(SocialPlayerMode.expanded, auto: true);
+      });
+    }
     final mini = c.mode == SocialPlayerMode.floating;
     final full = c.mode == SocialPlayerMode.fullscreen;
     final p = c.player;

@@ -18,6 +18,7 @@ import '../../../../design_system/colors.dart';
 import '../../../../design_system/widgets/foxy_pack.dart';
 import '../../domain/entities/room_message_entity.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'package:phlio/core/orientation/phlio_orientation.dart';
 
 /// Preview budgets keep multi-GB uploads out of decoders and memory.
 abstract final class AttachmentPreviewPolicy {
@@ -305,6 +306,16 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
               left: 0,
               right: 0,
               child: VideoProgressIndicator(video, allowScrubbing: true)),
+        if (!widget.compact)
+          Positioned(
+              top: 6,
+              right: 6,
+              child: IconButton.filledTonal(
+                  tooltip: 'Full view',
+                  icon: const Icon(Icons.fullscreen_rounded),
+                  onPressed: () => Navigator.of(context, rootNavigator: true).push(
+                      MaterialPageRoute<void>(
+                          builder: (_) => RoomVideoFullView(controller: video, title: a.name))))),
       ]);
     }
     if (a.kind == 'audio')
@@ -533,4 +544,103 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
                     )),
             ]),
       );
+}
+
+/// Full view for a video shared in Rooms: plays the same controller as the
+/// chat bubble, edge to edge, and lets the phone rotate to landscape.
+class RoomVideoFullView extends StatefulWidget {
+  const RoomVideoFullView({required this.controller, required this.title, super.key});
+
+  final VideoPlayerController controller;
+  final String title;
+
+  @override
+  State<RoomVideoFullView> createState() => _RoomVideoFullViewState();
+}
+
+class _RoomVideoFullViewState extends State<RoomVideoFullView> {
+  bool _chrome = true;
+
+  VideoPlayerController get _v => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _v.addListener(_tick);
+    if (!_v.value.isPlaying) _v.play();
+  }
+
+  @override
+  void dispose() {
+    _v.removeListener(_tick);
+    super.dispose();
+  }
+
+  void _tick() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playing = _v.value.isPlaying;
+    return LandscapeAllowed(
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _chrome = !_chrome),
+          child: Stack(children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: _v.value.aspectRatio == 0 ? 16 / 9 : _v.value.aspectRatio,
+                child: VideoPlayer(_v),
+              ),
+            ),
+            AnimatedOpacity(
+              opacity: _chrome ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: IgnorePointer(
+                ignoring: !_chrome,
+                child: SafeArea(
+                  child: Column(children: [
+                    Row(children: [
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      ),
+                      Expanded(
+                        child: Text(widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ),
+                    ]),
+                    const Spacer(),
+                    IconButton.filledTonal(
+                      iconSize: 34,
+                      tooltip: playing ? 'Pause video' : 'Play video',
+                      onPressed: () => playing ? _v.pause() : _v.play(),
+                      icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                    ),
+                    const Spacer(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: VideoProgressIndicator(_v,
+                          allowScrubbing: true,
+                          colors: const VideoProgressColors(
+                            playedColor: PhlioColors.brandPeach,
+                            bufferedColor: Color(0x55FFFFFF),
+                            backgroundColor: Color(0x22FFFFFF),
+                          )),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }

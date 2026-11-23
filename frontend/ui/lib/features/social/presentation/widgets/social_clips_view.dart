@@ -20,6 +20,7 @@ import '../../../../shared/content/social_comments_sheet.dart';
 import '../controllers/video_library.dart';
 import 'creator_follow_button.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'package:phlio/core/orientation/phlio_orientation.dart';
 
 class SocialClipsView extends ConsumerStatefulWidget {
   const SocialClipsView(
@@ -788,8 +789,7 @@ class _ClipFullscreenState extends State<_ClipFullscreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    PhlioOrientation.forceLandscape(true);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     widget.player.play();
   }
@@ -803,7 +803,7 @@ class _ClipFullscreenState extends State<_ClipFullscreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.player.pause();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    PhlioOrientation.forceLandscape(false);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }

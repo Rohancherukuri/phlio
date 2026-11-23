@@ -11,6 +11,7 @@ import '../../../../app/config/app_config.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import 'video_library.dart';
 import '../widgets/memberships.dart' show membershipGate;
+import '../../../../core/orientation/phlio_orientation.dart';
 
 enum SocialPlayerMode { hidden, expanded, fullscreen, floating }
 
@@ -98,6 +99,7 @@ class VideoPlaybackController extends ChangeNotifier {
     if (video?.id != source.id) {
       qualityUrl = null;
       qualityLabel = 'Auto';
+      rotationSuppressed = false;
     }
     if (!force && video?.id == source.id && player != null && error == null) {
       setMode(SocialPlayerMode.expanded);
@@ -178,18 +180,48 @@ class VideoPlaybackController extends ChangeNotifier {
     _changed();
   }
 
-  void setMode(SocialPlayerMode value) {
+  // Orientation (see core/orientation/phlio_orientation.dart): the app is
+  // portrait-only, but while a video is open (expanded or fullscreen) the
+  // phone may rotate. Turning it sideways enters fullscreen ([autoFullscreen])
+  // and turning it back leaves it. The fullscreen button locks landscape
+  // until fullscreen is closed; after closing it that way the video stays in
+  // portrait until the next video, so a phone still held sideways doesn't
+  // bounce straight back into fullscreen.
+  bool _rotationHeld = false;
+  bool _landscapeForced = false;
+  bool autoFullscreen = false;
+  bool rotationSuppressed = false;
+
+  void _orientationFor(SocialPlayerMode value, {required bool auto}) {
+    final watching = value == SocialPlayerMode.expanded || value == SocialPlayerMode.fullscreen;
+    final rotate = watching && !rotationSuppressed;
+    if (rotate != _rotationHeld) {
+      _rotationHeld = rotate;
+      rotate ? PhlioOrientation.allowRotation() : PhlioOrientation.releaseRotation();
+    }
+    final force = value == SocialPlayerMode.fullscreen && !auto;
+    if (force != _landscapeForced) {
+      _landscapeForced = force;
+      PhlioOrientation.forceLandscape(force);
+    }
+  }
+
+  void setMode(SocialPlayerMode value, {bool auto = false}) {
     final wasFullscreen = mode == SocialPlayerMode.fullscreen;
+    if (value == SocialPlayerMode.floating || value == SocialPlayerMode.hidden) {
+      rotationSuppressed = false;
+    } else if (wasFullscreen && value == SocialPlayerMode.expanded && !auto) {
+      // Closed with the button (not by turning the phone upright).
+      rotationSuppressed = true;
+    }
     mode = value;
+    autoFullscreen = value == SocialPlayerMode.fullscreen && auto;
+    _orientationFor(value, auto: auto);
     if (value == SocialPlayerMode.fullscreen) {
-      unawaited(SystemChrome.setPreferredOrientations(
-          [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]));
       unawaited(
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
       );
     } else if (wasFullscreen) {
-      unawaited(SystemChrome.setPreferredOrientations(
-          [DeviceOrientation.portraitUp]));
       unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     }
     _changed();

@@ -30,11 +30,14 @@ import 'core/network/api_client.dart';
 import 'core/storage/token_storage.dart';
 import 'features/authentication/presentation/controllers/auth_controller.dart';
 import 'features/stream/music/music_player.dart' show initMusicBackground;
+import 'core/orientation/phlio_orientation.dart';
 
 const _audioInitBudget = Duration(milliseconds: 1500);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Portrait everywhere; video screens opt in to landscape.
+  unawaited(PhlioOrientation.init());
   setupServiceLocator();
   // Wake the server first: on a free host it may be asleep, and booting it
   // in parallel with our own startup hides most of that delay.

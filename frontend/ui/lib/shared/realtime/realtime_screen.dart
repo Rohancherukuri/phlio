@@ -10,6 +10,7 @@ import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../watch/watch_together.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'package:phlio/core/orientation/phlio_orientation.dart';
 
 Future<void> openRealtime(BuildContext context,
         {required String endpoint,
@@ -84,10 +85,8 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
   final startedAt = DateTime.now();
   Timer? clock;
   void setFullscreen(bool value) {
+    if (fullscreen != value) PhlioOrientation.forceLandscape(value);
     setState(() => fullscreen = value);
-    unawaited(SystemChrome.setPreferredOrientations(value
-        ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
-        : [DeviceOrientation.portraitUp]));
     unawaited(SystemChrome.setEnabledSystemUIMode(
         value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge));
   }
@@ -134,9 +133,14 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
   String? error, roomName;
   final dio = getIt<ApiClient>().dio;
 
+  // Live video (and video calls) may rotate to landscape; audio-only stays
+  // portrait like the rest of the app.
+  late final bool _rotates = widget.video || widget.watch != null;
+
   @override
   void initState() {
     super.initState();
+    if (_rotates) PhlioOrientation.allowRotation();
     clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -249,9 +253,9 @@ class _RealtimeScreenState extends State<RealtimeScreen> {
   @override
   void dispose() {
     clock?.cancel();
+    if (_rotates) PhlioOrientation.releaseRotation();
     if (fullscreen) {
-      unawaited(SystemChrome.setPreferredOrientations(
-          [DeviceOrientation.portraitUp]));
+      PhlioOrientation.forceLandscape(false);
       unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     }
     room?.removeListener(changed);

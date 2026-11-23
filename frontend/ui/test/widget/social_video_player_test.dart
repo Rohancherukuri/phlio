@@ -80,6 +80,28 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('An open video may rotate; the rest of the app stays portrait', (tester) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async { calls.add(call); return null; });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    List<Object?> last() => calls.where((c) => c.method == 'SystemChrome.setPreferredOrientations').last.arguments as List<Object?>;
+    final controller = VideoPlaybackController();
+    controller.setMode(SocialPlayerMode.expanded);
+    await tester.pump();
+    expect(last(), ['DeviceOrientation.portraitUp', 'DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
+    // Turning the phone sideways: fullscreen without locking landscape.
+    controller.setMode(SocialPlayerMode.fullscreen, auto: true);
+    await tester.pump();
+    expect(last(), ['DeviceOrientation.portraitUp', 'DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
+    controller.setMode(SocialPlayerMode.expanded, auto: true);
+    await tester.pump();
+    expect(controller.rotationSuppressed, isFalse);
+    controller.setMode(SocialPlayerMode.floating);
+    await tester.pump();
+    expect(last(), ['DeviceOrientation.portraitUp']);
+    controller.dispose();
+  });
+
   setUpAll(() => registerFallbackValue(Duration.zero));
   test('Quality switching keeps position and preferences', () async {
     final created = <PlayableVideo>[];
