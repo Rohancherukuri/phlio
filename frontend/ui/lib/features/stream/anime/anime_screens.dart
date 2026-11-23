@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'anime_api.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Opens [url] in the official app if installed, else the browser.
 Future<void> _openExternal(BuildContext context, String url) async {
@@ -59,7 +60,7 @@ class AnimePoster extends StatelessWidget {
           height: width * 1.5,
           child: anime.cover == null
               ? placeholder
-              : CachedNetworkImage(
+              : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                   imageUrl: anime.cover!,
                   fit: BoxFit.cover,
                   memCacheWidth: (width * dpr).round(),
@@ -334,7 +335,7 @@ class AnimeDetailScreen extends ConsumerWidget {
                 flexibleSpace: FlexibleSpaceBar(
                   background: Stack(fit: StackFit.expand, children: [
                     if ((anime.banner ?? anime.cover) != null)
-                      CachedNetworkImage(imageUrl: (anime.banner ?? anime.cover)!, fit: BoxFit.cover),
+                      CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: (anime.banner ?? anime.cover)!, fit: BoxFit.cover),
                     const DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -412,7 +413,7 @@ class AnimeDetailScreen extends ConsumerWidget {
               style: OutlinedButton.styleFrom(side: BorderSide(color: _hex(link['color'] as String?) ?? accent)),
               onPressed: () => _openExternal(context, '${link['url']}'),
               icon: link['icon'] != null
-                  ? CachedNetworkImage(imageUrl: '${link['icon']}', width: 18, height: 18,
+                  ? CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: '${link['icon']}', width: 18, height: 18,
                       errorWidget: (_, __, ___) => const Icon(Icons.play_circle_outline, size: 18))
                   : const Icon(Icons.play_circle_outline, size: 18),
               label: Text([link['site'], if (link['language'] != null) '(${link['language']})'].join(' ')),
@@ -437,7 +438,7 @@ class AnimeDetailScreen extends ConsumerWidget {
                 height: 54,
                 child: ep['thumbnail'] == null
                     ? Container(color: const Color(0xff1c2230), child: const Icon(Icons.play_arrow))
-                    : CachedNetworkImage(imageUrl: '${ep['thumbnail']}', fit: BoxFit.cover, memCacheWidth: 300),
+                    : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: '${ep['thumbnail']}', fit: BoxFit.cover, memCacheWidth: 300),
               ),
             ),
             title: Text('${ep['title'] ?? 'Episode'}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -480,7 +481,7 @@ class _TrailerCard extends StatelessWidget {
             aspectRatio: 16 / 9,
             child: Stack(fit: StackFit.expand, children: [
               if (trailer['thumbnail'] != null)
-                CachedNetworkImage(imageUrl: '${trailer['thumbnail']}', fit: BoxFit.cover)
+                CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: '${trailer['thumbnail']}', fit: BoxFit.cover)
               else
                 Container(color: const Color(0xff1c2230)),
               Container(color: Colors.black.withValues(alpha: .35)),

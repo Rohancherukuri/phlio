@@ -13,6 +13,7 @@ import '../moments/templates/template_canvas.dart';
 import '../moments/templates/template_model.dart';
 import 'appearance.dart';
 import 'themes.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Live wallpaper presets offered (moment-backdrop shader styles).
 const liveWallpaperStyles = [
@@ -182,7 +183,7 @@ class _AppearanceEditorState extends State<AppearanceEditor> {
                             height: 22,
                             child: CircularProgressIndicator(strokeWidth: 2)))
                     : v.photoUrl != null
-                        ? Image.network(AppConfig.mediaUrl(v.photoUrl!),
+                        ? phlioNetworkImage(AppConfig.mediaUrl(v.photoUrl!),
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => const Icon(
                                 Icons.add_photo_alternate_outlined))

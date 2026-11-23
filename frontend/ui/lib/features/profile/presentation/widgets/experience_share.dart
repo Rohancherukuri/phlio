@@ -1027,7 +1027,7 @@ class _ExperienceViewerState extends ConsumerState<ExperienceViewer> {
           ListTile(
             leading: CircleAvatar(
               backgroundColor: PhlioColors.surfaceElevated,
-              backgroundImage: avatar == null || avatar.isEmpty ? null : NetworkImage(AppConfig.mediaUrl(avatar)),
+              backgroundImage: avatar == null || avatar.isEmpty ? null : phlioImageProvider(AppConfig.mediaUrl(avatar)),
               child: avatar == null || avatar.isEmpty
                   ? Text('${author['display_name'] ?? author['username'] ?? '?'}'.characters.first.toUpperCase())
                   : null,

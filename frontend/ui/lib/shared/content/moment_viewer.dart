@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../../app/config/app_config.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'content_surface.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 class MomentViewer extends ConsumerStatefulWidget {
   const MomentViewer({super.key, required this.authorId});
@@ -137,7 +138,7 @@ class _MomentMediaState extends State<_MomentMedia>
     final url = widget.item['media_url'] as String?;
     if (url == null || url.isEmpty) return;
     final p =
-        VideoPlayerController.networkUrl(Uri.parse(AppConfig.mediaUrl(url)));
+        PhlioMediaCache.shortVideo(AppConfig.mediaUrl(url));
     player = p;
     try {
       await p.initialize();

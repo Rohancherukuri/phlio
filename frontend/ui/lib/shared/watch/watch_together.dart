@@ -31,6 +31,7 @@ import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/colors.dart';
 import '../../design_system/widgets/phlio_card.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Where the party lives: `dm/<username>`, `call/<callId>` or `room/<roomId>`.
 class WatchCtx {
@@ -224,7 +225,7 @@ class _PickTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             child: Stack(fit: StackFit.expand, children: [
               if (image.isNotEmpty)
-                CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, errorWidget: (_, __, ___) => _fallback(icon))
+                CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: image, fit: BoxFit.cover, errorWidget: (_, __, ___) => _fallback(icon))
               else
                 _fallback(icon),
               Positioned(
@@ -509,7 +510,7 @@ class _Poster extends StatelessWidget {
   Widget build(BuildContext context) {
     final image = _media(item['image_url'] as String?);
     return Stack(fit: StackFit.expand, children: [
-      if (image.isNotEmpty) CachedNetworkImage(imageUrl: image, fit: music ? BoxFit.cover : BoxFit.contain),
+      if (image.isNotEmpty) CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: image, fit: music ? BoxFit.cover : BoxFit.contain),
       DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(

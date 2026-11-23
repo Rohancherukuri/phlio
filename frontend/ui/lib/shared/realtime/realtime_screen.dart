@@ -9,6 +9,7 @@ import 'package:livekit_client/livekit_client.dart' as lk;
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../watch/watch_together.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 Future<void> openRealtime(BuildContext context,
         {required String endpoint,
@@ -744,7 +745,7 @@ class _SocialLiveScreenState extends State<SocialLiveScreen> {
                                                             if (item[
                                                                     'thumbnail_url'] !=
                                                                 null)
-                                                              Image.network(
+                                                              phlioNetworkImage(
                                                                   AppConfig
                                                                       .mediaUrl(
                                                                           item[

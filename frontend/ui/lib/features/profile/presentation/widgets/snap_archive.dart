@@ -26,6 +26,7 @@ import '../../../../design_system/colors.dart';
 import '../../../../shared/content/memory_photo.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import 'memories_screen.dart' show memoriesProvider;
+import 'package:phlio/core/network/media_cache.dart';
 
 const _months = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -375,7 +376,7 @@ class _ReactionRow extends StatelessWidget {
       leading: CircleAvatar(
         radius: 22,
         backgroundColor: PhlioColors.surfaceElevated,
-        backgroundImage: avatar == null || avatar.isEmpty ? null : NetworkImage(AppConfig.mediaUrl(avatar)),
+        backgroundImage: avatar == null || avatar.isEmpty ? null : phlioImageProvider(AppConfig.mediaUrl(avatar)),
         child: avatar == null || avatar.isEmpty
             ? Text(name.isEmpty ? '?' : name[0].toUpperCase(), style: const TextStyle(color: Colors.white))
             : null,

@@ -16,6 +16,7 @@ import '../../app/config/app_config.dart';
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import 'content_surface.dart' show ContentDetailScreen;
+import 'package:phlio/core/network/media_cache.dart';
 
 Future<List<Map<String, dynamic>>> _items(String path, [Map<String, dynamic>? query]) async {
   final res = await getIt<ApiClient>().dio.get<dynamic>(path, queryParameters: query);
@@ -57,7 +58,7 @@ class _SimilarCard extends StatelessWidget {
               height: 180,
               child: image == null
                   ? placeholder
-                  : CachedNetworkImage(
+                  : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                       imageUrl: AppConfig.mediaUrl(image),
                       fit: BoxFit.cover,
                       memCacheWidth: (130 * MediaQuery.devicePixelRatioOf(context)).round(),

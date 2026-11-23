@@ -22,6 +22,7 @@ import '../../core/network/api_client.dart';
 import '../../design_system/colors.dart';
 import '../../design_system/widgets/phlio_card.dart';
 import '../content/mentions.dart' show searchMentionPeople;
+import 'package:phlio/core/network/media_cache.dart';
 
 final _dio = getIt<ApiClient>().dio;
 
@@ -351,7 +352,7 @@ class _BlendTile extends StatelessWidget {
         onTap: () => context.push('/shared/social/${Uri.encodeComponent('${item['ref']}')}'),
         child: Stack(fit: StackFit.expand, children: [
           if (image != null && image.isNotEmpty)
-            CachedNetworkImage(imageUrl: AppConfig.mediaUrl(image), fit: BoxFit.cover)
+            CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(image), fit: BoxFit.cover)
           else
             DecoratedBox(
               decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF2A2350), Color(0xFF13182A)])),

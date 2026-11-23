@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     # so state must not live there. Same endpoint and keys as the media bucket.
     object_store_state_bucket: str = ""
     media_public_url: str = ""
+    # How /media files that live in the bucket reach phones: "proxy" streams
+    # them through the API (works on every network; some mobile carriers
+    # block *.r2.dev), "redirect" sends a 307 to media_public_url (lighter
+    # on the API; use with a custom bucket domain).
+    media_delivery: str = "proxy"
     # Push notifications through OneSignal (app/infrastructure/onesignal.py).
     # Both empty = push off; in-app notifications still work.
     onesignal_app_id: str = ""

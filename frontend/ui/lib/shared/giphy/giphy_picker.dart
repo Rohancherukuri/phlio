@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/widgets/foxy_stickers.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 const giphyApiKey = String.fromEnvironment('GIPHY_API_KEY');
 Future<String> resolveGiphyKey() async {
@@ -280,7 +281,7 @@ class _PickerState extends State<GiphyPicker> {
                                                     8)))
                                     : ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
-                                    child: Image.network(items[i].url,
+                                    child: phlioNetworkImage(items[i].url,
                                         fit: kind == 'gif'
                                             ? BoxFit.cover
                                             : BoxFit.contain,
@@ -365,7 +366,7 @@ class _ReferenceState extends State<GiphyReferenceView> {
       builder: (_, state) => state.hasError
           ? const Center(child: Text('GIPHY unavailable'))
           : state.hasData
-              ? Image.network(state.data!,
+              ? phlioNetworkImage(state.data!,
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) =>
                       const Icon(Icons.broken_image_outlined))

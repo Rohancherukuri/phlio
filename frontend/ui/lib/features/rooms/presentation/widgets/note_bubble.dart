@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../../../design_system/colors.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// The bubble's default (uncoloured) fill.
 const kNoteBubbleColor = Color(0xFF262A33);
@@ -129,7 +130,7 @@ class NoteBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: CachedNetworkImage(imageUrl: '${gif['url']}', height: large ? 72 : 36, fit: BoxFit.cover),
+            child: CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: '${gif['url']}', height: large ? 72 : 36, fit: BoxFit.cover),
           ),
         ),
       if (child != null)

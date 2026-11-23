@@ -21,6 +21,7 @@ import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../../domain/entities/post_entity.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 class PostCard extends ConsumerWidget {
   const PostCard({
@@ -90,7 +91,7 @@ class PostCard extends ConsumerWidget {
               child: media.kind == MediaKind.image
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(AppConfig.mediaUrl(media.url),
+                      child: phlioNetworkImage(AppConfig.mediaUrl(media.url),
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) =>
                               const Text('Image unavailable')))
@@ -100,7 +101,7 @@ class PostCard extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(12),
                           child: Stack(fit: StackFit.expand, children: [
                             if (media.thumbnailUrl != null)
-                              Image.network(
+                              phlioNetworkImage(
                                   AppConfig.mediaUrl(media.thumbnailUrl!),
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) =>

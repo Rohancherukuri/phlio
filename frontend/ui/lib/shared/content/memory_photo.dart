@@ -15,6 +15,7 @@ import '../../features/authentication/presentation/controllers/auth_controller.d
 import '../media/phlio_look_data.dart';
 import '../media/phlio_look_view.dart';
 import '../media/story_fx_view.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final privatePhotoProvider =
     FutureProvider.autoDispose.family<Uint8List, String>((ref, path) async {
@@ -78,7 +79,7 @@ class MemoryPhoto extends ConsumerWidget {
   Widget _photo(BuildContext context, WidgetRef ref) {
     if (isVideo) return _MemoryVideo(url, fit: fit, autoplay: autoplay);
     if (!url.startsWith('/social/memories/'))
-      return Image.network(AppConfig.mediaUrl(url),
+      return phlioNetworkImage(AppConfig.mediaUrl(url),
           fit: fit,
           errorBuilder: (_, __, ___) =>
               const Icon(Icons.broken_image_outlined));

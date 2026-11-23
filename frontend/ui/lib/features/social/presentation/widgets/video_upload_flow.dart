@@ -33,6 +33,7 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../controllers/video_library.dart';
 import 'memberships.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Entry point used by the Create sheet ("New video" / "New clip").
 Future<void> openVideoUpload(BuildContext context, {String kind = 'video'}) =>
@@ -65,7 +66,7 @@ String _clock(Duration d) {
 bool get _galleryAvailable =>
     !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 
-const _sheetColor = Color(0xFF1C1F24);
+const _sheetColor = PhlioColors.surface;
 
 // =============================================================================
 // 1. Upload from gallery
@@ -1065,7 +1066,7 @@ class _UploadDetailsScreenState extends ConsumerState<UploadDetailsScreen> {
                               height: 44,
                               child: video.thumbnailUrl == null
                                   ? const ColoredBox(color: Colors.white10)
-                                  : Image.network(
+                                  : phlioNetworkImage(
                                       AppConfig.mediaUrl(video.thumbnailUrl!),
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) =>

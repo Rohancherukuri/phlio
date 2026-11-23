@@ -269,7 +269,7 @@ Future<void> showPaymentDetails(BuildContext context, {required ChatPayment paym
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF141A24),
+    backgroundColor: PhlioColors.surface,
     showDragHandle: true,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (_) => _PaymentDetails(payment: payment, mine: mine),

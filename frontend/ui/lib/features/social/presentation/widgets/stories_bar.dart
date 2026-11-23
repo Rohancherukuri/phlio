@@ -24,6 +24,7 @@ import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 String storyDisplayName(WidgetRef ref, String id) {
   for (final group in ref.watch(momentFeedProvider).valueOrNull ?? const []) {
@@ -208,7 +209,7 @@ class StoriesHeaderStack extends ConsumerWidget {
                 onTap: () => _openCreator(context, ref, visible[i].name),
                 size: avatarSize,
                 child: ClipOval(
-                  child: Image.network(
+                  child: phlioNetworkImage(
                     AppConfig.mediaUrl(visible[i].avatarAsset),
                     width: avatarSize - 7,
                     height: avatarSize - 7,
@@ -266,7 +267,7 @@ Widget _ringedAvatar(
     size: size,
     userId: user.name,
     child: ClipOval(
-      child: Image.network(
+      child: phlioNetworkImage(
         AppConfig.mediaUrl(user.avatarAsset),
         width: size - 7,
         height: size - 7,

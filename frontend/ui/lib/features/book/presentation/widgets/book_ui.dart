@@ -20,6 +20,7 @@ import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../shared/content/content_surface.dart';
 import '../../domain/entities/book_entities.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// A Phlio Book vertical: a tile on the hub and a list page.
 class BookVertical {
@@ -113,7 +114,7 @@ class BookImage extends StatelessWidget {
     );
     final child = url == null || url!.isEmpty
         ? fallback
-        : CachedNetworkImage(
+        : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
             imageUrl: AppConfig.mediaUrl(url!),
             fit: fit ?? BoxFit.cover,
             fadeInDuration: const Duration(milliseconds: 150),

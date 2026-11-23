@@ -13,6 +13,7 @@ import '../../../social/presentation/controllers/video_library.dart';
 import '../../../social/presentation/controllers/video_playback_controller.dart';
 import '../../../social/presentation/widgets/social_clips_grid.dart';
 import '../../../social/presentation/widgets/social_videos_view.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final publicProfileProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, id) async {
@@ -190,7 +191,7 @@ class ProfilePosts extends ConsumerWidget {
                           child: media.kind == MediaKind.image
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
-                                  child: Image.network(
+                                  child: phlioNetworkImage(
                                       AppConfig.mediaUrl(media.url),
                                       width: double.infinity,
                                       fit: BoxFit.contain,

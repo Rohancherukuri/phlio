@@ -23,7 +23,7 @@ media/open_long/ so publish_local_data uploads them to R2. Rows go to the
 social-videos SQLite and the graph (SurrealDB), so they publish too.
 
 Idempotent: rerunning skips finished videos. --reset removes them.
-Run: uv run python -m scripts.import_open_long_videos [--reset] [--max 40]
+Run: uv run python -m scripts.import_open_long_videos [--reset] [--max 80]
 """
 from __future__ import annotations
 
@@ -87,8 +87,33 @@ TOPICS = [
     ("food", "cooking recipe", ["food", "cooking", "recipe"]),
     ("science", "science experiment demonstration", ["science", "experiment", "learn"]),
     ("history", "historical film archive", ["history", "archive", "vintage"]),
+    ("space", "Mars rover NASA", ["space", "mars", "nasa", "science"]),
+    ("space", "solar eclipse", ["space", "eclipse", "sky"]),
+    ("nature", "waterfall forest", ["nature", "waterfall", "forest", "calm"]),
+    ("nature", "mountains snow landscape", ["nature", "mountains", "snow"]),
+    ("nature", "butterfly insects macro", ["nature", "macro", "insects"]),
+    ("ocean", "dolphins sea", ["ocean", "dolphins", "marine"]),
+    ("ocean", "surfing waves beach", ["ocean", "surf", "beach", "sports"]),
+    ("city", "street life market", ["city", "street", "market"]),
+    ("city", "skyline aerial city", ["city", "skyline", "aerial"]),
+    ("travel", "temple heritage site", ["travel", "heritage", "culture"]),
+    ("travel", "desert road trip", ["travel", "desert", "roadtrip"]),
+    ("earth", "thunderstorm lightning", ["earth", "storm", "weather"]),
+    ("earth", "glacier ice", ["earth", "glacier", "climate"]),
+    ("music", "jazz band live", ["music", "jazz", "live"]),
+    ("music", "classical piano performance", ["music", "piano", "classical"]),
+    ("food", "street food", ["food", "streetfood", "travel"]),
+    ("food", "baking bread", ["food", "baking", "recipe"]),
+    ("science", "chemistry reaction", ["science", "chemistry", "learn"]),
+    ("science", "robot engineering", ["science", "robots", "tech"]),
+    ("sports", "football match", ["sports", "football", "match"]),
+    ("sports", "cycling race", ["sports", "cycling", "race"]),
+    ("sports", "athletics running", ["sports", "running", "athletics"]),
+    ("art", "painting timelapse artist", ["art", "painting", "timelapse"]),
+    ("art", "dance performance", ["art", "dance", "performance"]),
+    ("history", "steam locomotive", ["history", "trains", "vintage"]),
 ]
-BEATS = ["film", "space", "nature", "ocean", "city", "travel", "earth", "music", "food", "science", "history"]
+BEATS = ["film", "space", "nature", "ocean", "city", "travel", "earth", "music", "food", "science", "history", "sports", "art"]
 EXTRA_TAGS = ["fyp", "longform", "watchlater", "creativecommons", "documentary", "4you", "phlio"]
 
 
@@ -385,6 +410,6 @@ async def main(do_reset: bool, limit: int) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", action="store_true", help="remove these videos and their activity first")
-    parser.add_argument("--max", type=int, default=30, help="Wikimedia Commons videos to add (on top of 9 film chapters)")
+    parser.add_argument("--max", type=int, default=80, help="Wikimedia Commons videos to add (on top of 9 film chapters)")
     args = parser.parse_args()
     asyncio.run(main(args.reset, args.max))

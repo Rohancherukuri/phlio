@@ -8,6 +8,7 @@ import '../../../../app/config/app_config.dart';
 import '../../domain/entities/product_entity.dart';
 import '../../data/models/product_model.dart';
 import '../controllers/cart_controller.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 Future<void> showShopCart(BuildContext context) => showModalBottomSheet<void>(
     context: context,
@@ -187,7 +188,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
               height: 72,
               child: p.imageUrls.isEmpty
                   ? const Icon(Icons.shopping_bag_outlined)
-                  : Image.network(AppConfig.mediaUrl(p.imageUrls.first),
+                  : phlioNetworkImage(AppConfig.mediaUrl(p.imageUrls.first),
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) =>
                           const Icon(Icons.broken_image_outlined))),
@@ -235,7 +236,7 @@ Future<void> showShopProduct(
               top: false,
               child: ListView(padding: const EdgeInsets.all(20), children: [
                 if (product.imageUrls.isNotEmpty)
-                  Image.network(AppConfig.mediaUrl(product.imageUrls.first),
+                  phlioNetworkImage(AppConfig.mediaUrl(product.imageUrls.first),
                       height: 240,
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => const SizedBox(

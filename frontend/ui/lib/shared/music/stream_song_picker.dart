@@ -10,6 +10,7 @@ import '../../design_system/colors.dart';
 import '../../design_system/typography.dart';
 import '../content/content_surface.dart' show catalogProvider;
 import '../content/stream_screen.dart' show streamCategory;
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Returns `{title, artist, url, image_url, ref}` or null.
 Future<Map<String, dynamic>?> showStreamSongPicker(BuildContext context) =>
@@ -126,7 +127,7 @@ class _StreamSongPickerState extends ConsumerState<_StreamSongPicker> {
                                       ? const ColoredBox(
                                           color: PhlioColors.surfaceElevated,
                                           child: Icon(Icons.music_note_rounded))
-                                      : Image.network(AppConfig.mediaUrl(art),
+                                      : phlioNetworkImage(AppConfig.mediaUrl(art),
                                           fit: BoxFit.cover,
                                           errorBuilder: (_, __, ___) =>
                                               const Icon(

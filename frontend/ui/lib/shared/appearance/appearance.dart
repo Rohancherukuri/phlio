@@ -28,6 +28,7 @@ import '../../features/authentication/presentation/controllers/auth_controller.d
 import '../moments/templates/template_canvas.dart';
 import '../moments/templates/template_model.dart';
 import 'themes.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Animated effects (index = uEffect in the shader).
 enum AppearanceEffect {
@@ -454,7 +455,7 @@ class AppearanceBackdrop extends StatelessWidget {
             animate: animate,
           ),
         if (a.wallpaper == WallpaperType.photo && a.photoUrl != null)
-          Image.network(
+          phlioNetworkImage(
             AppConfig.mediaUrl(a.photoUrl!),
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => const SizedBox.shrink(),

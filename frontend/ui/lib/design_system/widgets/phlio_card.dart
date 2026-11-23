@@ -15,6 +15,7 @@ import '../radii.dart';
 import '../spacing.dart';
 import '../typography.dart';
 import '../../shared/moments/moments.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 class PhlioCard extends StatelessWidget {
   const PhlioCard({
@@ -139,7 +140,7 @@ class PhlioAvatar extends StatelessWidget {
       return Builder(builder: (context) {
         final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
         return ClipOval(
-          child: CachedNetworkImage(
+          child: CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
             imageUrl: AppConfig.mediaUrl(imageUrl!),
             width: size,
             height: size,

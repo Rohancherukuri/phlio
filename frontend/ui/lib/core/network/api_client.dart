@@ -25,6 +25,7 @@ import '../../app/config/app_config.dart';
 import '../logging/app_logger.dart';
 import '../storage/token_storage.dart';
 import 'response_cache.dart';
+import 'media_cache.dart';
 
 final _logger = createLogger('phlio.api');
 
@@ -77,6 +78,9 @@ class ApiClient {
     cache = ResponseCache(dio, session: () => _tokenStorage.accessToken);
     dio.interceptors.add(cache);
     _tokenStorage.addClearListener(cache.clear);
+    // Saved images and clips can include private media (DM photos, members-
+    // only clips): wipe them on sign-out too.
+    _tokenStorage.addClearListener(PhlioMediaCache.clear);
     dio.interceptors.add(
       InterceptorsWrapper(onRequest: _onRequest, onError: _onError),
     );

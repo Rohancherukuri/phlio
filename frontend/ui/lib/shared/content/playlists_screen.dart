@@ -6,6 +6,7 @@ import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import 'content_surface.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final playlistsProvider =
     FutureProvider.autoDispose.family<List, String>((ref, platform) async {
@@ -281,7 +282,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           : SizedBox(
               width: 48,
               height: 48,
-              child: Image.network(
+              child: phlioNetworkImage(
                   AppConfig.mediaUrl(row['image_url'] as String),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>

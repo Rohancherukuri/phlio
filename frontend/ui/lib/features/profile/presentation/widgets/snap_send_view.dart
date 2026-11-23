@@ -39,6 +39,7 @@ import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart' show askText, pickMomentSong;
 import 'snap_audience.dart';
 import 'snap_decorations.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// The swipeable pill under the photo: one quick add per page.
 const _pills = <(String, IconData?, String)>[
@@ -377,7 +378,7 @@ class _SnapSendViewState extends State<SnapSendView> {
       color: const Color(0xFF3A3A3C),
       child: url == null || url.isEmpty
           ? Center(child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)))
-          : Image.network(AppConfig.mediaUrl(url), fit: BoxFit.cover,
+          : phlioNetworkImage(AppConfig.mediaUrl(url), fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Center(child: Text(initials, style: const TextStyle(color: Colors.white)))),
     );
   }
@@ -793,7 +794,7 @@ class _ListEditorState extends State<_ListEditor> {
                         secondary: CircleAvatar(
                           backgroundColor: const Color(0xFF3A3A3C),
                           backgroundImage: (p['avatar_url'] as String?)?.isNotEmpty == true
-                              ? NetworkImage(AppConfig.mediaUrl(p['avatar_url'] as String))
+                              ? phlioImageProvider(AppConfig.mediaUrl(p['avatar_url'] as String))
                               : null,
                         ),
                       ),

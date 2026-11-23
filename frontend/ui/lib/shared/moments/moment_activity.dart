@@ -24,7 +24,7 @@ import '../content/content_surface.dart' show showEndpointShare;
 import '../content/mentions.dart';
 import 'package:flutter/services.dart';
 
-const _sheetColor = Color(0xFF15181E);
+const _sheetColor = PhlioColors.surface;
 
 String _momentId(Map item) {
   final id = '${item['id']}';
@@ -309,7 +309,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     final mine = c['mine'] == true;
     final action = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF1C2028),
+      backgroundColor: PhlioColors.surface,
       showDragHandle: true,
       builder: (sheet) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [

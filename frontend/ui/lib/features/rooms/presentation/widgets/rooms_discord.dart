@@ -22,6 +22,7 @@ import '../../../../app/config/app_config.dart';
 import '../../../../design_system/colors.dart';
 import '../../../../design_system/typography.dart';
 import '../../domain/entities/room_entity.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// One of the Rooms SVG glyphs, tinted.
 class RoomGlyph extends StatelessWidget {
@@ -161,7 +162,7 @@ class RoomAvatar extends StatelessWidget {
       decoration: BoxDecoration(borderRadius: radius),
       child: url == null || url.isEmpty
           ? fallback
-          : CachedNetworkImage(
+          : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
               imageUrl: AppConfig.mediaUrl(url),
               fit: BoxFit.cover,
               memCacheWidth: px,
@@ -201,7 +202,7 @@ class RoomBanner extends StatelessWidget {
       width: double.infinity,
       child: url == null || url.isEmpty
           ? wash
-          : CachedNetworkImage(
+          : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
               imageUrl: AppConfig.mediaUrl(url),
               fit: BoxFit.cover,
               fadeInDuration: const Duration(milliseconds: 150),

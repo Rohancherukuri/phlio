@@ -7,6 +7,7 @@ import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../content/content_surface.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final newsFeedProvider =
     FutureProvider.autoDispose.family<Map, String>((ref, filter) async {
@@ -224,7 +225,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                                                                     borderRadius:
                                                                         BorderRadius.circular(
                                                                             12),
-                                                                    child: Image.network(
+                                                                    child: phlioNetworkImage(
                                                                         article['image_url']
                                                                             as String,
                                                                         width:

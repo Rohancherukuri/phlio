@@ -13,6 +13,7 @@ import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../controllers/feed_controller.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 class PostComposer extends ConsumerStatefulWidget {
   const PostComposer({super.key});
@@ -286,7 +287,7 @@ class _PostComposerState extends ConsumerState<PostComposer> {
                       onPressed: busy ? null : () => choiceImage(i),
                       icon: choices[i]['image_url'] == null
                           ? const Icon(Icons.image_outlined, color: accent)
-                          : Image.network(
+                          : phlioNetworkImage(
                               AppConfig.mediaUrl(
                                   choices[i]['image_url'] as String),
                               width: 28,
@@ -546,7 +547,7 @@ class _PostComposerState extends ConsumerState<PostComposer> {
                                               child: ClipRRect(
                                                   borderRadius:
                                                       BorderRadius.circular(16),
-                                                  child: Image.network(
+                                                  child: phlioNetworkImage(
                                                       AppConfig.mediaUrl(
                                                           item['url']
                                                               as String),

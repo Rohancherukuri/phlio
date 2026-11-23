@@ -36,6 +36,7 @@ import '../../avatar/avatar_builder.dart';
 import '../../avatar/avatar_figure.dart';
 import 'sticker_model.dart';
 import 'sticker_views.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 const _violet = PhlioColors.brandViolet;
 const _pink = PhlioColors.brandPink;
@@ -678,7 +679,7 @@ class _SongSheetState extends ConsumerState<_SongSheet> {
               height: 46,
               child: t.artUrl == null
                   ? const DecoratedBox(decoration: BoxDecoration(gradient: _brand), child: Icon(Icons.music_note_rounded, color: Colors.white))
-                  : CachedNetworkImage(imageUrl: AppConfig.mediaUrl(t.artUrl!), fit: BoxFit.cover),
+                  : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(t.artUrl!), fit: BoxFit.cover),
             ),
           ),
           title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
@@ -887,7 +888,7 @@ class _GiphyShelfState extends State<_GiphyShelf> {
                 borderRadius: BorderRadius.circular(12),
                 child: ColoredBox(
                   color: _kind == 'gifs' ? PhlioColors.surfaceElevated : Colors.transparent,
-                  child: Image.network(
+                  child: phlioNetworkImage(
                     r.preview,
                     fit: _kind == 'gifs' ? BoxFit.cover : BoxFit.contain,
                     gaplessPlayback: true,

@@ -17,6 +17,7 @@ import '../../../../shared/content/stream_screen.dart' show streamCategory;
 import '../../../../shared/music/song_picker.dart';
 import 'note_music_picker.dart' show pickSongFile, kSpotifyGreen;
 import 'note_song_trimmer.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Songs you bookmarked in the picker (this session).
 final savedNoteSongsProvider = StateProvider<Map<String, Map<String, dynamic>>>((ref) => const {});
@@ -26,7 +27,7 @@ Future<Map<String, dynamic>?> showNoteSongPicker(BuildContext context) => showMo
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: const Color(0xFF1C1F26),
+      backgroundColor: PhlioColors.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (_) => const _NoteSongPicker(),
     );
@@ -157,7 +158,7 @@ class _NoteSongPickerState extends ConsumerState<_NoteSongPicker> {
               dimension: 54,
               child: art == null || art.isEmpty
                   ? const ColoredBox(color: PhlioColors.surfaceElevated, child: Icon(Icons.music_note_rounded))
-                  : CachedNetworkImage(imageUrl: AppConfig.mediaUrl(art), fit: BoxFit.cover),
+                  : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(art), fit: BoxFit.cover),
             ),
           ),
           const SizedBox(width: 14),
@@ -347,7 +348,7 @@ class _MiniPlayer extends StatelessWidget {
               dimension: 46,
               child: art == null || art.isEmpty
                   ? const ColoredBox(color: Colors.black26, child: Icon(Icons.music_note_rounded))
-                  : CachedNetworkImage(imageUrl: AppConfig.mediaUrl(art), fit: BoxFit.cover),
+                  : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(art), fit: BoxFit.cover),
             ),
           ),
           const SizedBox(width: 12),

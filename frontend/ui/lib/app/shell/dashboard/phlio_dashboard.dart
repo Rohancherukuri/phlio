@@ -35,6 +35,7 @@ import '../../../design_system/colors.dart';
 import '../../../shared/notifications/notification_center.dart' show NotifPlatform;
 import '../../../shared/pay/phlio_currency.dart';
 import '../../config/app_config.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final phlioDashboardProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, int>((ref, days) async {
   final res = await getIt<ApiClient>().dio.get('/profile/dashboard', queryParameters: {'days': days});
@@ -68,17 +69,13 @@ Color _partner(Color c) => HSLColor.fromColor(c).withHue((HSLColor.fromColor(c).
 
 const _cardRadius = 22.0;
 
-BoxDecoration _card([Color? glow]) => BoxDecoration(
+/// Flat card: solid surface and a hairline border. [accent] is accepted for
+/// call-site compatibility but no longer tints or glows the card; colour
+/// lives in the content (icons, charts, numbers), not behind it.
+BoxDecoration _card([Color? accent]) => BoxDecoration(
       color: PhlioColors.surface,
       borderRadius: BorderRadius.circular(_cardRadius),
       border: Border.all(color: Colors.white.withValues(alpha: .06)),
-      gradient: glow == null
-          ? null
-          : LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [glow.withValues(alpha: .16), PhlioColors.surface, PhlioColors.surface],
-            ),
     );
 
 String fmtValue(num value, String format, PhlioCurrency currency, {bool compact = false}) {
@@ -212,7 +209,6 @@ class DashboardTabs extends StatelessWidget {
                   gradient: on ? s.gradient : null,
                   color: on ? null : Colors.white.withValues(alpha: .06),
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: on ? [BoxShadow(color: s.color.withValues(alpha: .35), blurRadius: 14, offset: const Offset(0, 4))] : null,
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(s.icon, size: 16, color: on ? Colors.white : s.color),
@@ -1620,7 +1616,7 @@ class _TopList extends StatelessWidget {
                   width: 44,
                   height: 44,
                   child: x['image_url'] != null && '${x['image_url']}'.isNotEmpty
-                      ? CachedNetworkImage(
+                      ? CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                           imageUrl: AppConfig.mediaUrl('${x['image_url']}'),
                           fit: BoxFit.cover,
                           errorWidget: (_, __, ___) => _initial(x),

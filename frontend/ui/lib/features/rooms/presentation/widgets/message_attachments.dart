@@ -24,6 +24,7 @@ import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/foxy_pack.dart';
 import '../../domain/entities/room_message_entity.dart';
 import 'attachment_preview.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Renders the attachments of one message, with the reaction overlay row
 /// docked on the last card. `onReact` toggles a reaction; `reactions`
@@ -165,7 +166,7 @@ class _ImagePreviewCard extends StatelessWidget {
 
   Widget _networkImage(double w, double h) {
     final url = AppConfig.mediaUrl(attachment.url);
-    return Image.network(
+    return phlioNetworkImage(
       url,
       width: w,
       height: h,
@@ -228,7 +229,7 @@ class _ImageLightbox extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget hero = attachment.localPath != null
         ? Image.file(File(attachment.localPath!), fit: BoxFit.contain)
-        : Image.network(
+        : phlioNetworkImage(
             AppConfig.mediaUrl(attachment.url),
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => const Padding(

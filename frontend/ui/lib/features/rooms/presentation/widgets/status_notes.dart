@@ -35,6 +35,7 @@ import 'note_bubble.dart';
 import 'note_bubble_editor.dart';
 import 'note_music_picker.dart';
 import 'note_place_picker.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// `(mine, items)` from the server; refreshed when the inbox refreshes.
 final statusNotesProvider = FutureProvider.autoDispose<(Map?, List<Map>)>((ref) async {
@@ -280,7 +281,7 @@ class _NoteSheetState extends ConsumerState<_NoteSheet> {
               leading: music['image_url'] != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
+                      child: CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                           imageUrl: AppConfig.mediaUrl('${music['image_url']}'), width: 44, height: 44, fit: BoxFit.cover))
                   : const Icon(Icons.music_note_rounded),
               title: Text('${music['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),

@@ -20,6 +20,7 @@ import 'music_player.dart';
 import 'music_ui.dart';
 import 'open_music_api.dart' show openAudiusArtist;
 import 'phlio_code_sheet.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Slides the now-playing screen up from the bottom.
 Future<void> openNowPlaying(BuildContext context) => Navigator.of(context).push(PageRouteBuilder(
@@ -535,7 +536,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> with Single
           if (t.artUrl != null)
             ImageFiltered(
               imageFilter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40, tileMode: TileMode.mirror),
-              child: CachedNetworkImage(imageUrl: AppConfig.mediaUrl(t.artUrl!), fit: BoxFit.cover),
+              child: CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(t.artUrl!), fit: BoxFit.cover),
             )
           else
             RetroGlow(colors: c, energy: energy),

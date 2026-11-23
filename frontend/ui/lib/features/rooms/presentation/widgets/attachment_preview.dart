@@ -17,6 +17,7 @@ import '../../../../app/config/app_config.dart';
 import '../../../../design_system/colors.dart';
 import '../../../../design_system/widgets/foxy_pack.dart';
 import '../../domain/entities/room_message_entity.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// Preview budgets keep multi-GB uploads out of decoders and memory.
 abstract final class AttachmentPreviewPolicy {
@@ -268,7 +269,7 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
             errorBuilder: (_, __, ___) => _placeholder(
                 Icons.image_not_supported_outlined, 'Preview unavailable'));
       if (widget.loadPrivateFile != null) return _loadButton();
-      return Image.network(AppConfig.mediaUrl(a.url),
+      return phlioNetworkImage(AppConfig.mediaUrl(a.url),
           fit: BoxFit.cover,
           cacheWidth: 800,
           errorBuilder: (_, __, ___) => _placeholder(
@@ -396,7 +397,7 @@ class _AttachmentPreviewState extends State<AttachmentPreview> {
           child: Center(
               child: _path != null
                   ? Image.file(File(_path!), fit: BoxFit.contain)
-                  : Image.network(AppConfig.mediaUrl(a.url),
+                  : phlioNetworkImage(AppConfig.mediaUrl(a.url),
                       fit: BoxFit.contain)));
     } else {
       content = Center(child: Text('No readable preview for ${a.name}.'));

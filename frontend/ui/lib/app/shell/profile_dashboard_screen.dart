@@ -30,6 +30,7 @@ import '../config/app_config.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
 import 'dashboard/phlio_dashboard.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 // -- Data ---------------------------------------------------------------------------------
 
@@ -1026,7 +1027,7 @@ class _TopContent extends StatelessWidget {
               ),
               child: Stack(fit: StackFit.expand, children: [
                 if (image != null)
-                  Image.network(AppConfig.mediaUrl(image),
+                  phlioNetworkImage(AppConfig.mediaUrl(image),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const SizedBox.shrink())
                 else

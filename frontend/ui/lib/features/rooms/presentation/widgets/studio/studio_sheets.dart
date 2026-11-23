@@ -18,7 +18,7 @@ import 'studio_model.dart';
 import 'studio_panels.dart';
 
 const _card = Color(0xFF1C2433);
-const _sheet = Color(0xFF111722);
+const _sheet = PhlioColors.surface;
 
 // -- small shared pieces ---------------------------------------------------------------
 

@@ -41,6 +41,7 @@ import 'template_catalog.dart';
 import 'template_media.dart';
 import 'template_model.dart';
 import 'template_store.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 const _brand = LinearGradient(colors: [PhlioColors.brandViolet, PhlioColors.brandPink, PhlioColors.brandPeach]);
 
@@ -502,7 +503,7 @@ class _Joined extends StatelessWidget {
             child: CircleAvatar(
               radius: 13,
               backgroundColor: const Color(0xFFE6E4EF),
-              backgroundImage: p['avatar_url'] is String ? NetworkImage(AppConfig.mediaUrl(p['avatar_url'] as String)) : null,
+              backgroundImage: p['avatar_url'] is String ? phlioImageProvider(AppConfig.mediaUrl(p['avatar_url'] as String)) : null,
               child: p['avatar_url'] is String
                   ? null
                   : Text('${p['display_name'] ?? '?'}'.characters.first,
@@ -536,7 +537,7 @@ class _CommunityCard extends StatelessWidget {
           child: SizedBox(
             width: 200,
             child: Stack(fit: StackFit.expand, children: [
-              Image.network(AppConfig.mediaUrl(prompt.coverUrl!), fit: BoxFit.cover,
+              phlioNetworkImage(AppConfig.mediaUrl(prompt.coverUrl!), fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: _brand))),
               const DecoratedBox(
                 decoration: BoxDecoration(
@@ -941,7 +942,7 @@ class _MomentTemplateEditorState extends State<MomentTemplateEditor> {
   /// Null means stay in the editor.
   Future<String?> _askFillFrames(int count) => showModalBottomSheet<String>(
         context: context,
-        backgroundColor: const Color(0xFF151A23),
+        backgroundColor: PhlioColors.surface,
         showDragHandle: true,
         builder: (sheet) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [

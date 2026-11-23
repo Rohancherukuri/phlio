@@ -32,6 +32,7 @@ import '../../features/social/presentation/widgets/social_clips_grid.dart'
     show openClipsPlayer;
 import '../../app/platform/phlio_platform.dart' show PhlioPlatform;
 import '../../app/shell/platform_home_screen.dart' show switchPlatform;
+import 'package:phlio/core/network/media_cache.dart';
 
 final engagementProvider =
     FutureProvider.autoDispose.family<Map, String>((ref, path) async {
@@ -1647,7 +1648,7 @@ class SharedContentCard extends ConsumerWidget {
                       AspectRatio(
                         aspectRatio: kind == 'clip' ? 4 / 5 : 1,
                         child: Stack(fit: StackFit.expand, children: [
-                          Image.network(AppConfig.mediaUrl(image),
+                          phlioNetworkImage(AppConfig.mediaUrl(image),
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) =>
                                   const ColoredBox(color: Color(0xFF1B1E23))),
@@ -1735,7 +1736,7 @@ class ContentDetailScreen extends ConsumerWidget {
                 if (item['image_url'] != null)
                   ClipRRect(
                       borderRadius: BorderRadius.circular(18),
-                      child: Image.network(
+                      child: phlioNetworkImage(
                           AppConfig.mediaUrl(item['image_url'] as String),
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) =>
@@ -1944,7 +1945,7 @@ class PlatformCatalogScreen extends ConsumerWidget {
                                       if (item['image_url'] != null)
                                         AspectRatio(
                                             aspectRatio: 16 / 9,
-                                            child: Image.network(
+                                            child: phlioNetworkImage(
                                                 AppConfig.mediaUrl(
                                                     item['image_url']
                                                         as String),
@@ -2304,7 +2305,7 @@ class ContentLibraryGrid extends ConsumerWidget {
                         context, ref, '${item['platform']}/${item['ref']}'),
                     child: Stack(fit: StackFit.expand, children: [
                       if (image != null && image.isNotEmpty)
-                        Image.network(AppConfig.mediaUrl(image),
+                        phlioNetworkImage(AppConfig.mediaUrl(image),
                             fit: BoxFit.cover,
                             cacheWidth: 360,
                             errorBuilder: (_, __, ___) =>

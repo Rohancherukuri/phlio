@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../app/config/app_config.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 /// A frame from the video's API metadata. Failed loads never masquerade as
 /// generic cover art, and can be retried without restarting the application.
@@ -25,7 +26,7 @@ class _VideoThumbnailState extends State<VideoThumbnail> {
             ...source.queryParameters,
             'retry': '$retry',
           }).toString();
-    return Image.network(
+    return phlioNetworkImage(
       url,
       key: ValueKey(url),
       fit: widget.fit,

@@ -14,6 +14,7 @@ import '../../features/stream/music/music_home.dart';
 import '../../features/stream/music/music_library.dart' show trackFromStreamItem;
 import '../../features/stream/music/music_player.dart';
 import '../../features/stream/music/now_playing.dart' show openNowPlaying;
+import 'package:phlio/core/network/media_cache.dart';
 
 String streamCategory(Map item) {
   final kind = '${item['kind'] ?? ''} ${item['category'] ?? ''}'.toLowerCase();
@@ -173,7 +174,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
 
   Widget artwork(Map item, {double? width, double? height}) => ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.network(
+        child: phlioNetworkImage(
           AppConfig.mediaUrl(item['image_url'] as String? ?? ''),
           width: width,
           height: height,

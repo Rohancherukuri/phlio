@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/config/app_config.dart';
 import '../../../../design_system/colors.dart';
 import '../../../../shared/music/song_picker.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final postPollProvider = FutureProvider.autoDispose.family<Map?, String>(
     (ref, id) async =>
@@ -53,7 +54,7 @@ class _PostPollState extends ConsumerState<PostPoll> {
                   if (choices[i]['image_url'] != null)
                     Padding(
                         padding: const EdgeInsets.all(8),
-                        child: Image.network(
+                        child: phlioNetworkImage(
                             AppConfig.mediaUrl(
                                 choices[i]['image_url'] as String),
                             width: 40,

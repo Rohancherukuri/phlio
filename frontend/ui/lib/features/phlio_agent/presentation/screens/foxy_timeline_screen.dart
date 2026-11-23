@@ -601,7 +601,6 @@ class _WeekStrip extends StatelessWidget {
                       shape: BoxShape.circle,
                       gradient: on ? PhlioColors.sunsetGradient : null,
                       border: !on && d == today ? Border.all(color: PhlioColors.brandOrange, width: 1.4) : null,
-                      boxShadow: on ? [BoxShadow(color: PhlioColors.brandOrange.withValues(alpha: .35), blurRadius: 12)] : null,
                     ),
                     child: Text('${d.day}',
                         style: PhlioTypography.bodyStrong.copyWith(color: on ? PhlioColors.textOnBrand : PhlioColors.textPrimary)),
@@ -776,7 +775,6 @@ class _TaskRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: t.done ? t.color.withValues(alpha: .35) : t.color,
                 borderRadius: BorderRadius.circular(26),
-                boxShadow: [BoxShadow(color: t.color.withValues(alpha: t.done ? 0 : .35), blurRadius: 14, offset: const Offset(0, 4))],
               ),
               alignment: tall ? Alignment.topCenter : Alignment.center,
               padding: EdgeInsets.only(top: tall ? 14 : 0),
@@ -1283,7 +1281,6 @@ class _GradientFab extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: PhlioColors.sunsetGradient,
-          boxShadow: [BoxShadow(color: PhlioColors.brandViolet.withValues(alpha: .45), blurRadius: 18, offset: const Offset(0, 6))],
         ),
         child: const Icon(Icons.add_rounded, size: 32, color: PhlioColors.textOnBrand),
       ),
@@ -1884,7 +1881,7 @@ class _ColorPickerState extends State<_ColorPicker> {
                 duration: const Duration(milliseconds: 150),
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: _color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: _color.withValues(alpha: .5), blurRadius: 12)]),
+                decoration: BoxDecoration(color: _color, shape: BoxShape.circle),
               ),
             ]),
             const SizedBox(height: 18),

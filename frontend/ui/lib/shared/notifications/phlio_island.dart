@@ -40,6 +40,7 @@ import '../../features/stream/music/music_player.dart';
 import '../content/mentions.dart';
 import '../giphy/giphy_picker.dart';
 import 'notification_center.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 const _ink = Color(0xFF050608);
 const _quick = ['❤️', '😂', '😮', '😢', '👏', '🔥'];
@@ -250,7 +251,7 @@ class _Face extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: art == null
               ? Icon(n.platform.icon, color: Colors.white, size: size * .56)
-              : CachedNetworkImage(
+              : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                   imageUrl: AppConfig.mediaUrl(art),
                   fit: BoxFit.cover,
                   errorWidget: (_, __, ___) => Icon(n.platform.icon, color: Colors.white, size: size * .56)),
@@ -705,7 +706,7 @@ class _ShopItemsState extends State<_ShopItems> {
                     height: 104,
                     child: p['image_url'] == null
                         ? const ColoredBox(color: Color(0xFF1A1F27), child: Icon(Icons.shopping_bag_outlined, color: Colors.white38))
-                        : CachedNetworkImage(imageUrl: AppConfig.mediaUrl('${p['image_url']}'), fit: BoxFit.cover),
+                        : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl('${p['image_url']}'), fit: BoxFit.cover),
                   ),
                   Positioned(
                     right: 6,
@@ -855,7 +856,7 @@ class _NewsBookmarkState extends State<_NewsBookmark> {
           borderRadius: BorderRadius.circular(18),
           child: AspectRatio(
             aspectRatio: 16 / 8,
-            child: CachedNetworkImage(imageUrl: AppConfig.mediaUrl(image), fit: BoxFit.cover),
+            child: CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(image), fit: BoxFit.cover),
           ),
         ),
       const SizedBox(height: 10),
@@ -964,7 +965,7 @@ class _SongPlayer extends ConsumerWidget {
             height: 56,
             child: track.artUrl == null
                 ? DecoratedBox(decoration: BoxDecoration(gradient: n.platform.gradient), child: const Icon(Icons.music_note_rounded, color: Colors.white))
-                : CachedNetworkImage(imageUrl: track.artUrl!, fit: BoxFit.cover),
+                : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: track.artUrl!, fit: BoxFit.cover),
           ),
         ),
         const SizedBox(width: 12),
@@ -1023,7 +1024,7 @@ class _Banner extends StatelessWidget {
         child: AspectRatio(
           aspectRatio: 16 / 9,
           child: Stack(fit: StackFit.expand, children: [
-            CachedNetworkImage(imageUrl: AppConfig.mediaUrl(image), fit: BoxFit.cover),
+            CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(image), fit: BoxFit.cover),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

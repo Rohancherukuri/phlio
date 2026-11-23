@@ -48,6 +48,7 @@ import '../media/story_fx_view.dart';
 import 'package:flutter/services.dart';
 import 'templates/template_media.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
+import 'package:phlio/core/network/media_cache.dart';
 
 // -- Data -------------------------------------------------------------------
 
@@ -786,7 +787,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      backgroundColor: const Color(0xFF1B1E24),
+      backgroundColor: PhlioColors.surface,
       builder: (sheet) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -810,7 +811,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                         width: 52,
                         height: 52,
                         child: song['cover_url'] is String
-                            ? CachedNetworkImage(
+                            ? CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                                 imageUrl: AppConfig.mediaUrl(
                                     song['cover_url'] as String),
                                 fit: BoxFit.cover)
@@ -1785,7 +1786,7 @@ Widget _framedMediaFor(Map item, VideoPlayerController? video) {
   final (url, slot) = frame;
   return TemplateVideoFrame(
     slot: slot,
-    overlay: CachedNetworkImageProvider(AppConfig.mediaUrl(url)),
+    overlay: CachedNetworkImageProvider(cacheManager: PhlioMediaCache.images, AppConfig.mediaUrl(url)),
     media: SizedBox(width: slot.size.width * 3, height: slot.size.height * 3, child: media),
   );
 }
@@ -1812,12 +1813,12 @@ class _MomentMedia extends StatelessWidget {
                   child: VideoPlayer(controller)))
           : Stack(fit: StackFit.expand, children: [
               if (cover != null)
-                CachedNetworkImage(
+                CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                     imageUrl: AppConfig.mediaUrl(cover), fit: BoxFit.cover),
               const Center(child: CircularProgressIndicator()),
             ]);
     } else {
-      child = CachedNetworkImage(
+      child = CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
         imageUrl: AppConfig.mediaUrl(item['media_url'] as String),
         fit: BoxFit.cover,
         placeholder: (_, __) =>
@@ -1990,7 +1991,7 @@ class MomentHighlightsRow extends ConsumerWidget {
                 highlight: true,
               ),
               child: ClipOval(
-                child: CachedNetworkImage(
+                child: CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
                   imageUrl: AppConfig.mediaUrl(
                       highlights[i]['cover_url'] as String? ?? ''),
                   fit: BoxFit.cover,

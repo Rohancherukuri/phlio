@@ -19,6 +19,7 @@ import '../../../../shared/content/content_surface.dart';
 import '../../../../shared/content/social_comments_sheet.dart';
 import '../controllers/video_library.dart';
 import 'creator_follow_button.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 class SocialClipsView extends ConsumerStatefulWidget {
   const SocialClipsView(
@@ -118,12 +119,17 @@ class _SocialClipsViewState extends ConsumerState<SocialClipsView> {
                   .addPostFrameCallback((_) => old.dispose());
             }
             for (final clip in clips.skip(selected).take(3)) {
+              // The next two clips download to disk while this one plays, so
+              // swiping never waits on the network (works on mobile data).
+              if (clip.url.isNotEmpty && _prefetched.add('v:${clip.url}')) {
+                unawaited(PhlioMediaCache.prefetchVideo(AppConfig.mediaUrl(clip.url)));
+              }
               final url = clip.thumbnailUrl;
               if (url != null && _prefetched.add(url)) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted)
                     precacheImage(
-                        NetworkImage(AppConfig.mediaUrl(url)), context,
+                        phlioImageProvider(AppConfig.mediaUrl(url)), context,
                         onError: (_, __) {});
                 });
               }
@@ -317,8 +323,7 @@ class _ReelState extends ConsumerState<_Reel> with WidgetsBindingObserver {
       if (ready && !paused) await player!.play();
       return;
     }
-    final p = VideoPlayerController.networkUrl(
-        Uri.parse(AppConfig.mediaUrl(widget.clip.url)));
+    final p = PhlioMediaCache.shortVideo(AppConfig.mediaUrl(widget.clip.url));
     player = p;
     try {
       await p.initialize();

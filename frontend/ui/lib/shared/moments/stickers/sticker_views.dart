@@ -25,6 +25,7 @@ import '../../avatar/avatar_figure.dart';
 import '../../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 import '../templates/template_canvas.dart' show BackdropShader, templateFont;
 import 'sticker_model.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 const _violet = PhlioColors.brandViolet;
 const _pink = PhlioColors.brandPink;
@@ -204,7 +205,7 @@ class _MusicCard extends StatelessWidget {
             height: 52,
             child: cover == null
                 ? const DecoratedBox(decoration: BoxDecoration(gradient: _brand), child: Icon(Icons.music_note_rounded, color: Colors.white))
-                : CachedNetworkImage(imageUrl: AppConfig.mediaUrl(cover), fit: BoxFit.cover),
+                : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(cover), fit: BoxFit.cover),
           ),
         ),
         const SizedBox(width: 10),
@@ -267,7 +268,7 @@ class _PhotoSticker extends StatelessWidget {
     Widget img = path != null
         ? Image.file(File(path), fit: BoxFit.cover, cacheWidth: 900)
         : url != null
-            ? CachedNetworkImage(imageUrl: AppConfig.mediaUrl(url), fit: BoxFit.cover)
+            ? CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(url), fit: BoxFit.cover)
             : const DecoratedBox(decoration: BoxDecoration(gradient: _brand));
     if (s.type == StickerType.frame) {
       // Instant-photo frame with a handwritten caption.
@@ -382,7 +383,7 @@ class _GifSticker extends StatelessWidget {
   final bool framed;
   @override
   Widget build(BuildContext context) {
-    final img = Image.network(url,
+    final img = phlioNetworkImage(url,
         fit: BoxFit.contain,
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) => const Icon(Icons.gif_box_rounded, color: Colors.white, size: 60));

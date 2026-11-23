@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/config/app_config.dart';
 import '../../../../design_system/colors.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 const _done = Color(0xFF6C72FF);
 const _windowGradient = [Color(0xFFFFD600), Color(0xFFFF7A00), Color(0xFFFF0069), Color(0xFFD300C5), Color(0xFF7638FA)];
@@ -33,7 +34,7 @@ Future<Map<String, dynamic>?> showSongTrimmer(BuildContext context, Map<String, 
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1C1F26),
+      backgroundColor: PhlioColors.surface,
       barrierColor: Colors.black54,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (_) => _SongTrimmer(music: music),
@@ -178,7 +179,7 @@ class _SongTrimmerState extends State<_SongTrimmer> {
                 dimension: 58,
                 child: art == null || art.isEmpty
                     ? const ColoredBox(color: PhlioColors.surfaceElevated, child: Icon(Icons.music_note_rounded))
-                    : CachedNetworkImage(imageUrl: AppConfig.mediaUrl(art), fit: BoxFit.cover),
+                    : CachedNetworkImage(cacheManager: PhlioMediaCache.images, imageUrl: AppConfig.mediaUrl(art), fit: BoxFit.cover),
               ),
             ),
           ),

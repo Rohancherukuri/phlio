@@ -13,6 +13,7 @@ import '../../../../design_system/spacing.dart';
 import '../../../../design_system/typography.dart';
 import '../../domain/entities/product_entity.dart';
 import '../screens/cart_sheet.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 class ProductCard extends StatelessWidget {
   const ProductCard(
@@ -63,7 +64,7 @@ class ProductCard extends StatelessWidget {
                   ClipRRect(
                     borderRadius: PhlioRadii.xlRadius,
                     child: product.imageUrls.isNotEmpty
-                        ? Image.network(
+                        ? phlioNetworkImage(
                             AppConfig.mediaUrl(product.imageUrls.first),
                             width: double.infinity,
                             height: double.infinity,

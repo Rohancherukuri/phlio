@@ -22,6 +22,7 @@ import 'music_player.dart';
 import 'open_music_api.dart' show openAudiusArtist;
 import 'phlio_code_sheet.dart';
 import 'similar_songs.dart' show openSimilarSongs;
+import 'package:phlio/core/network/media_cache.dart';
 
 // -- theme -------------------------------------------------------------------------
 
@@ -126,7 +127,7 @@ class Artwork extends StatelessWidget {
     final fallback = _Generated(seed: label ?? track.album, text: label ?? track.album);
     Widget child = track.artUrl == null
         ? fallback
-        : CachedNetworkImage(
+        : CachedNetworkImage(cacheManager: PhlioMediaCache.images, 
             imageUrl: AppConfig.mediaUrl(track.artUrl!),
             fit: BoxFit.cover,
             fadeInDuration: const Duration(milliseconds: 150),
@@ -207,7 +208,7 @@ final artColorsProvider = FutureProvider.family<ArtColors, String>((ref, key) as
     return _artCache[key] = ArtColors(a, b, Color.lerp(a, b, .5)!, Colors.white);
   }
   try {
-    final provider = ResizeImage(CachedNetworkImageProvider(AppConfig.mediaUrl(key)), width: 32, height: 32);
+    final provider = ResizeImage(CachedNetworkImageProvider(cacheManager: PhlioMediaCache.images, AppConfig.mediaUrl(key)), width: 32, height: 32);
     final completer = Completer<ui.Image>();
     final stream = provider.resolve(ImageConfiguration.empty);
     late ImageStreamListener l;

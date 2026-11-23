@@ -20,6 +20,7 @@ import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../controllers/video_library.dart';
 import 'social_clips_view.dart';
 import 'video_thumbnail.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 // -- Data ---------------------------------------------------------------------
 
@@ -537,7 +538,7 @@ class _CollectionCard extends StatelessWidget {
               color: PhlioColors.surfaceElevated,
               child: imageUrl == null
                   ? Icon(icon, color: PhlioColors.brandOrange, size: 26)
-                  : Image.network(
+                  : phlioNetworkImage(
                       imageUrl!.startsWith('http')
                           ? imageUrl!
                           : AppConfig.mediaUrl(imageUrl!),
@@ -612,7 +613,7 @@ class _AudioCollectionScreen extends StatelessWidget {
                             ? const ColoredBox(
                                 color: PhlioColors.surfaceElevated,
                                 child: Icon(Icons.music_note_rounded))
-                            : Image.network(image, fit: BoxFit.cover),
+                            : phlioNetworkImage(image, fit: BoxFit.cover),
                       ),
                     ),
                     title: Text(song['title'] as String? ?? 'Untitled',

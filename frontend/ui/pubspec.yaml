@@ -82,6 +82,8 @@ dependencies:
   photo_manager: ^3.5.0
   # Disk + memory cache for avatars and thumbnails.
   cached_network_image: ^3.4.1
+  # Long-lived disk caches for images and short videos (lib/core/network/media_cache.dart).
+  flutter_cache_manager: ^3.4.1
   # Foxy's state-machine animation (assets/rive/foxy.riv when present).
   rive: ^0.13.20
   razorpay_flutter: 1.4.7

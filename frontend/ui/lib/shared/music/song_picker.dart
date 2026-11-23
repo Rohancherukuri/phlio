@@ -9,6 +9,7 @@ import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/colors.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 final musicApiProvider = Provider<Dio>((ref) => getIt<ApiClient>().dio);
 final selectedSongProvider =
@@ -321,7 +322,7 @@ class _SongPickerState extends ConsumerState<SongPicker>
                                                         child: song['image_url'] == null
                                                             ? const Icon(Icons
                                                                 .music_note)
-                                                            : Image.network(
+                                                            : phlioNetworkImage(
                                                                 song['image_url']
                                                                     as String,
                                                                 fit: BoxFit

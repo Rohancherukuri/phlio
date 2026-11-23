@@ -21,7 +21,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response
+import httpx
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
@@ -128,19 +129,77 @@ class MediaFiles(StaticFiles):
     ``/media/...`` URLs and players follow the redirect.
     """
 
-    def __init__(self, *args: Any, fallback: str = "", **kwargs: Any) -> None:
-        """``fallback`` is the public base URL for missing files ('' disables it)."""
+    # Request headers passed on to the bucket, and response headers passed back.
+    _FORWARD = ("range", "if-none-match", "if-modified-since", "if-range")
+    _RETURN = ("content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified")
+
+    def __init__(self, *args: Any, fallback: str = "", delivery: str = "proxy", **kwargs: Any) -> None:
+        """``fallback`` is the public base URL for missing files ('' disables it).
+
+        ``delivery``:
+          * ``proxy`` (default) — the API streams the file from the bucket.
+            Phones only ever talk to the API host, which matters because
+            some mobile carriers block or throttle the bucket's ``*.r2.dev``
+            domain (the app then loads fully on Wi-Fi but not on mobile data).
+          * ``redirect`` — a 307 to the bucket (cheapest for the API; use it
+            once the bucket has its own custom domain).
+        """
         super().__init__(*args, **kwargs)
         self.fallback = fallback.rstrip("/")
+        self.delivery = delivery
+        self._client: httpx.AsyncClient | None = None
+
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(30, read=60), follow_redirects=True,
+                limits=httpx.Limits(max_connections=40, max_keepalive_connections=20))
+        return self._client
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        """Serves the file from disk, or redirects to the bucket when it's not there."""
+        """Serves the file from disk, or from the bucket when it's not there."""
         try:
             return await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code != 404 or not self.fallback:
                 raise
-            return RedirectResponse(f"{self.fallback}/{quote(path.replace(os.sep, '/'))}", status_code=307)
+            url = f"{self.fallback}/{quote(path.replace(os.sep, '/'))}"
+            if self.delivery == "redirect":
+                return RedirectResponse(url, status_code=307)
+            return await self._proxy(url, scope)
+
+    async def _proxy(self, url: str, scope: Scope) -> Response:
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        forward = {k: headers[k] for k in self._FORWARD if k in headers}
+        client = self._http()
+        try:
+            upstream = await client.send(client.build_request(scope.get("method", "GET"), url, headers=forward),
+                                         stream=True)
+        except httpx.HTTPError:
+            # Bucket unreachable from the server: let the client try it directly.
+            return RedirectResponse(url, status_code=307)
+        if upstream.status_code == 404:
+            await upstream.aclose()
+            raise StarletteHTTPException(404)
+        out = {k: upstream.headers[k] for k in self._RETURN if k in upstream.headers}
+        # Media files are content-addressed or never rewritten in place: let
+        # phones and the image/video caches keep them.
+        out["cache-control"] = "public, max-age=2592000"
+        if scope.get("method") == "HEAD" or upstream.status_code == 304:
+            await upstream.aclose()
+            return Response(status_code=upstream.status_code, headers=out)
+        return StreamingResponse(upstream.aiter_raw(65536), status_code=upstream.status_code, headers=out,
+                                 background=_Close(upstream))
+
+
+class _Close:
+    """Background task that closes the upstream response once the body is sent."""
+
+    def __init__(self, upstream: httpx.Response) -> None:
+        self.upstream = upstream
+
+    async def __call__(self) -> None:
+        await self.upstream.aclose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -202,7 +261,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.headers['Cache-Control'] = 'public, max-age=86400'
         return response
 
-    app.mount("/media", MediaFiles(directory=media_root_path(settings), fallback=settings.media_public_url),
+    app.mount("/media", MediaFiles(directory=media_root_path(settings), fallback=settings.media_public_url,
+                                   delivery=settings.media_delivery),
               name="media")
 
     # 1x1 transparent PNG. The app points image widgets here when a record has

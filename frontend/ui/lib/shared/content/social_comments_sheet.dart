@@ -19,6 +19,7 @@ import '../../design_system/widgets/foxy_stickers.dart';
 import '../../design_system/widgets/phlio_fox.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
+import 'package:phlio/core/network/media_cache.dart';
 
 String commentUrl(String id) =>
     '/social/content/${id.contains('/') ? id.substring(id.indexOf('/') + 1) : id}/comments';
@@ -272,7 +273,7 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                           padding: const EdgeInsets.only(top: 8),
                           child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.network(
+                              child: phlioNetworkImage(
                                   AppConfig.mediaUrl(
                                       item['image_url'] as String),
                                   height: 180,
