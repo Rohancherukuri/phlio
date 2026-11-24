@@ -26,6 +26,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../app/config/app_config.dart';
 import '../../../design_system/colors.dart';
 import '../../../design_system/widgets/foxy_stickers.dart';
+import '../../../design_system/widgets/phlio_fox.dart' show PhlioStickerView;
 import '../../../features/stream/music/music_library.dart' show musicLibraryProvider;
 import '../../../features/stream/music/music_models.dart' show Track;
 import '../../../features/stream/music/open_music_api.dart' show audiusSearchProvider, audiusTrendingProvider, forYouChart;
