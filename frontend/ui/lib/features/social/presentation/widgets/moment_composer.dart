@@ -38,6 +38,9 @@ import '../../../../shared/media/story_fx_catalog.dart';
 import '../../../../shared/media/story_fx_view.dart';
 import '../../../../shared/content/mentions.dart' show MentionTextEditingController;
 import '../../../../shared/moments/moments.dart';
+import '../../../../shared/moments/editor/draw_layer.dart';
+import '../../../../shared/moments/editor/music_editor.dart';
+import '../../../../shared/moments/editor/text_editor.dart';
 import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart';
 import '../../../../shared/moments/stickers/sticker_views.dart';
@@ -162,6 +165,13 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
 
   /// Song for the moment ({title, artist, url, cover_url}); played in the viewer.
   Map<String, dynamic>? _music;
+
+  /// Draw mode and its strokes (saved as one `drawing` sticker).
+  bool drawing = false;
+  final List<DrawStroke> _strokes = [];
+
+  /// The right tool rail: labels and every tool, or just the main icons.
+  bool _railOpen = true;
 
   /// The photo / video as picked (before any template), so another template
   /// can be tried on the original.
@@ -336,19 +346,61 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     final pick = await showStickerTray(context, userName: me?.fullName ?? 'You');
     if (pick == null || !mounted) return;
     if (pick.templates) return templates();
-    final s = pick.sticker!;
-    if (s.type == StickerType.music) _music = Map<String, dynamic>.from(s.data);
+    var s = pick.sticker!;
+    if (s.type == StickerType.music) {
+      // Music from the tray goes through the music editor too.
+      final song = await openMusicEditor(context, Map<String, dynamic>.from(s.data));
+      if (song == null || !mounted) return;
+      layers.removeWhere((l) => l.item?.type == StickerType.music);
+      s = MomentSticker(StickerType.music, song, x: .5, y: .72);
+      _music = song;
+    }
     setState(() => layers.add(_Layer.item(s)..position = Offset(s.x, s.y)));
   }
 
   /// Music: pick a song (Phlio Stream or Audius); adds its sticker.
   Future<void> music() async {
-    final song = await pickMomentSong(context);
+    final picked = await pickMomentSong(context);
+    if (picked == null || !mounted) return;
+    final song = await openMusicEditor(context, picked);
     if (song == null || !mounted) return;
     setState(() {
       layers.removeWhere((l) => l.item?.type == StickerType.music);
       _music = song;
-      layers.add(_Layer.item(MomentSticker(StickerType.music, song))..position = const Offset(.5, .2));
+      layers.add(_Layer.item(MomentSticker(StickerType.music, song))..position = const Offset(.5, .72));
+    });
+  }
+
+  /// Re-open the music editor for the song already on the moment.
+  Future<void> editMusic(MomentSticker item) async {
+    final song = await openMusicEditor(context, Map<String, dynamic>.from(item.data));
+    if (song == null || !mounted) return;
+    setState(() {
+      item.data = song;
+      _music = song;
+    });
+  }
+
+  /// Draw mode: strokes become (or update) one drawing sticker on Done.
+  void startDrawing() {
+    final existing = layers.where((l) => l.item?.type == StickerType.drawing).firstOrNull;
+    _strokes
+      ..clear()
+      ..addAll(strokesFrom(existing?.item?.data['strokes']));
+    setState(() => drawing = true);
+  }
+
+  void finishDrawing() {
+    setState(() {
+      drawing = false;
+      layers.removeWhere((l) => l.item?.type == StickerType.drawing);
+      if (_strokes.isNotEmpty) {
+        // Drawn first so stickers and text stay on top of it.
+        layers.insert(
+            0,
+            _Layer.item(MomentSticker(StickerType.drawing, {'strokes': [for (final s in _strokes) s.toJson()]}))
+              ..position = const Offset(.5, .5));
+      }
     });
   }
 
@@ -408,34 +460,36 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     );
   }
 
-  Future<void> addText() async {
-    final result = await _textDialog();
-    if (result == null || result.text.isEmpty) return;
-    setState(() => layers.add(_Layer.text(result.text, result.color)));
+  Future<void> addText({String? startWith}) async {
+    final data = await openMomentTextEditor(context, startWith: startWith);
+    if (data == null || data.isEmpty || !mounted) return;
+    setState(() => layers.add(_Layer.item(MomentSticker(StickerType.word, data))..position = const Offset(.5, .4)));
   }
 
+  /// Edit a text layer (old plain text layers become styled text).
   Future<void> editText(_Layer layer) async {
-    final result = await _textDialog(initial: layer.text, color: layer.color);
-    if (result == null) return;
+    final item = layer.item;
+    final data = await openMomentTextEditor(context,
+        initial: item != null
+            ? Map<String, dynamic>.from(item.data)
+            : {'word': layer.text, 'color': richToHex(layer.color), 'bg': layer.type == 'mention' ? 2 : 0});
+    if (data == null || !mounted) return;
     setState(() {
-      if (result.text.isEmpty) {
+      if (data.isEmpty) {
         layers.remove(layer);
+      } else if (item != null) {
+        item.data = data;
       } else {
-        layer
-          ..text = result.text
-          ..color = result.color;
+        final i = layers.indexOf(layer);
+        layers[i] = _Layer.item(MomentSticker(StickerType.word, data))
+          ..position = layer.position
+          ..scale = layer.scale
+          ..rotation = layer.rotation;
       }
     });
   }
 
-  Future<void> addMention() async {
-    final result = await _textDialog(initial: '@', hint: '@username');
-    final handle = result?.text.replaceAll(' ', '') ?? '';
-    if (handle.length < 2) return;
-    setState(() => layers.add(_Layer.text(
-        handle.startsWith('@') ? handle : '@$handle', Colors.white,
-        type: 'mention')));
-  }
+  Future<void> addMention() => addText(startWith: '@');
 
   Future<void> addSticker() async {
     final id = await showFoxyStickerSheet(context,
@@ -893,6 +947,14 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   Widget _layer(_Layer layer, Size canvas) {
     if (_capturing && layer.interactive) return const SizedBox.shrink();
     final item = layer.item;
+    // The drawing covers the canvas and isn't dragged (and hides while
+    // you're drawing, since the draw overlay shows the live strokes).
+    if (item?.type == StickerType.drawing) {
+      if (drawing) return const SizedBox.shrink();
+      return IgnorePointer(
+        child: Center(child: Transform.scale(scale: canvas.width / 360, child: MomentStickerView(item!))),
+      );
+    }
     final content = item != null
         ? Transform.scale(scale: canvas.width / 360 * layer.scale, child: MomentStickerView(item))
         : layer.type == 'sticker'
@@ -924,7 +986,11 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
           Alignment(layer.position.dx * 2 - 1, layer.position.dy * 2 - 1),
       child: GestureDetector(
         onTap: item != null
-            ? () => _restyleItem(item)
+            ? () => item.type == StickerType.music
+                ? editMusic(item)
+                : item.type == StickerType.word && item.data['style'] == 'rich'
+                    ? editText(layer)
+                    : _restyleItem(item)
             : layer.type == 'sticker'
                 ? null
                 : () => editText(layer),
@@ -956,12 +1022,6 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     final me = ref.watch(authControllerProvider).valueOrNull;
     final tools = <({String label, Widget icon, VoidCallback onTap, bool on})>[
       (
-        label: 'Templates',
-        icon: const Icon(Icons.dashboard_customize_outlined),
-        onTap: templates,
-        on: false
-      ),
-      (
         label: 'Text',
         icon: const Text('Aa',
             style: TextStyle(
@@ -978,13 +1038,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: false
       ),
       (
-        label: 'Filters',
-        icon: const Icon(Icons.filter_vintage_outlined),
-        onTap: smartFilters,
-        on: smart.overlays.isNotEmpty
-      ),
-      (
-        label: 'Music',
+        label: 'Audio',
         icon: const Icon(Icons.music_note_outlined),
         onTap: music,
         on: _music != null
@@ -996,6 +1050,42 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: filter != 'normal'
       ),
       (
+        label: 'Mention',
+        icon: const Icon(Icons.alternate_email_rounded),
+        onTap: addMention,
+        on: false
+      ),
+      (
+        label: 'Effects',
+        icon: const Icon(Icons.auto_fix_high_outlined),
+        onTap: effects,
+        on: false
+      ),
+      (
+        label: 'Draw',
+        icon: const Icon(Icons.gesture_rounded),
+        onTap: startDrawing,
+        on: false
+      ),
+      (
+        label: 'Templates',
+        icon: const Icon(Icons.dashboard_customize_outlined),
+        onTap: templates,
+        on: false
+      ),
+      (
+        label: 'Filters',
+        icon: const Icon(Icons.filter_vintage_outlined),
+        onTap: smartFilters,
+        on: smart.overlays.isNotEmpty
+      ),
+      (
+        label: 'Story FX',
+        icon: const Icon(Icons.auto_awesome_motion_outlined),
+        onTap: storyEffects,
+        on: fx != null || motion != null
+      ),
+      (
         label: 'Label AI',
         icon: const Icon(Icons.auto_awesome_outlined),
         onTap: () {
@@ -1005,16 +1095,10 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: aiLabel
       ),
       (
-        label: 'Effects',
-        icon: const Icon(Icons.auto_fix_high_outlined),
-        onTap: effects,
+        label: 'Camera',
+        icon: const Icon(Icons.photo_camera_outlined),
+        onTap: openCamera,
         on: false
-      ),
-      (
-        label: 'Story FX',
-        icon: const Icon(Icons.auto_awesome_motion_outlined),
-        onTap: storyEffects,
-        on: fx != null || motion != null
       ),
       (
         label: 'Save',
@@ -1028,24 +1112,6 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               : 'Won\'t be added to highlights');
         },
         on: saveToHighlights
-      ),
-      (
-        label: 'Mention',
-        icon: const Icon(Icons.alternate_email_rounded),
-        onTap: addMention,
-        on: false
-      ),
-      (
-        label: 'Draw',
-        icon: const Icon(Icons.gesture_rounded),
-        onTap: () => comingSoon('Drawing'),
-        on: false
-      ),
-      (
-        label: 'Camera',
-        icon: const Icon(Icons.photo_camera_outlined),
-        onTap: openCamera,
-        on: false
       ),
       (
         label: 'Save',
@@ -1151,26 +1217,53 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                               ),
                             ),
                           ),
-                        // Right tool column.
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          bottom: 64,
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                for (final tool in tools)
-                                  _ToolButton(
-                                    label: tool.label,
-                                    icon: tool.icon,
-                                    on: tool.on,
-                                    onTap: busy ? () {} : tool.onTap,
-                                  ),
-                              ],
+                        // Right tool rail: open shows every tool with its
+                        // label; closed keeps the main four icons.
+                        if (!drawing)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            bottom: 64,
+                            child: SingleChildScrollView(
+                              child: AnimatedSize(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                                alignment: Alignment.topRight,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    for (final tool in _railOpen ? tools : tools.take(4))
+                                      _ToolButton(
+                                        label: tool.label,
+                                        icon: tool.icon,
+                                        on: tool.on,
+                                        showLabel: _railOpen,
+                                        onTap: busy ? () {} : tool.onTap,
+                                      ),
+                                    GestureDetector(
+                                      onTap: () => setState(() => _railOpen = !_railOpen),
+                                      child: Container(
+                                        width: 46,
+                                        height: 30,
+                                        margin: const EdgeInsets.only(top: 4),
+                                        decoration: BoxDecoration(color: const Color(0xCC1B1F27), borderRadius: BorderRadius.circular(15)),
+                                        child: Icon(_railOpen ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                                            color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        if (drawing)
+                          Positioned.fill(
+                            child: DrawOverlay(
+                              strokes: _strokes,
+                              onChanged: () {},
+                              onDone: finishDrawing,
+                            ),
+                          ),
                         if (isVideo && video != null)
                           Positioned(
                             left: 14,
@@ -1268,11 +1361,12 @@ class _ToolButton extends StatelessWidget {
       {required this.label,
       required this.icon,
       required this.onTap,
-      this.on = false});
+      this.on = false,
+      this.showLabel = true});
   final String label;
   final Widget icon;
   final VoidCallback onTap;
-  final bool on;
+  final bool on, showLabel;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -1281,7 +1375,7 @@ class _ToolButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(label,
+            if (showLabel) Text(label,
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13.5,

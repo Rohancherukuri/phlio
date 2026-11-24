@@ -33,6 +33,7 @@ enum StickerType {
   weather,
   word, // Phlio type stickers ("SOUND ON", "MONDAY", "W"…)
   foxy, // Foxy sticker pack (design_system/widgets/foxy_stickers.dart)
+  drawing, // Draw tool strokes (editor/draw_layer.dart)
 }
 
 /// Types that stay live in the viewer and are never flattened into the

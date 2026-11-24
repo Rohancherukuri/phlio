@@ -484,6 +484,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
   final AudioPlayer _music = AudioPlayer();
   final AudioRecorder _recorder = AudioRecorder();
   Timer? _musicLine, _recordTicker;
+  StreamSubscription<Duration>? _musicClip;
   int _recordSeconds = 0;
 
   /// Header subtitle alternates between the song and the reshare credit.
@@ -529,6 +530,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     replyFocus.dispose();
     _musicLine?.cancel();
     _recordTicker?.cancel();
+    _musicClip?.cancel();
     _music.dispose();
     _recorder.dispose();
     super.dispose();
@@ -545,9 +547,18 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     await _music.stop();
     final song = current['music'];
     if (song is Map && current['media_kind'] != 'video' && song['url'] is String) {
+      // The part chosen in the music editor (older moments: from 0:20).
+      final start = (song['clip_start'] as num?)?.toDouble() ?? 20;
+      final length = (song['clip_length'] as num?)?.toDouble() ?? 30;
+      _musicClip?.cancel();
+      _musicClip = _music.onPositionChanged.listen((p) {
+        if (p.inMilliseconds / 1000 >= start + length) {
+          _music.seek(Duration(milliseconds: (start * 1000).round()));
+        }
+      });
       unawaited(_music
           .play(UrlSource(AppConfig.mediaUrl(song['url'] as String)),
-              position: const Duration(seconds: 20))
+              position: Duration(milliseconds: (start * 1000).round()))
           .then((_) {
         if (paused || !widget.active) _music.pause();
       }, onError: (_) {}));

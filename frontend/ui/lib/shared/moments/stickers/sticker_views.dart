@@ -25,6 +25,9 @@ import '../../avatar/avatar_figure.dart';
 import '../../../features/profile/presentation/controllers/avatar_controller.dart' show MeAvatar;
 import '../templates/template_canvas.dart' show BackdropShader, templateFont;
 import 'sticker_model.dart';
+import '../editor/draw_layer.dart' show DrawingSticker;
+import '../editor/music_editor.dart' show MusicLookSticker;
+import '../editor/text_editor.dart' show RichMomentText;
 import 'package:phlio/core/network/media_cache.dart';
 
 const _violet = PhlioColors.brandViolet;
@@ -110,7 +113,9 @@ class MomentStickerView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = s.data;
-    final style = (d['style'] as num? ?? 0).toInt();
+    // Pills / music cycle a numeric style; word stickers keep a style name.
+    // (Casting a word sticker's name to num threw here — the red blocks.)
+    final style = d['style'] is num ? (d['style'] as num).toInt() : 0;
     return switch (s.type) {
       StickerType.location => _Pill(icon: Icons.place_rounded, text: '${d['text'] ?? 'Location'}'.toUpperCase(), style: style),
       StickerType.mention => _Pill(icon: Icons.alternate_email_rounded, text: '${d['text'] ?? 'username'}'.replaceFirst('@', '').toUpperCase(), style: style),
@@ -119,7 +124,9 @@ class MomentStickerView extends StatelessWidget {
           onTap: actions?.openLink == null ? null : () => actions!.openLink!('${d['url']}'),
           child: _Pill(icon: Icons.link_rounded, text: '${d['label'] ?? _host('${d['url']}')}'.toUpperCase(), style: style),
         ),
-      StickerType.music => _MusicCard(d, style: style),
+      StickerType.music => d['look'] == null || d['look'] == 'card'
+          ? _MusicCard(d, style: style)
+          : MusicLookSticker(d, fallback: _MusicCard(d, style: style)),
       StickerType.photo || StickerType.frame || StickerType.cutout => _PhotoSticker(s),
       StickerType.gif => _GifSticker('${d['url']}', framed: d['kind'] == 'gif'),
       StickerType.avatar => d['avatar'] is Map
@@ -134,8 +141,9 @@ class MomentStickerView extends StatelessWidget {
       StickerType.like => _LikeBubble(s, response: response, actions: actions),
       StickerType.clock => _FlipClock('${d['time'] ?? '9:41'}', '${d['period'] ?? ''}'),
       StickerType.weather => _Weather(d),
-      StickerType.word => WordSticker('${d['word']}', '${d['style'] ?? 'bubble'}'),
+      StickerType.word => d['style'] == 'rich' ? RichMomentText(d) : WordSticker('${d['word']}', '${d['style'] ?? 'bubble'}'),
       StickerType.foxy => PhlioStickerView(stickerId: '${d['sticker']}', size: 110, interactive: false),
+      StickerType.drawing => DrawingSticker(d),
     };
   }
 
