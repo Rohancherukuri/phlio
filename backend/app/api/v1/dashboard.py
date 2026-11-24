@@ -721,11 +721,17 @@ async def _agent(c, user, p: Period) -> dict:
         insights.append(f"Foxy answered in {avg_wait:g} seconds on average.")
     recent = sorted(convos.values(), key=lambda v: v["last"], reverse=True)[:6]
     move = await _move(c, user, p)
+    from app.api.v1.fitness import history_for
+    fitness = await history_for(c, user.id, min(p.days, 90))
+    tracked = any(d["steps"] or d["water_ml"] or d["eaten_kcal"] for d in fitness["days"])
+    fitness["tracked"] = tracked
+    if tracked and fitness["averages"]["steps"]:
+        insights.append(f"You averaged {fitness['averages']['steps']:,} steps a day with Phlio Fit.")
     if move["count"]:
         insights.append(f"You moved {move['distance_m'] / 1000:.1f} km over {move['count']} "
                         f"activit{'ies' if move['count'] != 1 else 'y'} with Phlio Move.")
     return _section(
-        "agent", "Foxy", currency=currency, has_data=asked > 0 or move["count"] > 0,
+        "agent", "Foxy", currency=currency, has_data=asked > 0 or move["count"] > 0 or tracked,
         headline=dict(label="Questions asked", value=asked, format="count", change=_pct(asked, before["asked"])),
         kpis=[
             _kpi("asked", "Questions asked", asked, change=_pct(asked, before["asked"])),
@@ -746,7 +752,7 @@ async def _agent(c, user, p: Period) -> dict:
         tops=[dict(title="What Foxy found for you", items=[
             dict(title=k, subtitle="from Foxy's plans", value=v, format="count") for k, v in kinds.most_common()])]
         if kinds else [],
-        insights=insights, extra=dict(hours=hours, avg_reply_seconds=avg_wait, move=move),
+        insights=insights, extra=dict(hours=hours, avg_reply_seconds=avg_wait, move=move, fitness=fitness),
     )
 
 

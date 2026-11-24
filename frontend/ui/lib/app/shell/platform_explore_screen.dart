@@ -36,6 +36,7 @@ import '../../features/shop/presentation/widgets/product_card.dart';
 import '../../features/book/presentation/screens/book_discovery_screen.dart';
 import '../../features/phlio_agent/presentation/screens/foxy_timeline_screen.dart';
 import '../../features/phlio_agent/presentation/screens/move/move_home_screen.dart';
+import '../../features/phlio_agent/presentation/screens/fit/fit_home_screen.dart';
 import '../../features/phlio_agent/presentation/screens/move/move_social.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
@@ -443,6 +444,7 @@ class _AgentExplore extends StatelessWidget {
           const PendingActivityBanner(),
           const _FoxyTimelineCard(),
           const _MoveCard(),
+          const _FitCard(),
           const _CapabilityTile(
             icon: Icons.event_note_rounded,
             title: 'Plans with friends',
@@ -476,6 +478,71 @@ class _AgentExplore extends StatelessWidget {
           ),
           const SizedBox(height: PhlioSpacing.xxl),
         ],
+      ),
+    );
+  }
+}
+
+/// Featured card: Phlio Fit — steps, water, food, goals and Foxy Coach.
+class _FitCard extends StatelessWidget {
+  const _FitCard();
+
+  @override
+  Widget build(BuildContext context) {
+    const teal = Color(0xFF68D7CD);
+    const rings = [(Color(0xFF68D7CD), .72), (Color(0xFF72A7FF), .5), (Color(0xFFFFB58F), .62)];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
+      child: Material(
+        color: PhlioColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => Navigator.of(context, rootNavigator: true)
+              .push(MaterialPageRoute<void>(builder: (_) => const FitHomeScreen())),
+          child: Ink(
+            padding: const EdgeInsets.all(PhlioSpacing.lg),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: teal.withValues(alpha: 0.35)),
+            ),
+            child: Row(children: [
+              // Three nested rings: steps, water, calories.
+              SizedBox(
+                width: 58,
+                height: 58,
+                child: Stack(alignment: Alignment.center, children: [
+                  for (final (i, (c, v)) in rings.indexed)
+                    SizedBox(
+                      width: 58.0 - i * 16,
+                      height: 58.0 - i * 16,
+                      child: CircularProgressIndicator(
+                        value: v,
+                        strokeWidth: 5,
+                        strokeCap: StrokeCap.round,
+                        color: c,
+                        backgroundColor: c.withValues(alpha: .15),
+                      ),
+                    ),
+                ]),
+              ),
+              const SizedBox(width: PhlioSpacing.lg),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Phlio Fit', style: PhlioTypography.title),
+                  const SizedBox(height: 4),
+                  Text('Track steps, water and calories, set your goals, and ask Foxy Coach for tips.',
+                      style: PhlioTypography.caption),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Text('Open tracker', style: PhlioTypography.label.copyWith(color: teal)),
+                    const Icon(Icons.arrow_forward_rounded, size: 16, color: teal),
+                  ]),
+                ]),
+              ),
+            ]),
+          ),
+        ),
       ),
     );
   }

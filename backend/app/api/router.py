@@ -115,3 +115,5 @@ from app.api.v1 import timeline
 api_router.include_router(timeline.router)
 from app.api.v1 import activities
 api_router.include_router(activities.router)
+from app.api.v1 import fitness
+api_router.include_router(fitness.router)

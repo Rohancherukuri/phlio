@@ -15,6 +15,7 @@ import 'package:phlio/features/social/presentation/controllers/feed_controller.d
 
 import 'package:phlio/design_system/colors.dart';
 import 'package:phlio/design_system/typography.dart';
+import 'package:phlio/design_system/widgets/phlio_card.dart';
 import 'package:phlio/shared/content/mentions.dart';
 import 'package:phlio/shared/location/location_share_screen.dart' show phlioMapStyle;
 
@@ -870,6 +871,11 @@ class _MoveSaveScreenState extends State<MoveSaveScreen> {
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final p in _tagged)
               InputChip(
+                avatar: PhlioAvatar(
+                    name: '${p['display_name'] ?? p['username']}',
+                    imageUrl: p['avatar_url'] as String?,
+                    size: 24,
+                    showMomentRing: false),
                 label: Text('@${p['username']}'),
                 onDeleted: () => setState(() => _tagged.remove(p)),
               ),
@@ -880,13 +886,14 @@ class _MoveSaveScreenState extends State<MoveSaveScreen> {
           onChanged: _searchTag,
           decoration: const InputDecoration(prefixIcon: Icon(Icons.person_add_alt_1_rounded), hintText: 'Search people'),
         ),
-        for (final p in _tagResults.take(5))
-          ListTile(
-            leading: const Icon(Icons.person_outline_rounded),
-            title: Text('${p['display_name'] ?? p['username']}'),
-            subtitle: Text('@${p['username']}'),
-            onTap: () => setState(() {
-              if (!_tagged.any((t) => t['username'] == p['username'])) _tagged.add(p as Map);
+        // Same rows as @mention suggestions: circle photo with the moments
+        // ring when they have a live moment.
+        for (final (i, p) in _tagResults.take(6).indexed)
+          MentionPersonRow(
+            person: p as Map,
+            index: i,
+            onPick: (p) => setState(() {
+              if (!_tagged.any((t) => t['username'] == p['username'])) _tagged.add(p);
               _tagResults = [];
               _tagSearch.clear();
             }),

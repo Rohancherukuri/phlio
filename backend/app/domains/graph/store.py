@@ -59,6 +59,8 @@ TABLES = {
     "timeline_task",
     "phlio_activity",
     "activity_kudos",
+    "fitness_day",
+    "fitness_goal",
     "live_location",
     "profile_style",
     "chat_theme",

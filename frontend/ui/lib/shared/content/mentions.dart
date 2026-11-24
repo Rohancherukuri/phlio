@@ -123,7 +123,7 @@ class MentionSuggestions extends StatelessWidget {
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 itemCount: people.length,
-                itemBuilder: (_, i) => _MentionRow(person: people[i] as Map, onPick: onPick, index: i),
+                itemBuilder: (_, i) => MentionPersonRow(person: people[i] as Map, onPick: onPick, index: i),
               ),
             ),
     );
@@ -132,8 +132,8 @@ class MentionSuggestions extends StatelessWidget {
 
 /// One suggestion: circle photo (with the moment ring when they have a live
 /// moment, exactly like the moments rail), name and @username.
-class _MentionRow extends StatelessWidget {
-  const _MentionRow({required this.person, required this.onPick, required this.index});
+class MentionPersonRow extends StatelessWidget {
+  const MentionPersonRow({required this.person, required this.onPick, this.index = 0, super.key});
   final Map person;
   final ValueChanged<Map> onPick;
   final int index;
