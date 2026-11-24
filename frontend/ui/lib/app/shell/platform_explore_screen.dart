@@ -35,6 +35,8 @@ import '../../features/shop/presentation/controllers/shop_controller.dart';
 import '../../features/shop/presentation/widgets/product_card.dart';
 import '../../features/book/presentation/screens/book_discovery_screen.dart';
 import '../../features/phlio_agent/presentation/screens/foxy_timeline_screen.dart';
+import '../../features/phlio_agent/presentation/screens/move/move_home_screen.dart';
+import '../../features/phlio_agent/presentation/screens/move/move_social.dart';
 import '../platform/phlio_platform.dart';
 import 'platform_home_screen.dart' show switchPlatform;
 
@@ -437,7 +439,10 @@ class _AgentExplore extends StatelessWidget {
               child: PhlioFoxAnimation(
                   size: 140, animation: PhlioFoxLoop.explore)),
           const SizedBox(height: PhlioSpacing.lg),
+          // "View Neha's activity" after tapping an activity post in Social.
+          const PendingActivityBanner(),
           const _FoxyTimelineCard(),
+          const _MoveCard(),
           const _CapabilityTile(
             icon: Icons.event_note_rounded,
             title: 'Plans with friends',
@@ -471,6 +476,57 @@ class _AgentExplore extends StatelessWidget {
           ),
           const SizedBox(height: PhlioSpacing.xxl),
         ],
+      ),
+    );
+  }
+}
+
+/// Featured card: Phlio Move — record runs, rides and workouts and share them.
+class _MoveCard extends StatelessWidget {
+  const _MoveCard();
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFFFF8C5A);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: PhlioSpacing.md),
+      child: Material(
+        color: PhlioColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => Navigator.of(context, rootNavigator: true)
+              .push(MaterialPageRoute<void>(builder: (_) => const MoveHomeScreen())),
+          child: Ink(
+            padding: const EdgeInsets.all(PhlioSpacing.lg),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: accent.withValues(alpha: 0.35)),
+            ),
+            child: Row(children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(color: accent.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(18)),
+                child: const Icon(Icons.directions_run_rounded, color: accent, size: 30),
+              ),
+              const SizedBox(width: PhlioSpacing.lg),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Phlio Move', style: PhlioTypography.title),
+                  const SizedBox(height: 4),
+                  Text('Record runs, rides and workouts with GPS, then share them to Phlio Social for kudos and comments.',
+                      style: PhlioTypography.caption),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Text('Start moving', style: PhlioTypography.label.copyWith(color: accent)),
+                    const Icon(Icons.arrow_forward_rounded, size: 16, color: accent),
+                  ]),
+                ]),
+              ),
+            ]),
+          ),
+        ),
       ),
     );
   }

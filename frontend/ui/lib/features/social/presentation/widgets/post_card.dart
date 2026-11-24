@@ -22,6 +22,7 @@ import '../../../../design_system/typography.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../../domain/entities/post_entity.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'package:phlio/features/phlio_agent/presentation/screens/move/move_social.dart';
 
 class PostCard extends ConsumerWidget {
   const PostCard({
@@ -88,7 +89,11 @@ class PostCard extends ConsumerWidget {
           for (final media in post.media)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: media.kind == MediaKind.image
+              child: media.kind == MediaKind.image && isActivityMedia(media.url)
+                  // A Phlio Move activity: route card + stats; tap opens it
+                  // from the Agent explore tab.
+                  ? ActivityPostBlock(postId: post.id, imageUrl: media.url)
+                  : media.kind == MediaKind.image
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: phlioNetworkImage(AppConfig.mediaUrl(media.url),

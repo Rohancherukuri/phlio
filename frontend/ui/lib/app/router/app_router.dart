@@ -52,6 +52,7 @@ import '../shell/profile_screen.dart';
 import '../shell/settings_screen.dart';
 import '../shell/account_switcher.dart';
 import '../../shared/notifications/notifications_screen.dart';
+import '../../features/phlio_agent/presentation/screens/move/move_activity_screen.dart';
 import '../../features/rooms/presentation/screens/chats_inbox_screen.dart';
 
 /// Bridges Riverpod state changes to `GoRouter`'s `Listenable`-based
@@ -190,6 +191,11 @@ final routerProvider = Provider<GoRouter>((ref) {
               video: data['video'] == true,
               incoming: data['incoming'] == true);
         },
+      ),
+      GoRoute(
+        // Phlio Move activity (notifications and shared links).
+        path: '/activity/:id',
+        builder: (context, state) => MoveActivityScreen(id: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/dm/:username',

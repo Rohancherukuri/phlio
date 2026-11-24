@@ -73,7 +73,9 @@ class PhlioNotification {
   final DateTime at;
 
   /// The in-app place this notification opens.
-  String? get route => switch (platform.id) {
+  String? get route => data['activity'] is String
+      ? '/activity/${data['activity']}'
+      : switch (platform.id) {
         'dm' => data['peer'] == null ? null : '/dm/${Uri.encodeComponent('${data['peer']}')}',
         'rooms' => data['room_id'] == null ? null : '/rooms/${data['room_id']}',
         _ => data['path'] is String && '${data['path']}'.contains('/')

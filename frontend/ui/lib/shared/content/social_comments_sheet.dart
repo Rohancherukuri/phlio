@@ -20,6 +20,9 @@ import '../../design_system/widgets/phlio_fox.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'dart:convert' show jsonEncode;
+import 'comment_audio.dart';
+import '../../features/rooms/presentation/widgets/note_song_picker.dart' show showNoteSongPicker;
 
 String commentUrl(String id) =>
     '/social/content/${id.contains('/') ? id.substring(id.indexOf('/') + 1) : id}/comments';
@@ -105,6 +108,14 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   final expandedThreads = <String>{};
   String? path, sticker, error;
   Map? replying;
+
+  /// A voice note waiting to be sent, and whether the recorder is open.
+  String? voicePath;
+  double voiceSeconds = 0;
+  bool recording = false;
+
+  /// A song clip (≤ 30 s) from Phlio Stream music waiting to be sent.
+  Map<String, dynamic>? song;
 
   /// Your own comment or reply being edited in the composer.
   Map? editing;
@@ -283,6 +294,15 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                     if (item['sticker_id'] != null)
                       PhlioStickerView(
                           stickerId: item['sticker_id'] as String, size: 150),
+                    if (item['audio_url'] != null)
+                      CommentVoicePlayer(
+                          key: ValueKey('voice-${item['id']}'),
+                          url: item['audio_url'] as String,
+                          seconds: (item['audio_seconds'] as num?)?.toDouble()),
+                    if (item['music'] is Map)
+                      CommentSongPlayer(
+                          key: ValueKey('song-${item['id']}'),
+                          music: item['music'] as Map),
                     if (!highlighted)
                       Wrap(spacing: 16, children: [
                         TextButton(
@@ -563,6 +583,14 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                       icon: Icons.folder_open_outlined,
                       label: 'Files',
                       onTap: () => pickPhotoFrom('files')),
+                  _AttachOption(
+                      icon: Icons.mic_none_rounded,
+                      label: 'Voice',
+                      onTap: startVoice),
+                  _AttachOption(
+                      icon: Icons.music_note_rounded,
+                      label: 'Song',
+                      onTap: pickSong),
                 ], onClose: () => setState(() => attachPanel = null))
               else if (attachPanel == 'gift')
                 _GiftPanel(onClose: () => setState(() => attachPanel = null))
@@ -631,7 +659,7 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                     focusedBorder: InputBorder.none)),
                           ),
                           _ComposerIcon(
-                              tooltip: 'Add a photo',
+                              tooltip: 'Photo, voice note or song',
                               icon: Icons.image_outlined,
                               asset: 'assets/images/chat_icons/image.svg',
                               onTap: sending ? null : pickPhoto),
@@ -651,7 +679,9 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                 if (sending ||
                     text.text.trim().isNotEmpty ||
                     path != null ||
-                    sticker != null)
+                    sticker != null ||
+                    voicePath != null ||
+                    song != null)
                   IconButton(
                       tooltip: 'Post comment',
                       onPressed: sending ? null : send,
@@ -726,6 +756,38 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   void pickPhoto() {
     FocusScope.of(context).unfocus();
     setState(() => attachPanel = attachPanel == 'photo' ? null : 'photo');
+  }
+
+  void startVoice() {
+    FocusScope.of(context).unfocus();
+    deleteVoiceFile(voicePath);
+    setState(() {
+      attachPanel = null;
+      voicePath = null;
+      recording = true;
+    });
+  }
+
+  Future<void> pickSong() async {
+    setState(() => attachPanel = null);
+    final picked = await showNoteSongPicker(context);
+    if (picked == null || !mounted) return;
+    final url = '${picked['url'] ?? ''}';
+    if (url.isEmpty || picked['source'] == 'spotify' || picked['path'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pick a song from Phlio Stream to share it in a comment.')));
+      return;
+    }
+    final length = ((picked['clip_length'] as num?) ?? kCommentSongSeconds).toDouble();
+    setState(() => song = {
+          'title': picked['title'],
+          'artist': picked['artist'],
+          'url': url,
+          if (picked['image_url'] != null) 'image_url': picked['image_url'],
+          if (picked['ref'] != null) 'ref': picked['ref'],
+          'clip_start': (picked['clip_start'] as num?) ?? 0,
+          'clip_length': length > kCommentSongSeconds ? kCommentSongSeconds : length,
+        });
   }
 
   Future<void> pickPhotoFrom(String source) async {
@@ -808,7 +870,11 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
   Future<void> send() async {
     if (editing != null) return saveEdit();
     if (sending ||
-        (text.text.trim().isEmpty && path == null && sticker == null)) return;
+        (text.text.trim().isEmpty &&
+            path == null &&
+            sticker == null &&
+            voicePath == null &&
+            song == null)) return;
     setState(() {
       sending = true;
       error = null;
@@ -821,7 +887,13 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
             if (replying != null) 'parent_id': replying!['id'],
             if (sticker != null) 'sticker_id': sticker,
             if (path != null) 'image': await MultipartFile.fromFile(path!),
+            if (voicePath != null) ...{
+              'audio': await MultipartFile.fromFile(voicePath!, filename: 'voice.m4a'),
+              'audio_seconds': voiceSeconds.toStringAsFixed(1),
+            },
+            if (song != null) 'music': jsonEncode(song),
           }));
+      deleteVoiceFile(voicePath);
       refreshCommentCounts(ref, widget.contentId);
       if (mounted)
         setState(() {
@@ -830,6 +902,8 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
           replying = null;
           path = null;
           sticker = null;
+          voicePath = null;
+          song = null;
           people = [];
         });
     } catch (_) {
@@ -990,6 +1064,39 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                         child: Text(error!,
                             style: const TextStyle(
                                 fontSize: 12, color: Colors.orangeAccent))),
+                  if (recording)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: CommentVoiceRecorder(
+                        onDone: (p, secs) => setState(() {
+                          recording = false;
+                          voicePath = p;
+                          voiceSeconds = secs;
+                        }),
+                        onCancel: () => setState(() => recording = false),
+                      ),
+                    ),
+                  if (voicePath != null || song != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                        if (voicePath != null) ...[
+                          CommentVoicePlayer(path: voicePath, seconds: voiceSeconds),
+                          IconButton(
+                              tooltip: 'Remove voice note',
+                              onPressed: () => setState(() {
+                                    deleteVoiceFile(voicePath);
+                                    voicePath = null;
+                                  }),
+                              icon: const Icon(Icons.close)),
+                        ],
+                        if (song != null)
+                          CommentSongPlayer(
+                              key: ValueKey('${song!['url']}${song!['clip_start']}'),
+                              music: song!,
+                              onRemove: () => setState(() => song = null)),
+                      ]),
+                    ),
                   if (path != null || sticker != null)
                     SizedBox(
                         height: 70,

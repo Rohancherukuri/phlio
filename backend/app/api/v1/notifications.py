@@ -194,7 +194,10 @@ async def notify_comment(c, user, obj: dict, comment: dict, mentioned: list[dict
         platform = obj.get("platform") or "social"
         path = f"{platform}/{obj.get('domain_ref')}"
         title_of = obj.get("title") or "your post"
-        text = comment.get("text") or ("a sticker" if comment.get("sticker_id") else "a photo")
+        text = comment.get("text") or (
+            "a voice note 🎙️" if comment.get("audio_url") else
+            f"🎵 {comment['music']['title']}" if comment.get("music") else
+            "a sticker" if comment.get("sticker_id") else "a photo")
         base = dict(path=path, comment_id=comment.get("id"), content_title=title_of)
         who = user.full_name or user.username
         target_platform = platform if platform in PLATFORMS else "social"

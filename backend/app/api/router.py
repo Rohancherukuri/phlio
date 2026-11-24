@@ -113,3 +113,5 @@ from app.api.v1 import memberships
 api_router.include_router(memberships.router)
 from app.api.v1 import timeline
 api_router.include_router(timeline.router)
+from app.api.v1 import activities
+api_router.include_router(activities.router)

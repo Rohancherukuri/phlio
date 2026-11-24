@@ -57,6 +57,8 @@ TABLES = {
     "social_blend",
     "watch_party",
     "timeline_task",
+    "phlio_activity",
+    "activity_kudos",
     "live_location",
     "profile_style",
     "chat_theme",

@@ -48,11 +48,22 @@ async def comments(ref: str, platform: str = 'social', user=Depends(get_current_
 
 @router.post('/content/{ref}/comments',status_code=201)
 async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str | None = Form(None),
-                 image: UploadFile | None = File(None), parent_id: str | None = Form(None), platform: str = 'social', user=Depends(get_current_user), c=Depends(get_container)):
+                 image: UploadFile | None = File(None), parent_id: str | None = Form(None), platform: str = 'social',
+                 user=Depends(get_current_user), c=Depends(get_container),
+                 # Voice note (≤ 60 s) and a ≤ 30 s song clip; last so positional callers keep working.
+                 audio: UploadFile | None = File(None), audio_seconds: float | None = Form(None),
+                 music: str | None = Form(None, max_length=4000)):
     obj = await resolve(c,user.id,platform,ref)
     await c.cache.rate_limit(user.id,'comment',30)
     text = text.strip()
-    if not text and not sticker_id and not image: raise HTTPException(422,'Write a comment or choose an image, GIF or sticker.')
+    # Called directly (not over HTTP), the extra parameters hold their
+    # Form/File markers: treat those as "not given".
+    if not isinstance(music, str): music = None
+    if not hasattr(audio, 'read'): audio = None
+    if not isinstance(audio_seconds, (int, float)): audio_seconds = None
+    song = _music(music) if music else None
+    if not text and not sticker_id and not image and not audio and not song:
+        raise HTTPException(422,'Write a comment or choose an image, GIF, sticker, voice note or song.')
     if sticker_id and not is_known_sticker(sticker_id): raise HTTPException(422,'Unknown sticker.')
     if parent_id:
         existing = await comments(ref, platform, user, c)
@@ -64,8 +75,13 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
         if person and not await c.graph.blocked(user.id,person.id): mentioned.append(c.graph.profile(person))
     cid = 'content_comment:' + uuid.uuid4().hex
     row = dict(parent_id=parent_id,object_id=obj['id'],author_id=user.id,text=text,sticker_id=sticker_id,mentions=mentioned,created_at=now(),image_url=None)
-    target = None
+    if song: row['music'] = song
+    target = voice = None
     try:
+        if audio:
+            voice = await _save_voice(c, audio)
+            row['audio_url'] = '/media/social_comments/voice/' + voice.name
+            row['audio_seconds'] = round(min(max(audio_seconds or 0, 0), VOICE_SECONDS), 1)
         if image:
             raw = await image.read(10*1024*1024+1)
             if len(raw)>10*1024*1024: raise HTTPException(413,'Images and GIFs must be under 10 MB.')
@@ -89,7 +105,51 @@ async def create(ref: str, text: str = Form('',max_length=2000), sticker_id: str
         return dict(saved,author=c.graph.profile(user))
     except Exception:
         if target: target.unlink(missing_ok=True)
+        if voice: voice.unlink(missing_ok=True)
         raise
+
+VOICE_SECONDS = 60
+VOICE_TYPES = {'.m4a', '.aac', '.mp3', '.ogg', '.opus', '.wav', '.webm'}
+MUSIC_SECONDS = 30
+
+
+async def _save_voice(c, audio: UploadFile):
+    """A voice note (≤ 5 MB, up to a minute) for a comment."""
+    from pathlib import Path
+    ext = Path(audio.filename or '').suffix.lower() or '.m4a'
+    if ext not in VOICE_TYPES:
+        raise HTTPException(422, 'Voice notes must be M4A, AAC, MP3, OGG, Opus, WAV or WebM.')
+    raw = await audio.read(5 * 1024 * 1024 + 1)
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(413, 'Voice notes must be under 5 MB.')
+    if len(raw) < 200:
+        raise HTTPException(422, 'That voice note is empty.')
+    folder = media_root_path(c.settings) / 'social_comments' / 'voice'
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / (uuid.uuid4().hex + ext)
+    target.write_bytes(raw)
+    return target
+
+
+def _music(raw: str) -> dict:
+    """A song snippet (up to 30 s) picked from Phlio Stream music."""
+    import json
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise HTTPException(422, 'Choose a song again.')
+    if not isinstance(data, dict):
+        raise HTTPException(422, 'Choose a song again.')
+    url = str(data.get('url') or '')
+    if not (url.startswith('/media/') or url.startswith('https://')):
+        raise HTTPException(422, 'That song can’t be played in comments.')
+    start = max(float(data.get('clip_start') or 0), 0.0)
+    length = min(max(float(data.get('clip_length') or MUSIC_SECONDS), 5.0), float(MUSIC_SECONDS))
+    image = data.get('image_url')
+    return dict(title=str(data.get('title') or 'Untitled')[:120], artist=str(data.get('artist') or '')[:120],
+                url=url[:500], image_url=str(image)[:500] if image else None, ref=str(data.get('ref') or '')[:120] or None,
+                clip_start=round(start, 1), clip_length=round(length, 1))
+
 
 async def comment_mentions(c, user, text):
     mentioned = []
