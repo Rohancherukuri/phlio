@@ -12,13 +12,55 @@ import 'package:phlio/design_system/widgets/phlio_card.dart';
 import 'package:phlio/shared/content/mentions.dart';
 import 'package:phlio/shared/content/social_comments_sheet.dart' show ContentDiscussion;
 
+import 'package:phlio/app/config/app_config.dart';
+import 'package:phlio/core/network/media_cache.dart';
+
 import 'move_api.dart';
 
 const _emojis = ['👏', '🔥', '💪', '❤️', '😮', '🏅'];
 
+/// Opens an activity with a soft fade-and-rise; the route card flies in from
+/// the feed card ([heroTag]) and then replays the route.
+Route<void> moveActivityRoute(String id, {String? heroImage}) => PageRouteBuilder<void>(
+      transitionDuration: const Duration(milliseconds: 420),
+      reverseTransitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (_, __, ___) => MoveActivityScreen(id: id, heroImage: heroImage),
+      transitionsBuilder: (_, a, __, child) {
+        final curved = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, .04), end: Offset.zero).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+
+String moveHeroTag(String id) => 'move-activity-$id';
+
+/// Fades and lifts [child] in after [delay] (staggered sections).
+class _Reveal extends StatelessWidget {
+  const _Reveal({required this.child, this.delay = 0});
+  final Widget child;
+  final int delay;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: 420 + delay),
+        curve: Interval(delay / (420 + delay), 1, curve: Curves.easeOutCubic),
+        builder: (_, t, c) => Opacity(opacity: t, child: Transform.translate(offset: Offset(0, 14 * (1 - t)), child: c)),
+        child: child,
+      );
+}
+
 class MoveActivityScreen extends StatefulWidget {
-  const MoveActivityScreen({required this.id, super.key});
+  const MoveActivityScreen({required this.id, this.heroImage, super.key});
   final String id;
+
+  /// The feed card's route picture, shown (as the hero) while loading.
+  final String? heroImage;
 
   @override
   State<MoveActivityScreen> createState() => _MoveActivityScreenState();
@@ -128,11 +170,26 @@ class _MoveActivityScreenState extends State<MoveActivityScreen> {
         ],
       ),
       body: a == null
-          ? Center(
-              child: _error == null
-                  ? const CircularProgressIndicator()
-                  : Text(_error!, style: PhlioTypography.body),
-            )
+          ? (_error == null && widget.heroImage != null
+              ? ListView(padding: const EdgeInsets.fromLTRB(16, 70, 16, 0), children: [
+                  Hero(
+                    tag: moveHeroTag(widget.id),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 10,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: phlioNetworkImage(AppConfig.mediaUrl(widget.heroImage!), fit: BoxFit.cover),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Center(child: CircularProgressIndicator()),
+                ])
+              : Center(
+                  child: _error == null
+                      ? const CircularProgressIndicator()
+                      : Text(_error!, style: PhlioTypography.body),
+                ))
           : RefreshIndicator(onRefresh: _load, child: _body(a)),
     );
   }
@@ -189,7 +246,9 @@ class _MoveActivityScreenState extends State<MoveActivityScreen> {
       ],
       const SizedBox(height: 16),
       // Route (or a sport tile for indoor activities).
-      AspectRatio(
+      Hero(
+        tag: moveHeroTag(widget.id),
+        child: AspectRatio(
         aspectRatio: 16 / 10,
         child: Container(
           decoration: BoxDecoration(
@@ -200,7 +259,15 @@ class _MoveActivityScreenState extends State<MoveActivityScreen> {
           clipBehavior: Clip.antiAlias,
           child: route.length > 1
               ? Stack(children: [
-                  Positioned.fill(child: CustomPaint(painter: RoutePainter(route, stroke: 5))),
+                  // The route draws itself, start to finish.
+                  Positioned.fill(
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 1600),
+                      curve: Curves.easeInOutCubic,
+                      builder: (_, t, __) => CustomPaint(painter: RoutePainter(route, stroke: 5, progress: t)),
+                    ),
+                  ),
                   if (a['hide_endpoints'] == true)
                     Positioned(
                       left: 12,
@@ -208,17 +275,29 @@ class _MoveActivityScreenState extends State<MoveActivityScreen> {
                       child: _Pill(icon: Icons.visibility_off_rounded, text: a['mine'] == true ? 'Start & end hidden from others' : 'Start & end hidden'),
                     ),
                 ])
-              : Center(child: Icon(sport.icon, size: 72, color: moveAccent.withValues(alpha: .8))),
+              : Center(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: .6, end: 1),
+                    duration: const Duration(milliseconds: 700),
+                    curve: Curves.elasticOut,
+                    builder: (_, t, c) => Transform.scale(scale: t, child: c),
+                    child: Icon(sport.icon, size: 72, color: moveAccent.withValues(alpha: .8)),
+                  ),
+                ),
         ),
-      ),
+      )),
       const SizedBox(height: 16),
-      _StatsGrid(a: a, sport: sport),
-      if (splits.isNotEmpty) ...[
-        const SizedBox(height: 20),
-        Text('Splits', style: PhlioTypography.title),
-        const SizedBox(height: 10),
-        _Splits(splits: splits),
-      ],
+      _Reveal(delay: 120, child: _StatsGrid(a: a, sport: sport)),
+      if (splits.isNotEmpty)
+        _Reveal(
+          delay: 260,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox(height: 20),
+            Text('Splits', style: PhlioTypography.title),
+            const SizedBox(height: 10),
+            _Splits(splits: splits),
+          ]),
+        ),
       const SizedBox(height: 20),
       // Kudos.
       Text('Kudos${(a['kudos_count'] ?? 0) > 0 ? ' · ${a['kudos_count']}' : ''}', style: PhlioTypography.title),
@@ -339,6 +418,7 @@ class _Splits extends StatelessWidget {
     return Column(children: [
       for (var i = 0; i < splits.length; i++)
         Padding(
+          key: ValueKey('split-$i'),
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(children: [
             SizedBox(width: 44, child: Text('${splits[i]['km']}', style: PhlioTypography.caption)),
@@ -347,10 +427,16 @@ class _Splits extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (_, box) => Align(
                   alignment: Alignment.centerLeft,
-                  child: Container(
-                    height: 10,
-                    width: box.maxWidth * (.25 + .75 * (secs[i] / slowest)),
-                    decoration: BoxDecoration(color: moveAccent.withValues(alpha: .8), borderRadius: BorderRadius.circular(5)),
+                  // Bars grow in one after another.
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: Duration(milliseconds: 500 + 70 * i),
+                    curve: Interval((70 * i) / (500 + 70 * i), 1, curve: Curves.easeOutCubic),
+                    builder: (_, t, __) => Container(
+                      height: 10,
+                      width: box.maxWidth * (.25 + .75 * (secs[i] / slowest)) * t,
+                      decoration: BoxDecoration(color: moveAccent.withValues(alpha: .8), borderRadius: BorderRadius.circular(5)),
+                    ),
                   ),
                 ),
               ),

@@ -85,6 +85,8 @@ class PhlioNotification {
 
   /// Messages and comments can be answered right from the banner.
   bool get canReply =>
+      // Phlio Move activities: react (kudos) or comment from the banner.
+      (data['activity'] != null && '${data['path'] ?? ''}'.startsWith('social/')) ||
       (platform.id == 'dm' && data['peer'] != null) ||
       (platform.id == 'rooms' && data['room_id'] != null) ||
       (const {'comment', 'reply', 'mention'}.contains(kind) && data['comment_id'] != null);

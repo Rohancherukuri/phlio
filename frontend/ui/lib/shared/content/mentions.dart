@@ -18,6 +18,7 @@ import '../../app/router/app_router.dart' show routerProvider;
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../design_system/widgets/phlio_card.dart';
+import '../moments/moments.dart' show MomentRingAvatar;
 
 /// Usernames are letters, digits, "_" and "." (not at the end).
 final mentionPattern = RegExp(r'@([A-Za-z0-9_](?:[A-Za-z0-9_.]*[A-Za-z0-9_])?)');
@@ -97,41 +98,86 @@ Future<List<Map>> searchMentionPeople(String query) async {
 
 /// People matching the mention being typed (Instagram-style list).
 class MentionSuggestions extends StatelessWidget {
-  const MentionSuggestions({required this.people, required this.onPick, this.maxHeight = 220, super.key});
+  const MentionSuggestions({required this.people, required this.onPick, this.maxHeight = 260, super.key});
   final List people;
   final ValueChanged<Map> onPick;
   final double maxHeight;
 
   @override
   Widget build(BuildContext context) {
-    if (people.isEmpty) return const SizedBox.shrink();
-    return Container(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1F27),
-        border: Border(top: BorderSide(color: Colors.white12)),
-      ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: people.length,
-        itemBuilder: (_, i) {
-          final p = people[i] as Map;
-          final name = '${p['display_name'] ?? p['full_name'] ?? ''}';
-          return ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            leading: PhlioAvatar(
-                name: name.isEmpty ? '${p['username']}' : name,
-                imageUrl: p['avatar_url'] as String?,
-                size: 36,
-                showMomentRing: false),
-            title: Text('${p['username']}',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-            subtitle: name.isEmpty ? null : Text(name, style: const TextStyle(color: Colors.white54)),
-            onTap: () => onPick(p),
-          );
-        },
+    // Slides open as you type "@…" and closes when there's nothing to show.
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: people.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : Container(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              decoration: BoxDecoration(
+                color: const Color(0xFF151D29),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                border: Border.all(color: Colors.white.withValues(alpha: .07)),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                itemCount: people.length,
+                itemBuilder: (_, i) => _MentionRow(person: people[i] as Map, onPick: onPick, index: i),
+              ),
+            ),
+    );
+  }
+}
+
+/// One suggestion: circle photo (with the moment ring when they have a live
+/// moment, exactly like the moments rail), name and @username.
+class _MentionRow extends StatelessWidget {
+  const _MentionRow({required this.person, required this.onPick, required this.index});
+  final Map person;
+  final ValueChanged<Map> onPick;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = person;
+    final name = '${p['display_name'] ?? p['full_name'] ?? ''}';
+    final shown = name.isEmpty ? '${p['username']}' : name;
+    const size = 46.0;
+    final plain = PhlioAvatar(name: shown, imageUrl: p['avatar_url'] as String?, size: size, showMomentRing: false);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 180 + 40 * (index < 6 ? index : 6)),
+      curve: Curves.easeOutCubic,
+      builder: (_, t, child) => Opacity(opacity: t, child: Transform.translate(offset: Offset(0, 8 * (1 - t)), child: child)),
+      child: InkWell(
+        onTap: () => onPick(p),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          child: Row(children: [
+            MomentRingAvatar(
+              userId: '${p['id'] ?? p['username'] ?? ''}',
+              imageUrl: p['avatar_url'] as String?,
+              size: size,
+              plain: plain,
+              // Tapping the photo picks the person here instead of opening
+              // their moment, so the list behaves like one control.
+              onTapOverride: () => onPick(p),
+              ringed: (inner) => PhlioAvatar(name: shown, imageUrl: p['avatar_url'] as String?, size: inner, showMomentRing: false),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(shown,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14.5)),
+                Text('@${p['username']}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+              ]),
+            ),
+          ]),
+        ),
       ),
     );
   }

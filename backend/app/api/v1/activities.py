@@ -432,7 +432,8 @@ async def _announce(c, user, row: dict) -> None:
 
     aid = row["id"].removeprefix(TABLE + ":")
     who = user.full_name or user.username
-    data = dict(activity=aid, path=f"social/{row['post_id']}" if row.get("post_id") else None)
+    data = dict(activity=aid, path=f"social/{row['post_id']}" if row.get("post_id") else None,
+                image=row.get("image_url"), sport=row["sport"])
     line = f"{_summary_line(row)} · {row['title']}"
     done = {user.id}
     for uid in row.get("tagged", []):
@@ -528,7 +529,10 @@ async def give_kudos(activity_id: str, body: KudosIn, user=Depends(get_current_u
 
         await notify(c, row["user_id"], "agent", "kudos", user.full_name or user.username,
                      f"reacted {body.emoji} to {row['title']}", actor=user.id,
-                     data=dict(activity=row["id"].removeprefix(TABLE + ":")), group=f"kudos:{row['id']}")
+                     data=dict(activity=row["id"].removeprefix(TABLE + ":"),
+                               path=f"social/{row['post_id']}" if row.get("post_id") else None,
+                               image=row.get("image_url"), sport=row["sport"]),
+                     group=f"kudos:{row['id']}")
     return await _out(c, row, user.id, full=False)
 
 

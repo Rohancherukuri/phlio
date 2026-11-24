@@ -105,12 +105,15 @@ double haversine(double lat1, double lng1, double lat2, double lng2) {
 
 /// Draws a route (list of [lat, lng]) fitted into the box, on a quiet grid.
 class RoutePainter extends CustomPainter {
-  RoutePainter(this.route, {this.color = moveAccent, this.grid = true, this.stroke = 4});
+  RoutePainter(this.route, {this.color = moveAccent, this.grid = true, this.stroke = 4, this.progress = 1});
 
   final List<List<double>> route;
   final Color color;
   final bool grid;
   final double stroke;
+
+  /// 0…1: how much of the route is drawn (the "replay" animation).
+  final double progress;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -141,15 +144,40 @@ class RoutePainter extends CustomPainter {
       final o = xy(p);
       path.lineTo(o.dx, o.dy);
     }
-    canvas.drawPath(
-        path,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round);
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
     final s = xy(route.first), e = xy(route.last);
+    if (progress < 1) {
+      // Faint full route underneath, the drawn part on top, and a head dot.
+      canvas.drawPath(path, Paint()
+        ..color = color.withValues(alpha: .14)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round);
+      final metrics = path.computeMetrics().toList();
+      final total = metrics.fold<double>(0, (a, m) => a + m.length);
+      var left = total * progress.clamp(0.0, 1.0);
+      Offset? head;
+      for (final m in metrics) {
+        final take = math.min(left, m.length);
+        if (take <= 0) break;
+        canvas.drawPath(m.extractPath(0, take), line);
+        head = m.getTangentForOffset(take)?.position;
+        left -= take;
+      }
+      canvas.drawCircle(s, stroke + 2, Paint()..color = PhlioColors.success);
+      if (head != null) {
+        canvas.drawCircle(head, stroke + 4, Paint()..color = Colors.white);
+        canvas.drawCircle(head, stroke + 1.5, Paint()..color = color);
+      }
+      return;
+    }
+    canvas.drawPath(path, line);
     canvas.drawCircle(s, stroke + 2, Paint()..color = PhlioColors.success);
     canvas.drawCircle(e, stroke + 3, Paint()..color = Colors.white);
     canvas.drawCircle(
@@ -162,7 +190,7 @@ class RoutePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(RoutePainter old) => old.route != route || old.color != color;
+  bool shouldRepaint(RoutePainter old) => old.route != route || old.color != color || old.progress != progress;
 }
 
 /// A big number with a small label underneath.

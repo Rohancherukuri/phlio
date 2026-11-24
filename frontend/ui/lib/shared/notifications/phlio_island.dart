@@ -482,6 +482,22 @@ class _ReplyState extends ConsumerState<_Reply> {
     widget.onActivity();
     final dio = getIt<ApiClient>().dio;
     try {
+      // Phlio Move: emoji = kudos on the activity; text, GIF or sticker =
+      // a comment on the activity's post.
+      final activity = n.data['activity'];
+      if (activity != null) {
+        if (reaction != null) {
+          await dio.put('/activities/$activity/kudos', data: {'emoji': reaction});
+        } else {
+          final path = '${n.data['path']}';
+          await dio.post('/social/content/${path.substring(path.indexOf('/') + 1)}/comments',
+              queryParameters: {'platform': 'social'},
+              data: FormData.fromMap({
+                'text': text,
+                if (attachment != null) 'sticker_id': attachment['value'],
+              }));
+        }
+      } else
       switch (n.platform.id) {
         case 'dm':
           final peer = '${n.data['peer']}';
@@ -517,7 +533,9 @@ class _ReplyState extends ConsumerState<_Reply> {
       HapticFeedback.mediumImpact();
       _text.clear();
       setState(() => _done = reaction != null
-          ? (n.platform.id == 'dm' || (reaction == '❤️' && n.platform.id != 'rooms') ? 'Reacted $reaction' : 'Sent $reaction')
+          ? (n.data['activity'] != null || n.platform.id == 'dm' || (reaction == '❤️' && n.platform.id != 'rooms')
+              ? 'Reacted $reaction'
+              : 'Sent $reaction')
           : attachment != null
               ? 'Sent ${attachment['kind'] == 'gif' ? 'a GIF' : 'a sticker'}'
               : 'Replied to $_who');
@@ -553,9 +571,27 @@ class _ReplyState extends ConsumerState<_Reply> {
     }
     final hasText = _text.text.trim().isNotEmpty;
     final comment = !const {'dm', 'rooms'}.contains(n.platform.id);
+    final activity = n.data['activity'] != null;
+    final image = n.data['image'] as String?;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      if (activity && image != null && image.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AspectRatio(
+              aspectRatio: 1080 / 640,
+              child: phlioNetworkImage(AppConfig.mediaUrl(image),
+                  fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0C131E))),
+            ),
+          ),
+        ),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        for (final e in comment ? const ['❤️', '😂', '🔥', '👏'] : _quick)
+        for (final e in activity
+            ? const ['👏', '🔥', '💪', '❤️']
+            : comment
+                ? const ['❤️', '😂', '🔥', '👏']
+                : _quick)
           GestureDetector(
             onTap: _sending ? null : () => _deliver(reaction: e),
             child: Container(
@@ -597,7 +633,7 @@ class _ReplyState extends ConsumerState<_Reply> {
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
-                hintText: comment ? 'Reply to $_who…' : 'Reply to $_who…',
+                hintText: activity ? 'Comment on $_who’s activity…' : 'Reply to $_who…',
                 hintStyle: const TextStyle(color: Colors.white54, fontSize: 15),
               ),
             ),

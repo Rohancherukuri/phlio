@@ -720,8 +720,12 @@ async def _agent(c, user, p: Period) -> dict:
     if avg_wait is not None:
         insights.append(f"Foxy answered in {avg_wait:g} seconds on average.")
     recent = sorted(convos.values(), key=lambda v: v["last"], reverse=True)[:6]
+    move = await _move(c, user, p)
+    if move["count"]:
+        insights.append(f"You moved {move['distance_m'] / 1000:.1f} km over {move['count']} "
+                        f"activit{'ies' if move['count'] != 1 else 'y'} with Phlio Move.")
     return _section(
-        "agent", "Foxy", currency=currency, has_data=asked > 0,
+        "agent", "Foxy", currency=currency, has_data=asked > 0 or move["count"] > 0,
         headline=dict(label="Questions asked", value=asked, format="count", change=_pct(asked, before["asked"])),
         kpis=[
             _kpi("asked", "Questions asked", asked, change=_pct(asked, before["asked"])),
@@ -742,7 +746,69 @@ async def _agent(c, user, p: Period) -> dict:
         tops=[dict(title="What Foxy found for you", items=[
             dict(title=k, subtitle="from Foxy's plans", value=v, format="count") for k, v in kinds.most_common()])]
         if kinds else [],
-        insights=insights, extra=dict(hours=hours, avg_reply_seconds=avg_wait),
+        insights=insights, extra=dict(hours=hours, avg_reply_seconds=avg_wait, move=move),
+    )
+
+
+async def _move(c, user, p: Period) -> dict:
+    """Phlio Move in the period: totals, a per-day series, sports, bests,
+    streak and recent activities (shown in the Foxy tab)."""
+    from app.api.v1.activities import SPORTS
+
+    rows = await c.graph.store.rows("phlio_activity", {"user_id": user.id})
+    days = {label: dict(date=label, distance_m=0.0, moving_s=0, count=0) for label in p.labels}
+    sports: dict[str, dict] = {}
+    now_rows, before = [], dict(count=0, distance_m=0.0)
+    for r in rows:
+        moment = _when(r["started_at"])
+        period = p.which(moment)
+        if period == "before":
+            before["count"] += 1
+            before["distance_m"] += r.get("distance_m") or 0
+        if period != "now":
+            continue
+        now_rows.append(r)
+        day = days.get(moment.date().isoformat())
+        if day:
+            day["distance_m"] += r.get("distance_m") or 0
+            day["moving_s"] += r.get("moving_s") or r.get("elapsed_s") or 0
+            day["count"] += 1
+        s = sports.setdefault(r["sport"], dict(sport=r["sport"], label=SPORTS.get(r["sport"], ("Activity",))[0],
+                                                count=0, distance_m=0.0, moving_s=0))
+        s["count"] += 1
+        s["distance_m"] += r.get("distance_m") or 0
+        s["moving_s"] += r.get("moving_s") or r.get("elapsed_s") or 0
+    kudos = 0
+    for r in now_rows:
+        kudos += len(await c.graph.store.rows("activity_kudos", {"activity_id": r["id"]}))
+    all_days = {_when(r["started_at"]).date() for r in rows}
+    today = dt.datetime.now(dt.UTC).date()
+    streak, day = 0, today if today in all_days else today - dt.timedelta(days=1)
+    while day in all_days:
+        streak += 1
+        day -= dt.timedelta(days=1)
+
+    def brief(r):
+        return dict(id=r["id"].removeprefix("phlio_activity:"), title=r["title"], sport=r["sport"],
+                    distance_m=r.get("distance_m") or 0, moving_s=r.get("moving_s") or r.get("elapsed_s") or 0,
+                    image_url=r.get("image_url"), started_at=r["started_at"])
+
+    paced = [r for r in now_rows if (r.get("distance_m") or 0) >= 1000 and SPORTS.get(r["sport"], (0, 0, 0, False))[3]]
+    longest = max(now_rows, key=lambda r: r.get("distance_m") or 0, default=None)
+    fastest = min(paced, key=lambda r: (r.get("moving_s") or 1) / r["distance_m"], default=None)
+    distance = sum(r.get("distance_m") or 0 for r in now_rows)
+    return dict(
+        count=len(now_rows), distance_m=round(distance, 1),
+        moving_s=sum(r.get("moving_s") or r.get("elapsed_s") or 0 for r in now_rows),
+        elevation_m=round(sum(r.get("elevation_m") or 0 for r in now_rows)),
+        calories=sum(r.get("calories") or 0 for r in now_rows), kudos=kudos, streak_days=streak,
+        change=_pct(distance, before["distance_m"]),
+        days=list(days.values()),
+        sports=sorted(sports.values(), key=lambda s: -s["count"]),
+        longest=brief(longest) if longest and (longest.get("distance_m") or 0) > 0 else None,
+        fastest=dict(brief(fastest), pace_s_per_km=round((fastest.get("moving_s") or 0) / (fastest["distance_m"] / 1000)))
+        if fastest else None,
+        recent=[brief(r) for r in sorted(now_rows, key=lambda r: r["started_at"], reverse=True)[:5]],
     )
 
 

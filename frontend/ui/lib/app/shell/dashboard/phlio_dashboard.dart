@@ -36,6 +36,7 @@ import '../../../shared/notifications/notification_center.dart' show NotifPlatfo
 import '../../../shared/pay/phlio_currency.dart';
 import '../../config/app_config.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'move_dashboard_block.dart';
 
 final phlioDashboardProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, int>((ref, days) async {
   final res = await getIt<ApiClient>().dio.get('/profile/dashboard', queryParameters: {'days': days});
@@ -556,6 +557,11 @@ class DashboardSection extends StatelessWidget {
           ]);
         }),
       ),
+      // Foxy tab: Phlio Move (runs, rides, workouts).
+      if (id == 'agent' && extra['move'] is Map && (((extra['move'] as Map)['count'] as num?) ?? 0) > 0) ...[
+        const SizedBox(height: 14),
+        Reveal(index: i++, child: MoveDashboardBlock(move: (extra['move'] as Map).cast<String, dynamic>())),
+      ],
       if (insights.isNotEmpty) ...[const SizedBox(height: 16), _Insights(lines: insights, color: s.color)],
       if (series != null) ...[
         const SizedBox(height: 8),

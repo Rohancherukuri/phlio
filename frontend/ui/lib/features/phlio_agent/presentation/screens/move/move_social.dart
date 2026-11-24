@@ -1,9 +1,10 @@
 // Phlio Move ↔ Phlio Social.
 //
 //  * [ActivityPostBlock]: an activity post in the feed (route picture with
-//    sport, distance / pace / time). Tapping it takes you to the Phlio Agent
-//    explore tab, which asks you to open the activity there.
-//  * [PendingActivityBanner]: that prompt, at the top of the Agent explore tab.
+//    sport, distance / pace / time). Tapping it opens the activity with a
+//    hero flight and the route replaying itself.
+//  * [PendingActivityBanner]: "View <name>'s activity" at the top of the
+//    Agent explore tab (set by [openActivityFromPost], e.g. from shares).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -54,7 +55,13 @@ class ActivityPostBlock extends ConsumerWidget {
     final a = ref.watch(activityByPostProvider(postId)).valueOrNull;
     final sport = sportOf(a?['sport'] as String?);
     return GestureDetector(
-      onTap: a == null ? null : () => openActivityFromPost(context, ref, a),
+      // Opens the activity right here with a hero + route replay animation.
+      onTap: a == null
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              Navigator.of(context, rootNavigator: true).push(moveActivityRoute('${a['id']}', heroImage: imageUrl));
+            },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Container(
@@ -63,8 +70,15 @@ class ActivityPostBlock extends ConsumerWidget {
             AspectRatio(
               aspectRatio: 1080 / 640,
               child: Stack(fit: StackFit.expand, children: [
-                phlioNetworkImage(AppConfig.mediaUrl(imageUrl),
-                    fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0C131E))),
+                if (a != null)
+                  Hero(
+                    tag: moveHeroTag('${a['id']}'),
+                    child: phlioNetworkImage(AppConfig.mediaUrl(imageUrl),
+                        fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0C131E))),
+                  )
+                else
+                  phlioNetworkImage(AppConfig.mediaUrl(imageUrl),
+                      fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0C131E))),
                 Positioned(
                   left: 10,
                   top: 10,

@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:phlio/features/social/presentation/controllers/feed_controller.dart';
 
 import 'package:phlio/design_system/colors.dart';
 import 'package:phlio/design_system/typography.dart';
@@ -745,6 +747,12 @@ class _MoveSaveScreenState extends State<MoveSaveScreen> {
       });
       if (!mounted) return;
       HapticFeedback.mediumImpact();
+      if (_everyone && _post) {
+        // The new post shows at the top of the Social Posts tab right away.
+        try {
+          unawaited(ProviderScope.containerOf(context, listen: false).read(feedControllerProvider.notifier).refresh());
+        } catch (_) {}
+      }
       Navigator.of(context).pop('${(res.data as Map)['id']}');
     } catch (_) {
       if (!mounted) return;

@@ -71,6 +71,18 @@ async def test_record_post_react_comment(client: AsyncClient, auth_headers: dict
     assert r.status_code == 201 and r.json()["music"]["clip_length"] == 30
     assert (await client.post(url, headers=neha, data={"music": json.dumps(dict(song, url="javascript:x"))})).status_code == 422
 
+    # Kudos notification lets the owner reply in the activity's thread.
+    owner_notes = (await client.get("/api/v1/notifications", headers=auth_headers)).json()
+    owner_items = owner_notes["items"] if isinstance(owner_notes, dict) else owner_notes
+    kudos_note = next(n for n in owner_items if n["kind"] == "kudos")
+    assert kudos_note["data"]["path"] == f"social/{act['post_id']}" and kudos_note["data"]["image"]
+
+    # Phlio Move in the profile dashboard (Foxy tab).
+    dash = (await client.get("/api/v1/profile/dashboard", headers=auth_headers, params={"days": 7})).json()
+    move = {s["id"]: s for s in dash["sections"]}["agent"]["extra"]["move"]
+    assert move["count"] >= 1 and move["distance_m"] > 3000 and move["kudos"] >= 1
+    assert len(move["days"]) == 7 and move["sports"][0]["sport"] == "run" and move["longest"]
+
     summary = (await client.get("/api/v1/activities/summary", headers=auth_headers)).json()
     assert summary["week"]["count"] >= 1 and summary["streak_days"] >= 1
 
