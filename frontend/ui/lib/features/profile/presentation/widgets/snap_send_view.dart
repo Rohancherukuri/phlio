@@ -178,8 +178,8 @@ class _SnapSendViewState extends State<SnapSendView> {
           final gif = await showGiphyPicker(context);
           if (gif != null) _add(MomentSticker(StickerType.gif, {'url': gif.url, 'title': gif.title}));
         case 'stickers':
-          final sticker = await showFoxyStickerSheet(context);
-          if (sticker != null) _add(MomentSticker(StickerType.foxy, {'sticker': sticker}));
+          // The full sticker tray (same as moments).
+          _add(await pickSnapDecoration(context));
       }
     } catch (_) {
       _say('Couldn\'t add that. Try again.');
@@ -495,28 +495,38 @@ class _SnapSendViewState extends State<SnapSendView> {
           }),
         ),
         const SizedBox(height: 22),
-        // ✕   ➤   Aa✨
-        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-          IconButton(
-            tooltip: 'Discard',
-            iconSize: 40,
-            onPressed: widget.busy ? null : widget.onDiscard,
-            icon: const Icon(Icons.close_rounded, color: Colors.white),
-          ),
-          PhlioSendButton(busy: widget.busy, onTap: widget.onSend),
-          IconButton(
-            tooltip: 'Captions',
-            onPressed: widget.busy ? null : _captions,
-            icon: const _CaptionsIcon(),
-          ),
-          if (widget.onFilters != null)
-            IconButton(
-              tooltip: 'Filters',
-              iconSize: 34,
-              onPressed: widget.busy ? null : widget.onFilters,
-              icon: const Icon(Icons.filter_vintage_outlined, color: Colors.white),
+        // ✕   ➤   Aa✨ (filters): the send button stays dead centre, the
+        // other controls share the space on each side, all 52 px targets.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Expanded(
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                _ControlButton(
+                  tooltip: 'Discard',
+                  onTap: widget.busy ? null : widget.onDiscard,
+                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+                ),
+              ]),
             ),
-        ]),
+            PhlioSendButton(busy: widget.busy, onTap: widget.onSend),
+            Expanded(
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                _ControlButton(
+                  tooltip: 'Stickers & captions',
+                  onTap: widget.busy ? null : _captions,
+                  child: const _CaptionsIcon(),
+                ),
+                if (widget.onFilters != null)
+                  _ControlButton(
+                    tooltip: 'Filters',
+                    onTap: widget.busy ? null : widget.onFilters,
+                    child: const Icon(Icons.filter_vintage_outlined, color: Colors.white, size: 28),
+                  ),
+              ]),
+            ),
+          ]),
+        ),
         const SizedBox(height: 22),
         _recipients(),
         const SizedBox(height: 8),
@@ -525,29 +535,51 @@ class _SnapSendViewState extends State<SnapSendView> {
   }
 }
 
-/// "Aa" in a rounded outline with a sparkle (the captions button).
+/// A 52 px round control on a quiet translucent disc (same for all three).
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({required this.tooltip, required this.onTap, required this.child});
+  final String tooltip;
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.white.withValues(alpha: .10),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(width: 52, height: 52, child: Center(child: child)),
+          ),
+        ),
+      );
+}
+
+/// "Aa" in a rounded outline with a sparkle (stickers & captions).
 class _CaptionsIcon extends StatelessWidget {
   const _CaptionsIcon();
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: 52,
-        height: 46,
+        width: 32,
+        height: 28,
         child: Stack(clipBehavior: Clip.none, children: [
           Positioned(
             left: 0,
             bottom: 0,
             child: Container(
-              width: 44,
-              height: 38,
+              width: 28,
+              height: 22,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 3),
-                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white, width: 2),
+                borderRadius: BorderRadius.circular(11),
               ),
-              child: const Text('Aa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 17)),
+              child: const Text('Aa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),
             ),
           ),
-          const Positioned(right: 0, top: 0, child: Icon(Icons.auto_awesome, color: Colors.white, size: 18)),
+          const Positioned(right: 0, top: 0, child: Icon(Icons.auto_awesome, color: Colors.white, size: 12)),
         ]),
       );
 }
@@ -560,10 +592,10 @@ Widget snapMediaPreview({required String path, required bool video, required Str
 }
 
 
-/// The Phlio send button: a sunset-gradient orb with a soft glow and a
-/// white paper plane; it dips when pressed and spins a ring while sending.
+/// The Phlio send button: a flat sunset-gradient circle with a white paper
+/// plane; it dips when pressed and spins a ring while sending. No glow.
 class PhlioSendButton extends StatefulWidget {
-  const PhlioSendButton({required this.busy, required this.onTap, this.size = 96, super.key});
+  const PhlioSendButton({required this.busy, required this.onTap, this.size = 68, super.key});
   final bool busy;
   final VoidCallback onTap;
   final double size;
@@ -610,30 +642,10 @@ class _PhlioSendButtonState extends State<PhlioSendButton> with SingleTickerProv
             width: s,
             height: s,
             child: Stack(alignment: Alignment.center, children: [
-              // Glow
               Container(
                 width: s,
                 height: s,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: PhlioColors.brandGradient,
-                  boxShadow: [
-                    BoxShadow(color: PhlioColors.brandPink.withValues(alpha: .45), blurRadius: 26, spreadRadius: 1),
-                    BoxShadow(color: PhlioColors.brandViolet.withValues(alpha: .35), blurRadius: 40, offset: const Offset(-6, 6)),
-                  ],
-                ),
-              ),
-              // Inner sheen
-              Container(
-                width: s * .86,
-                height: s * .86,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    center: const Alignment(-.4, -.5),
-                    colors: [Colors.white.withValues(alpha: .28), Colors.transparent],
-                  ),
-                ),
+                decoration: const BoxDecoration(shape: BoxShape.circle, gradient: PhlioColors.brandGradient),
               ),
               if (widget.busy)
                 RotationTransition(

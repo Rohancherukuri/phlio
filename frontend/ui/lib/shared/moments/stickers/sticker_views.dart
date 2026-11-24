@@ -915,6 +915,25 @@ class WordSticker extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = word == 'TODAY' ? _weekdays[DateTime.now().weekday - 1] : word;
     final long = text.length > 6;
+    // Tray extras: a big emoji, a plain caption, and a gradient caption pill.
+    if (style == 'emoji') return Text(text, style: const TextStyle(fontSize: 96, height: 1.1));
+    if (style == 'text') {
+      return Text(text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800, shadows: [
+            Shadow(color: Color(0x99000000), blurRadius: 8, offset: Offset(0, 2)),
+          ]));
+    }
+    if (style == 'gradient') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFF8D78FF), Color(0xFFE795D7), Color(0xFFFFB58F)]),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
+      );
+    }
     switch (style) {
       case 'bubble':
         return Transform.rotate(

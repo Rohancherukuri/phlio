@@ -7,41 +7,32 @@ import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../../shared/moments/stickers/sticker_model.dart';
 import '../../../../shared/moments/stickers/sticker_tray.dart';
 import '../../../../shared/moments/stickers/sticker_views.dart';
-import 'snap_send_view.dart' show pickSnapImage;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
+import 'snap_send_view.dart' show uploadSnapImage;
 
-/// Captions tray is intentionally limited to decorations supported by snaps.
+/// Stickers & captions for snaps: the same sticker tray as moments (search,
+/// white sticker chips, clock / weather / likes and the Foxy pack, GIPHY),
+/// in snap mode — Aa Text and Colour text added, moment-only interactive
+/// stickers left out. Photos picked in the tray are uploaded so friends
+/// can see them.
 Future<MomentSticker?> pickSnapDecoration(BuildContext context) async {
-  final choice = await showModalBottomSheet<String>(
-    context: context, isScrollControlled: true, useSafeArea: true,
-    backgroundColor: PhlioColors.surface,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-    builder: (_) => const SnapCaptionsSheet(),
-  );
-  if (!context.mounted || choice == null) return null;
-  if (choice == 'music') {
-    final song = await pickMomentSong(context);
-    return song == null ? null : MomentSticker(StickerType.music, song);
+  String name = 'You';
+  try {
+    name = ProviderScope.containerOf(context, listen: false).read(authControllerProvider).valueOrNull?.fullName ?? 'You';
+  } catch (_) {}
+  final pick = await showStickerTray(context, userName: name, forSnap: true);
+  final sticker = pick?.sticker;
+  if (sticker == null) return null;
+  final path = sticker.data['path'];
+  if (path is String) {
+    final url = await uploadSnapImage(path);
+    final data = Map<String, dynamic>.from(sticker.data)
+      ..remove('path')
+      ..['url'] = url;
+    return MomentSticker(sticker.type, data, scale: sticker.type == StickerType.photo ? .8 : 1);
   }
-  if (choice == 'image') return pickSnapImage(context);
-  if (choice == 'gif') {
-    final gif = await showGiphyPicker(context);
-    return gif == null ? null : MomentSticker(StickerType.gif, {'url': gif.url, 'title': gif.title});
-  }
-  if (choice == 'stickers') {
-    final sticker = await showFoxyStickerSheet(context);
-    return sticker == null ? null : MomentSticker(StickerType.foxy, {'sticker': sticker});
-  }
-  if (choice == 'location') {
-    final text = await askText(context, 'Location', 'Add a place name');
-    return text == null ? null : MomentSticker(StickerType.location, {'text': text});
-  }
-  if (choice == 'clock') {
-    return MomentSticker(StickerType.clock, {'time': TimeOfDay.now().format(context)});
-  }
-  final decorative = {'party': '🪩 Party Time!', 'ootd': '🕶️ OOTD', 'miss': '🥰 Miss you'};
-  final text = decorative[choice] ?? await askText(context, 'Caption', 'Write something…');
-  if (text == null || text.trim().isEmpty) return null;
-  return MomentSticker(StickerType.word, {'word': text, 'style': choice});
+  return sticker;
 }
 
 class SnapCaptionsSheet extends StatelessWidget {

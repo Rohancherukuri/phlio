@@ -54,31 +54,42 @@ class TrayPick {
 }
 
 /// Opens the tray. [userName] labels the Avatar sticker.
-Future<TrayPick?> showStickerTray(BuildContext context, {required String userName}) =>
+///
+/// [forSnap]: the same tray for snaps — adds Aa Text / Colour text, and
+/// leaves out what only works on moments (Add Yours, Questions, Poll, the
+/// emoji slider and templates).
+Future<TrayPick?> showStickerTray(BuildContext context, {required String userName, bool forSnap = false}) =>
     showModalBottomSheet<TrayPick>(
       context: context,
       isScrollControlled: true,
       useRootNavigator: true,
-      backgroundColor: PhlioColors.surface,
-      barrierColor: Colors.black38,
+      backgroundColor: const Color(0xFF14161B),
+      barrierColor: Colors.black54,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (_) => _Tray(userName: userName),
+      builder: (_) => _Tray(userName: userName, forSnap: forSnap),
     );
 
 /// One chip in the tray.
 class _ChipDef {
-  const _ChipDef(this.label, this.icon, this.color, this.make);
+  const _ChipDef(this.label, this.icon, this.color, this.make, {this.moments = false, this.emoji});
   final String label;
   final IconData icon;
   final Color color;
+
+  /// Only on moments (interactive with viewers).
+  final bool moments;
+
+  /// Shown as an emoji-only chip (the round 😍 one).
+  final String? emoji;
 
   /// Builds the sticker (asking for input as needed); null = cancelled.
   final Future<TrayPick?> Function(BuildContext context, WidgetRef ref) make;
 }
 
 class _Tray extends ConsumerStatefulWidget {
-  const _Tray({required this.userName});
+  const _Tray({required this.userName, this.forSnap = false});
   final String userName;
+  final bool forSnap;
   @override
   ConsumerState<_Tray> createState() => _TrayState();
 }
@@ -96,6 +107,15 @@ class _TrayState extends ConsumerState<_Tray> {
   TrayPick _s(StickerType t, Map<String, dynamic> d) => TrayPick.sticker(MomentSticker(t, d));
 
   late final List<_ChipDef> _chips = [
+    // Snaps only: plain and gradient text captions.
+    _ChipDef('Aa Text', Icons.text_fields_rounded, const Color(0xFF111318), (c, r) async {
+      final t = await askText(c, 'Text', 'Write something…');
+      return t == null || t.trim().isEmpty ? null : _s(StickerType.word, {'word': t.trim(), 'style': 'text'});
+    }),
+    _ChipDef('Colour text', Icons.format_color_text_rounded, _pink, (c, r) async {
+      final t = await askText(c, 'Colour text', 'Write something…');
+      return t == null || t.trim().isEmpty ? null : _s(StickerType.word, {'word': t.trim(), 'style': 'gradient'});
+    }),
     _ChipDef('Location', Icons.place_outlined, _violet, (c, r) async {
       final t = await askText(c, 'Location', 'Where are you?');
       return t == null ? null : _s(StickerType.location, {'text': t});
@@ -116,7 +136,7 @@ class _TrayState extends ConsumerState<_Tray> {
       final gif = await showGiphyPicker(c, kind: 'sticker');
       return gif == null ? null : _s(StickerType.gif, {'url': gif.url, 'title': gif.title});
     }),
-    _ChipDef('Add Yours', Icons.add_a_photo_outlined, _pink, (c, r) async {
+    _ChipDef('Add Yours', Icons.photo_camera_outlined, const Color(0xFFE1306C), moments: true, (c, r) async {
       final t = await askText(c, 'Add yours', 'Show your view right now',
           suggestions: const ['Show your view right now', 'Your pet 🐾', 'Last photo you took', 'Coffee order ☕', 'Fit of the day']);
       return t == null ? null : _s(StickerType.addyours, {'prompt': t});
@@ -127,7 +147,7 @@ class _TrayState extends ConsumerState<_Tray> {
       final caption = await askText(c, 'Caption', 'Write on the frame', allowEmpty: true);
       return _s(StickerType.frame, {'path': path, 'caption': caption ?? ''});
     }),
-    _ChipDef('Questions', Icons.help_outline_rounded, _violet, (c, r) async {
+    _ChipDef('Questions', Icons.help_outline_rounded, _violet, moments: true, (c, r) async {
       final t = await askText(c, 'Questions', 'Ask me a question', initial: 'Ask me a question');
       return t == null ? null : _s(StickerType.question, {'prompt': t});
     }),
@@ -148,14 +168,19 @@ class _TrayState extends ConsumerState<_Tray> {
           ? _s(StickerType.avatar, {'name': widget.userName})
           : _s(StickerType.avatar, {'name': widget.userName, 'avatar': mine.toJson()});
     }),
-    _ChipDef('Templates', Icons.dashboard_customize_outlined, _peach, (c, r) async => const TrayPick.templates()),
-    _ChipDef('Emoji slider', Icons.linear_scale_rounded, _pink, (c, r) async {
-      final v = await _askSlider(c);
-      return v == null ? null : _s(StickerType.slider, v);
+    _ChipDef('Add Yours Templates', Icons.library_add_outlined, const Color(0xFFF77737), moments: true,
+        (c, r) async => const TrayPick.templates()),
+    _ChipDef('Emoji', Icons.emoji_emotions_outlined, _pink, emoji: '😍', (c, r) async {
+      final e = await _pickEmoji(c);
+      return e == null ? null : _s(StickerType.word, {'word': e, 'style': 'emoji'});
     }),
-    _ChipDef('Poll', Icons.poll_outlined, _violet, (c, r) async {
+    _ChipDef('Poll', Icons.poll_outlined, _violet, moments: true, (c, r) async {
       final v = await _askPoll(c);
       return v == null ? null : _s(StickerType.poll, v);
+    }),
+    _ChipDef('Emoji slider', Icons.linear_scale_rounded, _pink, moments: true, (c, r) async {
+      final v = await _askSlider(c);
+      return v == null ? null : _s(StickerType.slider, v);
     }),
     _ChipDef('Link', Icons.link_rounded, const Color(0xFF72A7FF), (c, r) async {
       final v = await _askLink(c);
@@ -185,8 +210,14 @@ class _TrayState extends ConsumerState<_Tray> {
   @override
   Widget build(BuildContext context) {
     final q = _q.toLowerCase();
-    final chips = _chips.where((c) => q.isEmpty || c.label.toLowerCase().contains(q)).toList();
-    final words = wordStickers.where((w) => q.isEmpty || w.$1.toLowerCase().contains(q)).toList();
+    final chips = _chips
+        .where((c) => widget.forSnap ? !c.moments : !const {'Aa Text', 'Colour text'}.contains(c.label))
+        .where((c) => q.isEmpty || c.label.toLowerCase().contains(q))
+        .toList();
+    final foxies = [
+      for (final f in FoxyPuppetStickers.catalog)
+        if (q.isEmpty || 'foxy'.contains(q) || f.label.toLowerCase().contains(q)) FoxyPuppetStickers.idOf(f.act)
+    ];
     final now = TimeOfDay.now();
     final rng = math.Random(7); // the same playful tilt every time
     return DraggableScrollableSheet(
@@ -222,16 +253,17 @@ class _TrayState extends ConsumerState<_Tray> {
               child: _TrayChip(chip: c, onTap: () => _use(c)),
             ),
         ]),
-        const SizedBox(height: 24),
-        if (q.isEmpty) ...[
-          _section('Live'),
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            children: [
+        const SizedBox(height: 26),
+        // Big stickers, four across: clock, weather, likes, then the Foxy
+        // pack (rigged, animated) — then GIPHY.
+        GridView.count(
+          crossAxisCount: 4,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 14,
+          crossAxisSpacing: 10,
+          children: [
+            if (q.isEmpty) ...[
               _tile(MomentSticker(StickerType.clock, {
                 'time': '${now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod}:${now.minute.toString().padLeft(2, '0')}',
                 'period': now.period == DayPeriod.am ? 'AM' : 'PM',
@@ -239,34 +271,30 @@ class _TrayState extends ConsumerState<_Tray> {
               _WeatherTile(onPick: _pick),
               _tile(MomentSticker(StickerType.like, {})),
             ],
-          ),
-          const SizedBox(height: 20),
-        ],
-        _GiphyShelf(query: _q, onPick: _pick),
-        const SizedBox(height: 20),
-        if (words.isNotEmpty) ...[
-          _section('Phlio stickers'),
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            children: [for (final (w, style) in words) _tile(MomentSticker(StickerType.word, {'word': w, 'style': style}))],
-          ),
-          const SizedBox(height: 20),
-        ],
+            for (final id in foxies)
+              InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => _pick(MomentSticker(StickerType.foxy, {'sticker': id})),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: FittedBox(child: PhlioStickerView(stickerId: id, size: 96, interactive: false)),
+                ),
+              ),
+          ],
+        ),
         if (q.isEmpty || 'foxy'.contains(q))
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white, side: const BorderSide(color: Colors.white24), padding: const EdgeInsets.all(14)),
-            onPressed: () async {
-              final id = await showFoxyStickerSheet(context, includeGiphy: false, includeFaces: false);
-              if (id != null && mounted) _pick(MomentSticker(StickerType.foxy, {'sticker': id}));
-            },
-            icon: const Icon(Icons.pets_rounded),
-            label: const Text('Foxy stickers'),
+          Align(
+            child: TextButton.icon(
+              onPressed: () async {
+                final id = await showFoxyStickerSheet(context, includeGiphy: false, includeFaces: false);
+                if (id != null && mounted) _pick(MomentSticker(StickerType.foxy, {'sticker': id}));
+              },
+              icon: const Icon(Icons.pets_rounded, size: 18),
+              label: const Text('More Foxy stickers'),
+            ),
           ),
+        const SizedBox(height: 12),
+        _GiphyShelf(query: _q, onPick: _pick),
       ]),
     );
   }
@@ -293,47 +321,64 @@ class _TrayState extends ConsumerState<_Tray> {
   }
 }
 
-/// A tray chip: dark Phlio surface, gradient hairline, coloured icon.
+/// A tray chip: a white sticker with a coloured icon and dark label, a soft
+/// shadow and a tiny tilt — the reference layout.
 class _TrayChip extends StatelessWidget {
   const _TrayChip({required this.chip, required this.onTap});
   final _ChipDef chip;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(1.5),
-          decoration: BoxDecoration(gradient: _brand, borderRadius: BorderRadius.circular(14)),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(color: const Color(0xFF161E2C), borderRadius: BorderRadius.circular(12.5)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (chip.label == 'Emoji slider')
-                const _MiniSlider()
-              else ...[
-                Icon(chip.icon, color: chip.color, size: 22),
-                const SizedBox(width: 7),
-                Text(chip.label, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
-              ],
-            ]),
-          ),
+  Widget build(BuildContext context) {
+    final emoji = chip.emoji;
+    final Widget content;
+    if (emoji != null) {
+      content = Text(emoji, style: const TextStyle(fontSize: 26));
+    } else if (chip.label == 'Emoji slider') {
+      content = const _MiniSlider();
+    } else {
+      content = Row(mainAxisSize: MainAxisSize.min, children: [
+        if (chip.label == 'mention')
+          ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: const LinearGradient(colors: [Color(0xFFF77737), Color(0xFFE1306C)]).createShader,
+            child: const Icon(Icons.alternate_email_rounded, size: 22, color: Colors.white),
+          )
+        else
+          Icon(chip.icon, color: chip.color, size: 22),
+        const SizedBox(width: 6),
+        Text(chip.label,
+            style: const TextStyle(color: Color(0xFF111318), fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -.2)),
+      ]);
+    }
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: emoji != null ? const EdgeInsets.all(9) : const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: emoji != null ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: emoji != null ? null : BorderRadius.circular(12),
+          boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 6, offset: Offset(0, 2))],
         ),
-      );
+        child: content,
+      ),
+    );
+  }
 }
 
 class _MiniSlider extends StatelessWidget {
   const _MiniSlider();
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: 120,
-        height: 24,
+        width: 110,
+        height: 26,
         child: Stack(alignment: Alignment.centerLeft, children: [
-          Container(height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3))),
+          Container(height: 6, decoration: BoxDecoration(color: const Color(0xFFE3E5EA), borderRadius: BorderRadius.circular(3))),
           FractionallySizedBox(
               widthFactor: .5,
               child: Container(height: 6, decoration: BoxDecoration(gradient: _brand, borderRadius: BorderRadius.circular(3)))),
-          const Positioned(left: 46, child: Text('😍', style: TextStyle(fontSize: 20))),
+          const Positioned(left: 0, child: Text('😍', style: TextStyle(fontSize: 22))),
         ]),
       );
 }
@@ -496,6 +541,29 @@ Future<String?> askText(BuildContext context, String title, String hint,
     ]);
   });
 }
+
+/// A quick emoji grid for the round emoji sticker.
+Future<String?> _pickEmoji(BuildContext context) => showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: const Color(0xFF14161B),
+      builder: (ctx) => SafeArea(
+        child: GridView.count(
+          crossAxisCount: 6,
+          shrinkWrap: true,
+          padding: const EdgeInsets.all(16),
+          children: [
+            for (final e in const ['😍', '🥰', '😂', '🔥', '💯', '🙌', '👏', '😎', '🥳', '😭', '🤯', '😴',
+                '❤️', '💜', '🧡', '✨', '🎉', '🌸', '☀️', '🌙', '🍕', '☕', '🏃', '🐾'])
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => Navigator.pop(ctx, e),
+                child: Center(child: Text(e, style: const TextStyle(fontSize: 30))),
+              ),
+          ],
+        ),
+      ),
+    );
 
 Future<Map<String, dynamic>?> _askPoll(BuildContext context) {
   final q = TextEditingController();
