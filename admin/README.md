@@ -18,8 +18,15 @@ uvicorn app.main:app --reload --port 8000
 
 # 2. the panel (from admin/)
 npm install
-npm run dev          # http://localhost:5174, /api is proxied to :8000
+npm run dev          # http://localhost:5174
 ```
+
+`npm run dev` proxies `/api` to the backend. It picks the first of
+`127.0.0.1:8000` and `127.0.0.1:8002` that's running (8002 is what the
+Flutter app's `dart_defines.json` uses). To use another address, put
+`VITE_API_PROXY=http://127.0.0.1:9000` in `admin/.env.local`. **Start the
+backend before the panel**, or restart `npm run dev` after starting it: if
+nothing answers, the login page says "The Phlio API isn't running".
 
 The first account you create becomes the **owner**. Everyone else joins with
 an invite link from **Team**.

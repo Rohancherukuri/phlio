@@ -53,6 +53,7 @@ export function Login() {
 
   return (
     <Shell title="Sign in" sub={<>Analytics for every <PhlioName size={13} className="align-[-2px]" /> platform.</>}>
+      {status.error && <div className="mb-4"><ErrorNote error={status.error} /></div>}
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email"><Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
         <Field label="Password"><Input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
@@ -101,6 +102,7 @@ export function Signup() {
       title={bootstrap ? "Create the owner account" : "Join the admin team"}
       sub={bootstrap ? "The first account owns the panel and invites everyone else." : "Use the invite code an admin sent you."}
     >
+      {status.error && <div className="mb-4"><ErrorNote error={status.error} /></div>}
       <form onSubmit={submit} className="space-y-4">
         <Field label="Name"><Input required autoComplete="name" value={form.name} onChange={set("name")} /></Field>
         <Field label="Email"><Input type="email" required autoComplete="email" value={form.email} onChange={set("email")} /></Field>
