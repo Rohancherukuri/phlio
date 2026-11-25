@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 
 from app.domains.identity.entities import User
 
@@ -48,3 +49,14 @@ class InMemoryIdentityRepository:
         async with self._lock:
             self._by_id[user.id] = user
             return user
+
+    # --- Admin analytics -------------------------------------------------
+    async def list_users(self, offset: int = 0, limit: int = 50) -> list[User]:
+        users = sorted(self._by_id.values(), key=lambda u: u.created_at, reverse=True)
+        return users[offset : offset + limit]
+
+    async def count_users(self) -> int:
+        return len(self._by_id)
+
+    async def signups_since(self, since: dt.datetime) -> list[dt.datetime]:
+        return [u.created_at for u in self._by_id.values() if u.created_at >= since]

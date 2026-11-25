@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Phlio Admin tokens. Dark is the default; light is its own selected steps
+   (series colours validated per surface), not an automatic flip. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0b0c;
+  --card: #161618;
+  --muted: #1f1f22;
+  --line: #2a2a2e;
+  --ink: #f2f2f3;
+  --sub: #a1a1a8;
+  --faint: #6b6b73;
+  --brand: #ff6b4a;
+  --brand-2: #ff4f7b;
+  --good: #3fb950;
+  --bad: #f2555a;
+  --grid: #26262a;
+
+  --s-social: #338ced;
+  --s-dm: #e76624;
+  --s-rooms: #00a888;
+  --s-pay: #d28e05;
+  --s-book: #e24d8b;
+  --s-shop: #0aac23;
+  --s-stream: #9887ef;
+  --s-agent: #eb6263;
+  --s-news: #9c9c9c;
+  --s-other: #55555c;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f6f7;
+  --card: #ffffff;
+  --muted: #f0f0f2;
+  --line: #e4e4e7;
+  --ink: #18181b;
+  --sub: #5f5f66;
+  --faint: #8e8e96;
+  --brand: #f0532f;
+  --brand-2: #e8366a;
+  --good: #1a7f37;
+  --bad: #cf222e;
+  --grid: #ececef;
+
+  --s-social: #257de0;
+  --s-dm: #f47230;
+  --s-rooms: #00b894;
+  --s-pay: #f2a600;
+  --s-book: #ee7fac;
+  --s-shop: #008a17;
+  --s-stream: #6a4ce2;
+  --s-agent: #ec4647;
+  --s-news: #8a8a8a;
+  --s-other: #c4c4c8;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+}
+
+.recharts-cartesian-grid line { stroke: var(--grid); }
+.recharts-text { fill: var(--faint); font-size: 11px; }
+.recharts-tooltip-cursor { fill: var(--muted); opacity: .6; }
+.recharts-wrapper:focus, .recharts-surface:focus { outline: none; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; border: 2px solid var(--bg); }
+
+@keyframes pulse-dot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+.live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+.rise { animation: rise .35s ease-out both; }
+
+.tint-good { background: color-mix(in srgb, var(--good) 15%, transparent); }
+.tint-bad { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.tint-brand { background: color-mix(in srgb, var(--brand) 15%, transparent); }
+.brand-grad { background: linear-gradient(135deg, var(--brand), var(--brand-2)); }

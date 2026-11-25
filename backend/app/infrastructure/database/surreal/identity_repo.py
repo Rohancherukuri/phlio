@@ -129,3 +129,26 @@ class SurrealIdentityRepository:
         )
         records = rows[0]["result"] if rows and rows[0].get("result") else []
         return [_row_to_user(row) for row in records]
+
+    # --- Admin analytics -------------------------------------------------
+    async def list_users(self, offset: int = 0, limit: int = 50) -> list[User]:
+        rows = await self._db.rows(
+            "SELECT * FROM user ORDER BY created_at DESC LIMIT $limit START $offset",
+            {"limit": limit, "offset": offset},
+        )
+        return [_row_to_user(row) for row in rows]
+
+    async def count_users(self) -> int:
+        rows = await self._db.rows("SELECT count() AS n FROM user GROUP ALL")
+        return int(rows[0]["n"]) if rows else 0
+
+    async def signups_since(self, since: dt.datetime) -> list[dt.datetime]:
+        rows = await self._db.rows("SELECT created_at FROM user WHERE created_at >= $since", {"since": since})
+        out = []
+        for row in rows:
+            value = row.get("created_at")
+            if isinstance(value, str):
+                value = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if isinstance(value, dt.datetime):
+                out.append(value if value.tzinfo else value.replace(tzinfo=dt.UTC))
+        return out

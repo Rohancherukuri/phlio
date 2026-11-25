@@ -187,6 +187,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["text", "json"] = "text"
 
+    # --- Admin panel ---------------------------------------------------------
+    # The first admin signup becomes the owner. With ADMIN_SIGNUP_CODE set,
+    # that first signup must also give the code; in production the code is
+    # required, so a fresh deploy can't be claimed by whoever finds it first.
+    # Later admins join with an invite from an owner or admin.
+    admin_signup_code: str = ""
+    admin_token_hours: int = 8
+
     # --- CORS ----------------------------------------------------------------
     cors_allow_origins: str = "http://localhost:3000"
 

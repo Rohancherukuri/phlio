@@ -226,6 +226,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # request id, security headers (so even errors and 413s carry them), and
     # CORS outermost so preflight requests are answered before anything else.
     add_compression(app)
+    # Admin analytics: request telemetry + forwarding to GA4/PostHog/… .
+    from app.middleware.analytics import AnalyticsMiddleware
+    app.add_middleware(AnalyticsMiddleware)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_json_body_bytes)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIDMiddleware)

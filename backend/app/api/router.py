@@ -117,3 +117,6 @@ from app.api.v1 import activities
 api_router.include_router(activities.router)
 from app.api.v1 import fitness
 api_router.include_router(fitness.router)
+# Admin panel: admin accounts, cross-platform analytics, live stream, integrations.
+from app.api.v1 import admin
+api_router.include_router(admin.router)
