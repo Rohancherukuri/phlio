@@ -151,10 +151,10 @@ async def create_surreal_connection(settings: Settings):
         await client.connect()
     except OSError as error:
         local = "localhost" in url or "127.0.0.1" in url
-        hint = (" Nothing is running at that address. Start a local SurrealDB"
-                " (`docker compose --profile full up -d surrealdb redis` from the repo root, which listens on"
-                " port 8001), or set SURREAL_URL in backend/.env to your Surreal Cloud address"
-                " (wss://<instance>.surreal.cloud/rpc)."
+        hint = ("\n\nNothing is running at that address. Start the local SurrealDB first, from backend/:"
+                "\n    .\\scripts\\Start-GraphDemo.ps1          (Windows: SurrealDB on 8001 with backend/data/surreal)"
+                "\n    docker compose --profile full up -d surrealdb redis   (from the repo root, with Docker)"
+                "\nor set SURREAL_URL in backend/.env to your Surreal Cloud address (wss://<instance>.surreal.cloud/rpc)."
                 if local else " Check SURREAL_URL and that the instance isn't paused.")
         raise SurrealUnavailable(f"Can't connect to SurrealDB at {url}: {error}.{hint}") from error
     await client.signin({"username": settings.surreal_user, "password": settings.surreal_password})
