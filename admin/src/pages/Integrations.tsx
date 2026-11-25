@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PhlioName } from "../components/brand";
 import { Badge, Button, Card, ErrorNote, Field, Input, Skeleton } from "../components/ui";
 import { api, canManage } from "../lib/api";
 import { usePanel } from "../lib/panel";
@@ -106,7 +107,7 @@ export default function IntegrationsPage() {
       <Card className="p-5">
         <h2 className="text-[15px] font-semibold">How it works</h2>
         <p className="mt-1.5 max-w-3xl text-sm text-sub">
-          Every action people take in the Phlio app (posting, liking, paying, booking, logging water …) is sent from the server to each
+          Every action people take in the <PhlioName size={14} className="align-[-2px] font-medium text-ink">app</PhlioName> (posting, liking, paying, booking, logging water …) is sent from the server to each
           tool you switch on, as a named event like <code className="text-ink">social_posts_like</code>. User ids are replaced with a
           keyed hash before they leave the server, and no names, emails or message text are ever sent. Public ids (never secrets) are
           also available to the app at <code className="text-ink">/api/v1/analytics/config</code> for client SDKs.

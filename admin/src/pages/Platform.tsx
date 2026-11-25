@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { HBars, HourBars, KpiCard, Legend, StackedDaily, useToggle } from "../components/charts";
+import { PhlioName } from "../components/brand";
 import { Card, CardHead, ErrorNote, Skeleton } from "../components/ui";
 import { api } from "../lib/api";
 import { color, num, verb } from "../lib/format";
@@ -45,7 +46,7 @@ export default function PlatformPage() {
       </div>
 
       <Card>
-        <CardHead title="Daily breakdown" sub={`What happened on Phlio ${d?.label ?? ""}, day by day. Click a legend item to hide it.`} />
+        <CardHead title="Daily breakdown" sub={<>What happened on <PhlioName size={12}>{d?.label ?? ""}</PhlioName>, day by day. Click a legend item to hide it.</>} />
         <div className="px-5 pt-3">
           {d && <Legend keys={keys} hidden={hidden} onToggle={toggle} labels={labels} />}
         </div>

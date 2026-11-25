@@ -3,6 +3,7 @@ import { ChevronRight, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Donut, HBars, KpiCard, Legend, Spark, StackedDaily, Trend, useToggle } from "../components/charts";
+import { PhlioName } from "../components/brand";
 import { Card, CardHead, Delta, ErrorNote, Skeleton } from "../components/ui";
 import { api } from "../lib/api";
 import { LABELS, color, day, num, verb } from "../lib/format";
@@ -43,7 +44,7 @@ export default function OverviewPage() {
         <Card className="xl:col-span-2">
           <CardHead
             title="Events by platform"
-            sub={`Daily activity across Phlio, last ${days} days. Click a legend item to hide it.`}
+            sub={<>Daily activity across <PhlioName size={12} />, last {days} days. Click a legend item to hide it.</>}
             right={
               <button onClick={() => setTable(!table)} className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[11px] text-sub hover:text-ink" aria-pressed={table}>
                 <Table2 size={13} /> {table ? "Chart" : "Table"}
@@ -73,7 +74,7 @@ export default function OverviewPage() {
         </Card>
 
         <Card>
-          <CardHead title="Platform share" sub="Click a slice to open the platform." />
+          <CardHead title="Platform share" sub={<>Share of events across <PhlioName size={12}/>. Click a slice to open it.</>} />
           <div className="px-4 pb-2">
             {o ? <Donut items={o.platforms.map((p) => ({ id: p.id, label: p.label, value: p.events }))} onPick={(id) => nav(`/p/${id}?days=${days}`)} />
               : <Skeleton className="h-[220px]" />}
@@ -115,8 +116,8 @@ export default function OverviewPage() {
           {o ? o.platforms.map((p) => (
             <Link key={p.id} to={`/p/${p.id}?days=${days}`} className="rise group rounded-2xl border border-line bg-card p-4 transition hover:border-faint">
               <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color(p.id) }} />
-                <span className="text-sm font-medium">Phlio {p.label}</span>
+                <PhlioName size={17} className="text-sm font-medium">{p.label}</PhlioName>
+                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: color(p.id) }} aria-hidden />
                 <ChevronRight size={15} className="ml-auto text-faint transition group-hover:translate-x-0.5 group-hover:text-ink" />
               </div>
               <div className="mt-3 flex items-end justify-between gap-3">

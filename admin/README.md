@@ -32,6 +32,26 @@ an invite link from **Team**.
 3. On the backend, add the panel's origin to `CORS_ALLOW_ORIGINS`, and set
    `ADMIN_SIGNUP_CODE` (required in production to create the first owner).
 
+## Sign in with Google / Apple
+
+The login and signup pages have **Continue with Google** and **Continue with
+Apple**. They reuse the app's server-side token checks
+(`app/api/v1/auth_security.py`), so they use the same settings:
+
+- **Google:** `GOOGLE_SERVER_CLIENT_ID` (the Web OAuth client). In Google
+  Cloud → Credentials → that client, add the panel's address (e.g.
+  `https://admin.phlio.app`, `http://localhost:5174`) to *Authorized
+  JavaScript origins*.
+- **Apple:** `APPLE_SERVICE_ID` (a Services ID). In Apple Developer →
+  Identifiers → that Services ID → Sign in with Apple, add the panel's domain
+  and `https://<panel>/login` as a return URL. Apple needs HTTPS, so it
+  doesn't work on localhost.
+
+An existing admin is matched by their Google/Apple account, then by verified
+email (so a password admin can also use Google with the same email). New
+people still need an invite code (or, for the first owner, the signup code):
+type it on the signup page, then press the Google/Apple button.
+
 ## Roles
 
 | Role | Can |

@@ -8,12 +8,13 @@ import { auth, canManage, type Admin } from "../lib/api";
 import { trackPage } from "../lib/analytics";
 import { LABELS, PLATFORMS, color } from "../lib/format";
 import { useLive } from "../lib/live";
+import { PhlioMark, PhlioName } from "./brand";
 import { Segmented } from "./ui";
 
-export function Logo({ small }: { small?: boolean }) {
+export function Logo({ small, size = 32 }: { small?: boolean; size?: number }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="brand-grad flex h-8 w-8 items-center justify-center rounded-[10px] text-[15px] font-bold text-white">P</div>
+      <PhlioMark size={size} />
       {!small && (
         <div className="leading-tight">
           <p className="text-[15px] font-semibold">Phlio</p>
@@ -121,7 +122,9 @@ export function Layout({ admin }: { admin: Admin }) {
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg px-4 sm:px-6">
           <button className="text-sub lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
-          <h1 className="truncate text-[15px] font-semibold">{title}</h1>
+          <h1 className="min-w-0 text-[15px] font-semibold">
+            {platform ? <PhlioName size={18}>{LABELS[platform] ?? platform}</PhlioName> : title}
+          </h1>
           <div className="ml-auto flex items-center gap-2">
             {showRange && (
               <div className="hidden sm:block">

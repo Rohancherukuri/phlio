@@ -21,7 +21,7 @@ async def _owner(client: AsyncClient) -> dict:
 
 async def test_admin_auth_and_roles(client: AsyncClient, auth_headers: dict) -> None:
     s = (await client.get(f"{A}/auth/status")).json()
-    assert s == {"has_admins": False, "signup": "bootstrap", "code_required": False}
+    assert (s["has_admins"], s["signup"], s["code_required"]) == (False, "bootstrap", False)
     owner = await _owner(client)
     assert (await client.get(f"{A}/auth/me", headers=owner)).json()["role"] == "owner"
 
@@ -151,3 +151,43 @@ def test_event_helpers() -> None:
     assert url == "https://u.example.com/api/send"
     _, url, kw = build_request("matomo", {"host": "https://m.example.com", "site_id": "1"}, "social_like", "cid", {})
     assert url.endswith("/matomo.php") and kw["data"]["e_c"] == "social"
+
+
+async def test_admin_google_and_apple(client: AsyncClient, monkeypatch, settings) -> None:
+    from app.api.v1 import auth_security
+
+    accounts = {
+        "g-owner": {"sub": "111", "email": "Boss@Phlio.app", "email_verified": True, "name": "Boss"},
+        "g-other": {"sub": "222", "email": "new@phlio.app", "email_verified": True},
+        "a-boss": {"sub": "apple-9", "email": "boss@phlio.app", "email_verified": "true"},
+        "g-unverified": {"sub": "333", "email": "x@phlio.app", "email_verified": False},
+    }
+
+    async def fake_verified(c, provider, token):
+        return accounts[token.split(":", 1)[1]]
+
+    monkeypatch.setattr(auth_security, "_verified", fake_verified)
+    settings.google_server_client_id = "web-123.apps.googleusercontent.com"
+    s = (await client.get(f"{A}/auth/status")).json()
+    assert s["google_client_id"] == "web-123.apps.googleusercontent.com" and s["apple_service_id"] is None
+
+    tok = lambda k: "x" * 20 + ":" + k  # noqa: E731
+    # First Google sign-in creates the owner; signing in again finds it.
+    r = await client.post(f"{A}/auth/oauth/google", json={"token": tok("g-owner")})
+    assert r.status_code == 200 and r.json()["is_new"] and r.json()["admin"]["role"] == "owner"
+    r = await client.post(f"{A}/auth/oauth/google", json={"token": tok("g-owner")})
+    assert not r.json()["is_new"]
+    owner = {"Authorization": "Bearer " + r.json()["tokens"]["access_token"]}
+    # Apple with the same verified email links to the same admin.
+    r = await client.post(f"{A}/auth/oauth/apple", json={"token": tok("a-boss")})
+    assert r.json()["admin"]["email"] == "boss@phlio.app" and not r.json()["is_new"]
+    # Password login doesn't work for a Google-only admin.
+    assert (await client.post(f"{A}/auth/login", json={"email": "boss@phlio.app", "password": "whatever-123"})).status_code == 401
+
+    # Strangers need an invite; with one they join with its role.
+    assert (await client.post(f"{A}/auth/oauth/google", json={"token": tok("g-other")})).status_code == 403
+    inv = (await client.post(f"{A}/team/invites", headers=owner, json={"role": "analyst"})).json()
+    r = await client.post(f"{A}/auth/oauth/google", json={"token": tok("g-other"), "code": inv["code"]})
+    assert r.status_code == 200 and r.json()["admin"]["role"] == "analyst"
+    assert (await client.post(f"{A}/auth/oauth/google", json={"token": tok("g-unverified")})).status_code == 422
+    assert (await client.post(f"{A}/auth/oauth/github", json={"token": tok("g-other")})).status_code == 422
