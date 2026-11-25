@@ -113,7 +113,14 @@ export function OAuthButtons({
             </button>
           )}
         </div>
-      ) : (
+      ) : null}
+      {googleClientId && import.meta.env.DEV && (
+        <p className="text-[11px] leading-snug text-faint">
+          Dev tip: if Google says “no registered origin”, add <code className="text-sub">{window.location.origin}</code> to
+          {" "}<em>Authorized JavaScript origins</em> of the Web client in Google Cloud → APIs &amp; Services → Credentials.
+        </p>
+      )}
+      {googleClientId ? null : (
         <Unavailable label={`${verb} with Google`} icon={<GoogleLogo />} hint="Set GOOGLE_SERVER_CLIENT_ID on the server" />
       )}
       {appleServiceId ? (
