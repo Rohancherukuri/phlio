@@ -452,6 +452,34 @@ async def _announce(c, user, row: dict) -> None:
                          group=f"activity:{user.id}", push=False)
 
 
+@router.get("/feed")
+async def feed(limit: int = Query(12, ge=1, le=40), user=Depends(get_current_user), c=Depends(get_container)):
+    """Recent public activities from everyone, newest first: the Phlio Move
+    card stack on Phlio Social's Posts tab. Each item carries up to three
+    faces of people who gave kudos."""
+    rows = [r for r in await c.graph.store.rows(TABLE)
+            if r.get("visibility", "everyone") == "everyone" and r.get("post_id")]
+    rows.sort(key=lambda r: r["started_at"], reverse=True)
+    items = []
+    for row in rows:
+        if len(items) >= limit:
+            break
+        if not await _visible(c, row, user.id):
+            continue
+        out = await _out(c, row, user.id, full=False)
+        faces = []
+        kudos = sorted(await c.graph.store.rows(KUDOS, {"activity_id": row["id"]}), key=lambda k: k["at"], reverse=True)
+        for k in kudos:
+            if len(faces) >= 3:
+                break
+            person = await c.identity_repository.get_by_id(k["user_id"])
+            if person and not await c.graph.blocked(user.id, person.id):
+                faces.append(dict(c.graph.profile(person), emoji=k["emoji"]))
+        out["kudos_people"] = faces
+        items.append(out)
+    return dict(items=items)
+
+
 @router.get("/by-post/{post_id}")
 async def by_post(post_id: str, user=Depends(get_current_user), c=Depends(get_container)):
     for row in await c.graph.store.rows(TABLE, {"post_id": post_id}):

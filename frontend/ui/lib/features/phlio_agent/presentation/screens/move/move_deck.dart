@@ -1,0 +1,363 @@
+// Phlio Move card stack on Phlio Social's Posts tab.
+//
+// Recent activities from everyone, as a deck: the front card shows the
+// person, title, sport, time and kudos; the next two peek out above it.
+// Tap (or swipe) the deck and the front card slides away while the one
+// behind rises into its place; the deck loops. The round button opens the
+// activity (route replay, stats, kudos and comments).
+//
+// Backend: GET /activities/feed (backend/app/api/v1/activities.py).
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:phlio/design_system/typography.dart';
+import 'package:phlio/design_system/widgets/phlio_card.dart' show PhlioAvatar;
+
+import 'move_activity_screen.dart';
+import 'move_api.dart';
+
+final moveFeedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final res = await moveDio.get('/activities/feed', queryParameters: {'limit': 12});
+  return [for (final a in ((res.data as Map)['items'] as List? ?? const [])) Map<String, dynamic>.from(a as Map)];
+});
+
+// Card palette: light cards on the dark feed, like a stack of tickets.
+const _card = Color(0xFFF7F7F5);
+const _chip = Color(0xFFEDEDEA);
+const _ink = Color(0xFF111111);
+const _inkSoft = Color(0xFF5B5B5B);
+
+const _cardHeight = 286.0;
+const _peek = 13.0; // how much of each card behind shows above
+const _depth = 3; // cards drawn behind the front one
+
+class MoveActivityDeck extends ConsumerStatefulWidget {
+  const MoveActivityDeck({super.key});
+
+  @override
+  ConsumerState<MoveActivityDeck> createState() => _MoveActivityDeckState();
+}
+
+class _MoveActivityDeckState extends ConsumerState<MoveActivityDeck> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 460));
+  late final Animation<double> _t = CurvedAnimation(parent: _c, curve: Curves.easeInOutCubic);
+  int _front = 0;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _next(int count) async {
+    if (count < 2 || _c.isAnimating) return;
+    HapticFeedback.selectionClick();
+    await _c.forward(from: 0);
+    if (!mounted) return;
+    setState(() => _front = (_front + 1) % count);
+    _c.value = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = ref.watch(moveFeedProvider).valueOrNull ?? const <Map<String, dynamic>>[];
+    if (items.isEmpty) return const SizedBox.shrink();
+    final n = items.length;
+    final front = _front % n;
+    final behind = (n - 1).clamp(0, _depth);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
+          child: Row(children: [
+            Text('Activities', style: PhlioTypography.title.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: moveAccent.withValues(alpha: .16), borderRadius: BorderRadius.circular(10)),
+              child: Text('Phlio Move', style: PhlioTypography.caption.copyWith(color: moveAccent, fontWeight: FontWeight.w700)),
+            ),
+            const Spacer(),
+            if (n > 1)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: Text('${front + 1} / $n', key: ValueKey(front), style: PhlioTypography.caption),
+              ),
+          ]),
+        ),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _next(n),
+          onVerticalDragEnd: (d) {
+            if ((d.primaryVelocity ?? 0).abs() > 120) _next(n);
+          },
+          child: SizedBox(
+            height: _cardHeight + _peek * 2,
+            child: AnimatedBuilder(
+              animation: _t,
+              builder: (context, _) {
+                final t = _t.value;
+                return Stack(clipBehavior: Clip.none, children: [
+                  // Back to front.
+                  for (var d = behind; d >= 0; d--) _placed(items[(front + d) % n], d, t, n),
+                ]);
+              },
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _placed(Map<String, dynamic> a, int d, double t, int n) {
+    double y, scale, opacity, shade;
+    if (d == 0) {
+      // The front card slides down and fades as the next one takes its place.
+      y = _peek * 2 + t * 70;
+      scale = 1 - .04 * t;
+      opacity = (1 - t * 1.3).clamp(0.0, 1.0);
+      shade = 0;
+    } else {
+      final e = d - t; // where it's heading: one step forward
+      y = _peek * 2 - e * _peek;
+      scale = 1 - e * .05;
+      shade = e * .07;
+      // The deepest card fades in as it joins the visible stack.
+      opacity = d == _depth ? t : 1;
+    }
+    final full = d <= 1; // only the front card and the next one need content
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: y,
+      height: _cardHeight,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(
+          scale: scale,
+          alignment: Alignment.topCenter,
+          child: _ActivityCard(
+            key: ValueKey('${a['id']}'),
+            a: a,
+            shade: shade,
+            showContent: full,
+            onNext: () => _next(n),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  const _ActivityCard({required this.a, required this.shade, required this.showContent, required this.onNext, super.key});
+  final Map<String, dynamic> a;
+  final double shade;
+  final bool showContent;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = Color.lerp(_card, const Color(0xFFBDBDB8), shade.clamp(0.0, 1.0))!;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .28), blurRadius: 18, offset: const Offset(0, 6))],
+      ),
+      child: showContent ? _content(context) : const SizedBox.expand(),
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    final author = (a['author'] as Map?) ?? const {};
+    final name = '${author['display_name'] ?? author['username'] ?? 'Someone'}';
+    final sport = sportOf(a['sport'] as String?);
+    final dist = (a['distance_m'] as num?) ?? 0;
+    final moving = (a['moving_s'] as num?) ?? (a['elapsed_s'] as num?) ?? 0;
+    final faces = [for (final p in (a['kudos_people'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)];
+    final kudos = (a['kudos_count'] as num?)?.toInt() ?? 0;
+    final description = '${a['description'] ?? ''}'.trim();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(4, 4, 16, 4),
+              decoration: BoxDecoration(color: _chip, borderRadius: BorderRadius.circular(30)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                PhlioAvatar(name: name, imageUrl: author['avatar_url'] as String?, profileId: author['id'] as String?, size: 40),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _ink, fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+            ),
+          ),
+          const Spacer(),
+          _RoundButton(
+            color: _chip,
+            onTap: onNext,
+            tooltip: 'Next activity',
+            child: const Icon(Icons.unfold_more_rounded, color: _ink, size: 22),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        Text('${a['title'] ?? ''}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _ink, fontSize: 27, height: 1.15, fontWeight: FontWeight.w500, letterSpacing: -.3)),
+        const SizedBox(height: 4),
+        Text(description.isNotEmpty ? description : '${sport.label} · ${_when(a['started_at'] as String?)}',
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _inkSoft, fontSize: 13.5)),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: Row(children: [
+            _Chip(icon: sport.icon, text: sport.distance && dist > 0 ? '${(dist / 1000).toStringAsFixed(1)} km' : sport.label),
+            const SizedBox(width: 8),
+            _Chip(icon: Icons.schedule_rounded, text: _span(a['started_at'] as String?, a['elapsed_s'] as num? ?? moving)),
+            if (sport.distance && dist > 0) ...[
+              const SizedBox(width: 8),
+              _Chip(
+                icon: Icons.speed_rounded,
+                text: sport.pace ? '${fmtPace(a['pace_s_per_km'] as num?)} /km' : '${a['speed_kmh'] ?? 0} km/h',
+              ),
+            ],
+          ]),
+        ),
+        const Spacer(),
+        Row(children: [
+          if (faces.isEmpty)
+            const Text('Be the first to give kudos', style: TextStyle(color: _inkSoft, fontSize: 13))
+          else
+            _Faces(faces: faces, extra: kudos - faces.length),
+          const Spacer(),
+          _RoundButton(
+            color: _ink,
+            size: 56,
+            tooltip: 'Open activity',
+            onTap: () {
+              HapticFeedback.selectionClick();
+              Navigator.of(context, rootNavigator: true)
+                  .push(moveActivityRoute('${a['id']}', heroImage: a['image_url'] as String?));
+            },
+            child: const Icon(Icons.north_east_rounded, color: Colors.white, size: 24),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  static String _clock(DateTime d) {
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    return '$h:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  static String _span(String? iso, num seconds) {
+    final start = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (start == null) return fmtShortDuration(seconds);
+    return '${_clock(start)} – ${_clock(start.add(Duration(seconds: seconds.round())))}';
+  }
+
+  static String _when(String? iso) {
+    final d = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (d == null) return '';
+    final days = DateTime.now().difference(d).inDays;
+    if (days == 0) return 'Today';
+    if (days == 1) return 'Yesterday';
+    return '$days days ago';
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: _chip, borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 16, color: _ink),
+          const SizedBox(width: 6),
+          Text(text, style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w500)),
+        ]),
+      );
+}
+
+class _Faces extends StatelessWidget {
+  const _Faces({required this.faces, required this.extra});
+  final List<Map<String, dynamic>> faces;
+  final int extra;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 40.0, step = 28.0;
+    final count = faces.length + (extra > 0 ? 1 : 0);
+    return SizedBox(
+      width: step * (count - 1) + size,
+      height: size,
+      child: Stack(children: [
+        for (final (i, p) in faces.indexed)
+          Positioned(
+            left: i * step,
+            child: Container(
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _card, width: 2.5)),
+              child: PhlioAvatar(
+                name: '${p['display_name'] ?? p['username'] ?? '?'}',
+                imageUrl: p['avatar_url'] as String?,
+                size: size - 5,
+                showMomentRing: false,
+              ),
+            ),
+          ),
+        if (extra > 0)
+          Positioned(
+            left: faces.length * step,
+            child: Container(
+              width: size,
+              height: size,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: _chip, shape: BoxShape.circle, border: Border.all(color: _card, width: 2.5)),
+              child: Text('+$extra', style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({required this.color, required this.onTap, required this.child, required this.tooltip, this.size = 48});
+  final Color color;
+  final VoidCallback onTap;
+  final Widget child;
+  final String tooltip;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: Material(
+          color: color,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(width: size, height: size, child: Center(child: child)),
+          ),
+        ),
+      );
+}

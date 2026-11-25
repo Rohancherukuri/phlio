@@ -95,3 +95,28 @@ async def test_record_post_react_comment(client: AsyncClient, auth_headers: dict
 
     assert (await client.delete(f"/api/v1/activities/{act['id']}", headers=auth_headers)).status_code == 204
     assert (await client.get(f"/api/v1/activities/{act['id']}", headers=auth_headers)).status_code == 404
+
+
+async def test_move_feed_and_seed(client: AsyncClient, auth_headers: dict) -> None:
+
+    from scripts.seed_move_activities import SEED, reset, seed
+
+    app = client._transport.app  # type: ignore[attr-defined]
+    c = app.state.container
+    people = await c.identity_repository.list_users(0, 10)
+    assert await seed(c, people, per_person=2, quiet=True) == 2 * len(people)
+    assert await seed(c, people, per_person=2, quiet=True) == 0  # idempotent
+
+    feed = (await client.get("/api/v1/activities/feed", headers=auth_headers, params={"limit": 5})).json()["items"]
+    assert len(feed) == 5
+    assert [a["started_at"] for a in feed] == sorted((a["started_at"] for a in feed), reverse=True)
+    first = feed[0]
+    assert first["post_id"] and first["image_url"].startswith("/media/activities/")
+    assert first["kudos_count"] >= 1 and 1 <= len(first["kudos_people"]) <= 3
+    rows = [r for r in await c.graph.store.rows("phlio_activity") if r.get("seed") == SEED]
+    assert any(r["route"] for r in rows) and all(r["visibility"] == "everyone" for r in rows)
+    # No one was notified about seeded activities.
+    assert not [n for n in await c.graph.store.rows("phlio_notification") if n.get("kind") in {"activity", "kudos"}]
+
+    assert await reset(c) == len(rows)
+    assert (await client.get("/api/v1/activities/feed", headers=auth_headers)).json()["items"] == []

@@ -20,6 +20,8 @@ import '../../../../shared/widgets/loading_indicator.dart';
 import '../controllers/feed_controller.dart';
 import '../widgets/post_card.dart';
 import 'moments_pull_gate.dart';
+import '../../../phlio_agent/presentation/screens/move/move_deck.dart';
+import '../../../phlio_agent/presentation/screens/move/move_social.dart' show isActivityMedia;
 
 /// Opens the "New post" composer sheet and submits the result to the feed.
 /// Public so the Social home header's + button can open it too.
@@ -74,7 +76,10 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
       ),
       data: (state) => RefreshIndicator(
         notificationPredicate: socialRefreshPredicate,
-        onRefresh: () => ref.read(feedControllerProvider.notifier).refresh(),
+        onRefresh: () {
+          ref.invalidate(moveFeedProvider);
+          return ref.read(feedControllerProvider.notifier).refresh();
+        },
         child: ListView(
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(
@@ -88,7 +93,10 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
             // Diwali, Christmas, Eid... (nothing when no event is on).
             const FestivalBanner(platform: 'social'),
             const SpacesBar(seeAll: true),
-            for (final post in state.posts) ...[
+            // Phlio Move activities as a card stack (tap to flip through);
+            // they're left out of the post list below.
+            const MoveActivityDeck(),
+            for (final post in state.posts.where((p) => !p.media.any((m) => isActivityMedia(m.url)))) ...[
               PostCard(
                 post: post,
                 authorName: post

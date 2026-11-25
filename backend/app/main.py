@@ -79,6 +79,15 @@ async def lifespan(app: FastAPI):
 
         await seed_memory_backend(container)
         logger.info("Seeded in-memory backend with demo data.")
+        if settings.app_env == "development":
+            # Phlio Move activities for the Posts tab's card stack.
+            try:
+                from scripts.seed_move_activities import seed as seed_move
+
+                people = await container.identity_repository.list_users(0, 50)
+                await seed_move(container, people, per_person=3, quiet=True)
+            except Exception:  # noqa: BLE001 — demo data must never stop startup
+                logger.exception("Seeding Phlio Move activities failed.")
 
     logger.info(
         "Phlio API started (env=%s, database_backend=%s, agent_planner=%s)",
