@@ -95,7 +95,10 @@ class ObjectStore:
         ctype = content_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         url, headers = self._headers("PUT", key, extra={"content-type": ctype, "content-length": str(size)})
         with path.open("rb") as body:
-            self._http.put(url, headers=headers, content=_chunks(body)).raise_for_status()
+            # Send exactly the size we declared: a file that grows while it's
+            # being uploaded (a recording still being written) must not
+            # overrun Content-Length; the newer copy goes up on the next sync.
+            self._http.put(url, headers=headers, content=_chunks(body, limit=size)).raise_for_status()
 
     def get_file(self, key: str, path: Path) -> bool:
         """Downloads ``key`` to ``path`` (written atomically). False if the key doesn't exist."""
@@ -153,7 +156,14 @@ class ObjectStore:
         self._http.close()
 
 
-def _chunks(body: BinaryIO, size: int = 1 << 20) -> Iterator[bytes]:
-    """Reads a file object in 1 MB pieces (keeps big videos out of memory)."""
-    while chunk := body.read(size):
+def _chunks(body: BinaryIO, size: int = 1 << 20, limit: int | None = None) -> Iterator[bytes]:
+    """Reads a file object in 1 MB pieces (keeps big videos out of memory),
+    stopping after ``limit`` bytes when given."""
+    left = limit
+    while left is None or left > 0:
+        chunk = body.read(size if left is None else min(size, left))
+        if not chunk:
+            break
+        if left is not None:
+            left -= len(chunk)
         yield chunk

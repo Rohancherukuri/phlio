@@ -355,30 +355,55 @@ def publish_media(settings: Settings, workers: int) -> None:
     sent = 0
     started = time.time()
 
-    def upload(path: Path) -> tuple[Path, bool]:
-        """Uploads one file unless the bucket already has it at the same size."""
-        store = bucket()
-        try:
-            key = path.relative_to(root).as_posix()
-            if store.head(key) == path.stat().st_size:
-                return path, False
-            store.put_file(key, path)
-            return path, True
-        finally:
-            store.close()
+    def upload(path: Path) -> tuple[Path, int | None, str | None]:
+        """Uploads one file unless the bucket already has it at the same size.
+        Returns (path, bytes sent or None if skipped, error or None); retries
+        network hiccups, and never raises, so one bad file can't stop the run."""
+        error = None
+        for attempt in range(3):
+            store = bucket()
+            try:
+                key = path.relative_to(root).as_posix()
+                if not path.exists():
+                    return path, None, "deleted before it could be uploaded"
+                size = path.stat().st_size
+                if store.head(key) == size:
+                    return path, None, None
+                store.put_file(key, path)
+                if path.exists() and path.stat().st_size != size:
+                    return path, size, "changed while uploading (the newer version goes up next run)"
+                return path, size, None
+            except (httpx.HTTPError, OSError) as exc:
+                error = f"{type(exc).__name__}: {exc}"[:200]
+                time.sleep(2 * (attempt + 1))
+            except Exception as exc:  # noqa: BLE001 — e.g. h11 protocol errors
+                error = f"{type(exc).__name__}: {exc}"[:200]
+                time.sleep(2 * (attempt + 1))
+            finally:
+                store.close()
+        return path, None, error
 
+    problems: list[tuple[Path, str]] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for future in as_completed(pool.submit(upload, p) for p in files):
-            path, uploaded = future.result()
+            path, uploaded, problem = future.result()
             done += 1
-            if uploaded:
-                sent += path.stat().st_size
-            else:
+            if uploaded is not None:
+                sent += uploaded
+            elif problem is None:
                 skipped += 1
+            if problem:
+                problems.append((path, problem))
             rate = sent / max(1.0, time.time() - started)
-            print(f"\r  {done}/{len(files)} files · {human(sent)} sent · {human(rate)}/s · {skipped} already there",
-                  end="", flush=True)
+            print(f"\r  {done}/{len(files)} files · {human(sent)} sent · {human(rate)}/s · {skipped} already there"
+                  + (f" · {len(problems)} to retry" if problems else ""), end="", flush=True)
     print()
+    if problems:
+        print(f"  {len(problems)} file(s) need another go. Run the same command again; files already uploaded are skipped:")
+        for path, problem in problems[:15]:
+            print(f"    {path.relative_to(root).as_posix()}: {problem}")
+        if len(problems) > 15:
+            print(f"    … and {len(problems) - 15} more")
 
 
 # -- 3. state -----------------------------------------------------------------------
