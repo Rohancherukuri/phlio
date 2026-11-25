@@ -51,7 +51,27 @@ async def lifespan(app: FastAPI):
     # object storage before anything opens them (no-op when not configured).
     from app.infrastructure import media_sync
     await asyncio.to_thread(media_sync.restore_state, settings)
-    container = await build_container(settings)
+    from app.infrastructure.database.surreal.client import SurrealUnavailable
+    try:
+        container = await build_container(settings)
+    except SurrealUnavailable as error:
+        if settings.app_env != "development" or not settings.dev_memory_fallback:
+            raise
+        logger.warning(
+            "%s\n\n    >>> Starting with the IN-MEMORY demo backend instead: nothing you do is saved."
+            "\n    >>> Start SurrealDB and restart to use your real data"
+            " (or set DEV_MEMORY_FALLBACK=false to stop instead).\n", error)
+        settings.database_backend = "memory"
+        container = await build_container(settings)
+    if container.cache.redis is not None and settings.app_env == "development":
+        # Redis is only a cache: if it isn't running locally, switch it off
+        # rather than waiting on a connect timeout in every request.
+        try:
+            await container.cache.redis.ping()
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Redis isn't reachable at REDIS_URL (%s); running without the cache.", error)
+            await container.cache.close()
+            container.cache.redis = None
     app.state.container = container
 
     if settings.database_backend == "memory":

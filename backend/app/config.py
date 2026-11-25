@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     database_backend: Literal["memory", "surreal"] = "memory"
 
     surreal_url: str = "ws://localhost:8001/rpc"
+    # Development only: if SurrealDB can't be reached at startup, run on the
+    # in-memory demo backend (with a loud warning) instead of exiting.
+    dev_memory_fallback: bool = True
     surreal_namespace: str = "phlio"
     surreal_database: str = "phlio"
     surreal_user: str = "root"

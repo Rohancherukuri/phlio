@@ -140,17 +140,23 @@ def surreal_rpc_url(url: str) -> str:
     return url if url.endswith("/rpc") else url + "/rpc"
 
 
+class SurrealUnavailable(RuntimeError):
+    """SurrealDB couldn't be reached at SURREAL_URL."""
+
+
 async def create_surreal_connection(settings: Settings):
     url = surreal_rpc_url(settings.surreal_url)
     client = AsyncSurreal(url)
     try:
         await client.connect()
     except OSError as error:
-        hint = (" SURREAL_URL isn't set, so the default local address was used; set it to your"
-                " Surreal Cloud address (wss://<instance>.surreal.cloud/rpc)."
-                if "localhost" in url or "127.0.0.1" in url else
-                " Check SURREAL_URL and that the instance isn't paused.")
-        raise RuntimeError(f"Can't connect to SurrealDB at {url}: {error}.{hint}") from error
+        local = "localhost" in url or "127.0.0.1" in url
+        hint = (" Nothing is running at that address. Start a local SurrealDB"
+                " (`docker compose --profile full up -d surrealdb redis` from the repo root, which listens on"
+                " port 8001), or set SURREAL_URL in backend/.env to your Surreal Cloud address"
+                " (wss://<instance>.surreal.cloud/rpc)."
+                if local else " Check SURREAL_URL and that the instance isn't paused.")
+        raise SurrealUnavailable(f"Can't connect to SurrealDB at {url}: {error}.{hint}") from error
     await client.signin({"username": settings.surreal_user, "password": settings.surreal_password})
     await client.use(settings.surreal_namespace, settings.surreal_database)
     db = SurrealConnection(client)
