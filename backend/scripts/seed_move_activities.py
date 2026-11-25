@@ -99,6 +99,31 @@ def _route(rng: random.Random, centre, radius, bearing, distance_m: float, pace:
     return out
 
 
+async def backdate_posts(c) -> int:
+    """Gives each seeded activity's Social post its activity's start time.
+
+    Posts are created "now", so a fresh seed put ~40 activity posts on top of
+    the feed; with the Posts tab showing activities in the card stack instead,
+    the first page of posts could look empty. Idempotent."""
+    rows = [r for r in await c.graph.store.rows(TABLE) if r.get("seed") == SEED and r.get("post_id")]
+    db = getattr(c.graph.store, "db", None)
+    fixed = 0
+    for row in rows:
+        when = dt.datetime.fromisoformat(row["started_at"]).astimezone(dt.UTC)
+        if db is not None:
+            await db.query("UPDATE type::record('post', $id) SET created_at = $at RETURN NONE",
+                           {"id": row["post_id"], "at": when})
+        else:
+            repo = c.social_repository
+            post = getattr(repo, "_posts", {}).get(row["post_id"])
+            if post is None:
+                continue
+            post.created_at = when
+            repo._posts_newest_first.sort(key=lambda p: p.created_at, reverse=True)
+        fixed += 1
+    return fixed
+
+
 async def seed(c, people: list, *, per_person: int = 2, quiet: bool = False) -> int:
     """Creates the activities for ``people`` (identity ``User`` objects).
     Idempotent: does nothing if this seed is already there."""
@@ -107,6 +132,8 @@ async def seed(c, people: list, *, per_person: int = 2, quiet: bool = False) -> 
 
     existing = [r for r in await c.graph.store.rows(TABLE) if r.get("seed") == SEED]
     if existing or len(people) < 2:
+        if existing:
+            await backdate_posts(c)
         return 0
     now_dt = dt.datetime.now(dt.UTC)
     announce = A._announce
@@ -150,6 +177,7 @@ async def seed(c, people: list, *, per_person: int = 2, quiet: bool = False) -> 
                 written += 1
     finally:
         A._announce = announce
+    await backdate_posts(c)
     if not quiet:
         print(f"Seeded {written} Phlio Move activities for {len(people)} people.")
     return written
@@ -196,7 +224,7 @@ async def main(cloud: bool = False, do_reset: bool = False):
         rng = random.Random(SEED)
         chosen = rng.sample(people, min(20, len(people)))
         if not await seed(c, chosen, per_person=2):
-            print("Already seeded (use --reset to remove and seed again).")
+            print("Already seeded; activity posts are dated to their activities (use --reset to remove and seed again).")
     finally:
         await c.cache.close()
         db = getattr(c.graph.store, "db", None)

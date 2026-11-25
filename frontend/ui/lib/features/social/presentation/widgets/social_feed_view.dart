@@ -18,6 +18,7 @@ import '../../../../design_system/spacing.dart';
 import '../../../../shared/widgets/error_view.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../controllers/feed_controller.dart';
+import '../../domain/entities/post_entity.dart';
 import '../widgets/post_card.dart';
 import 'moments_pull_gate.dart';
 import '../../../phlio_agent/presentation/screens/move/move_deck.dart';
@@ -59,6 +60,23 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
     }
   }
 
+  int _autoLoads = 0; // capped, so a failing page can't be retried forever
+
+  /// Posts for the list. Without the activity posts a page can come out
+  /// nearly empty, so keep loading until there's enough to scroll.
+  List<PostEntity> _listed(FeedState state, bool deckShowing) {
+    final posts = deckShowing
+        ? state.posts.where((p) => !p.media.any((m) => isActivityMedia(m.url))).toList()
+        : state.posts;
+    if (posts.length < 6 && state.hasMore && !state.isLoadingMore && _autoLoads < 6) {
+      _autoLoads++;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.read(feedControllerProvider.notifier).loadMore();
+      });
+    }
+    return posts;
+  }
+
   void _openComments(String postId) {
     showSocialComments(context, postId);
   }
@@ -67,6 +85,9 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
   Widget build(BuildContext context) {
     final feedAsync = ref.watch(feedControllerProvider);
     final newPosts = ref.watch(newPostsCountProvider);
+    // Activity posts move into the card stack only while the stack has
+    // something to show (if /activities/feed fails, they stay in the list).
+    final deckShowing = (ref.watch(moveFeedProvider).valueOrNull ?? const []).isNotEmpty;
 
     final feed = feedAsync.when(
       loading: () => const PhlioLoadingIndicator(),
@@ -78,6 +99,7 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
         notificationPredicate: socialRefreshPredicate,
         onRefresh: () {
           ref.invalidate(moveFeedProvider);
+          _autoLoads = 0;
           return ref.read(feedControllerProvider.notifier).refresh();
         },
         child: ListView(
@@ -96,7 +118,7 @@ class _SocialFeedViewState extends ConsumerState<SocialFeedView> {
             // Phlio Move activities as a card stack (tap to flip through);
             // they're left out of the post list below.
             const MoveActivityDeck(),
-            for (final post in state.posts.where((p) => !p.media.any((m) => isActivityMedia(m.url)))) ...[
+            for (final post in _listed(state, deckShowing)) ...[
               PostCard(
                 post: post,
                 authorName: post
