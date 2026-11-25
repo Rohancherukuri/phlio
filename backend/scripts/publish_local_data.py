@@ -173,7 +173,7 @@ def _fix_bracket_ids(line: str) -> str:
     return "".join(out)
 
 
-def prepare_dump(source: Path, target: Path, drop_tables: set[str], v3: bool) -> None:
+def prepare_dump(source: Path, target: Path, drop_tables: set[str], v3: bool, merge: bool = False) -> None:
     """Copies a ``surreal export`` file so it imports cleanly into a fresh database.
 
     * Relation tables (``TYPE RELATION``) already define their ``in`` / ``out``
@@ -182,6 +182,9 @@ def prepare_dump(source: Path, target: Path, drop_tables: set[str], v3: bool) ->
     * Record ids with escaped nested ⟨⟩ are rewritten (see ``_fix_bracket_ids``).
     * For SurrealDB 3.x (``v3``): 2.x exports mark relation records with
       ``__: true``, which 3.x rejects on SCHEMAFULL tables; the marker is removed.
+    * With ``merge``, records are inserted with ``INSERT IGNORE``: records the
+      target already has are kept as they are and only new ones are added, so
+      the import works on a cloud database that holds an earlier import.
     * Records of ``drop_tables`` are left out. Exports mark each table's
       records with a ``-- TABLE DATA: <name>`` header; everything from there to
       the next ``-- TABLE:`` header is skipped. Definitions stay (empty tables).
@@ -200,6 +203,11 @@ def prepare_dump(source: Path, target: Path, drop_tables: set[str], v3: bool) ->
                 line = _fix_bracket_ids(line)
             if v3 and line.startswith("INSERT RELATION"):
                 line = line.replace("{ __: true, ", "{ ")
+            if merge:
+                if line.startswith("INSERT RELATION ["):
+                    line = "INSERT RELATION IGNORE [" + line[len("INSERT RELATION ["):]
+                elif line.startswith("INSERT ["):
+                    line = "INSERT IGNORE [" + line[len("INSERT ["):]
             out.write(line)
 
 
@@ -249,7 +257,7 @@ def check_cloud(cli: str, endpoint: str, auth: list[str]) -> int:
                  "Check SURREAL_CLOUD_ENDPOINT and that the instance isn't paused (Resume it in Surreal Cloud).")
 
 
-def export_database(settings: Settings, surreal: str, slim: bool, v3: bool) -> Path:
+def export_database(settings: Settings, surreal: str, slim: bool, v3: bool, merge: bool = False) -> Path:
     """Exports the local SurrealDB and returns the file prepared for import."""
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     dump = EXPORT_DIR / f"{settings.surreal_database}.surql"
@@ -261,8 +269,9 @@ def export_database(settings: Settings, surreal: str, slim: bool, v3: bool) -> P
     print(f"  export: {human(dump.stat().st_size)}")
     # Delivered event-outbox rows are history only; --slim leaves them out to
     # stay well inside Surreal Cloud's free 1 GB.
-    prepared = dump.with_name(f"{dump.stem}{'.slim' if slim else ''}.v{3 if v3 else 2}.import.surql")
-    prepare_dump(dump, prepared, {"graph_outbox"} if slim else set(), v3)
+    prepared = dump.with_name(
+        f"{dump.stem}{'.slim' if slim else ''}.v{3 if v3 else 2}{'.merge' if merge else ''}.import.surql")
+    prepare_dump(dump, prepared, {"graph_outbox"} if slim else set(), v3, merge)
     print(f"  ready to import into SurrealDB {3 if v3 else 2}.x: {prepared} ({human(prepared.stat().st_size)})")
     if prepared.stat().st_size > 900 * 1024 * 1024:
         print("  Warning: this is close to the free 1 GB limit; try --slim.")
@@ -280,9 +289,11 @@ def surreal_cli() -> tuple[str, str]:
 def publish_database(settings: Settings, slim: bool, fresh: bool = False) -> None:
     """Exports the local SurrealDB and imports it into Surreal Cloud.
 
-    The import only adds records, so it fails on a cloud database that already
-    holds them. ``fresh`` first removes the cloud database (everything created
-    on the deployed app since the last import is lost) and imports a clean copy.
+    By default it merges: records the cloud doesn't have yet are added and
+    records it already has are left as they are (so changes made on the
+    deployed app are kept, and local edits to records published before are not
+    sent). ``fresh`` first removes the cloud database (everything created on
+    the deployed app since the last import is lost) and imports a clean copy.
     """
     surreal, cli = surreal_cli()
     # The CLI imports over HTTP(S); accept the wss:// address Surreal Cloud shows too.
@@ -291,7 +302,8 @@ def publish_database(settings: Settings, slim: bool, fresh: bool = False) -> Non
             else ["--username", need("SURREAL_CLOUD_USER"), "--password", need("SURREAL_CLOUD_PASSWORD")])
     print(f"Checking {endpoint} …")
     major = check_cloud(cli, endpoint, auth)
-    dump = export_database(settings, surreal, slim, v3=major >= 3)
+    merge = not fresh
+    dump = export_database(settings, surreal, slim, v3=major >= 3, merge=merge)
     # The local names are read from the local database; the cloud ones may differ.
     namespace = os.environ.get("SURREAL_CLOUD_NAMESPACE", "").strip() or settings.surreal_namespace
     database = os.environ.get("SURREAL_CLOUD_DATABASE", "").strip() or settings.surreal_database
@@ -299,16 +311,18 @@ def publish_database(settings: Settings, slim: bool, fresh: bool = False) -> Non
         print(f"Removing the cloud database {namespace}/{database} for a clean import …")
         remove_cloud_database(endpoint, auth, namespace, database)
     print(f"Importing into {endpoint} as {namespace}/{database} …")
+    if merge:
+        print("  merge: adding records the cloud doesn't have yet; records already there are kept as they are\n"
+              "  (use --fresh to replace the cloud database with your local copy instead).")
     result = subprocess.run([surreal, "import", "--endpoint", endpoint, *auth, "--namespace", namespace,
                              "--database", database, str(dump)])
     if result.returncode != 0:
         # (CalledProcessError would print the command line, password included.)
         sys.exit(
             f"\nThe import into {namespace}/{database} failed (see the error above).\n"
-            "If it says a record 'already exists', the cloud database already has this data:\n"
-            "  * nothing to do if it was imported before, or\n"
-            "  * run again with --fresh to replace it with your local copy (changes made on the\n"
-            "    deployed app since the last import are lost), with the Render service suspended.")
+            "To replace the cloud database with your local copy instead, run again with --fresh\n"
+            "(changes made on the deployed app since the last import are lost), with the Render\n"
+            "service suspended.")
     print(f"  database imported. On Render set SURREAL_NAMESPACE={namespace} and SURREAL_DATABASE={database}.")
 
 
@@ -427,7 +441,8 @@ def main() -> None:
                         help="run only these parts (repeatable); default: db, state and media")
     parser.add_argument("--slim", action="store_true", help="leave event-outbox history out of the database import")
     parser.add_argument("--fresh", action="store_true",
-                        help="db: remove the cloud database first, then import (replaces cloud data with local)")
+                        help="db: remove the cloud database first, then import (replaces cloud data with local). "
+             "Without it, only records the cloud doesn't have yet are added")
     parser.add_argument("--workers", type=int, default=4, help="parallel media uploads")
     parser.add_argument("--export-only", choices=["2", "3"],
                         help="only export the local database, prepared for SurrealDB 2.x or 3.x (no upload)")
