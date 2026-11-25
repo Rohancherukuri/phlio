@@ -29,8 +29,9 @@ from app.middleware.analytics import metrics_for
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-PRODUCT = ["social", "dm", "rooms", "pay", "book", "shop", "stream", "news", "agent"]
-COLORS = {"social": "#338ced", "dm": "#e76624", "rooms": "#00a888", "pay": "#d28e05", "book": "#e24d8b",
+# Direct messages are part of Phlio Social; room messages are part of Rooms.
+PRODUCT = ["social", "rooms", "pay", "book", "shop", "stream", "news", "agent"]
+COLORS = {"social": "#338ced", "rooms": "#00a888", "pay": "#d28e05", "book": "#e24d8b",
           "shop": "#0aac23", "stream": "#9887ef", "agent": "#eb6263", "news": "#9c9c9c"}
 
 # id, platform, label, surreal table, memory repository attribute
@@ -150,7 +151,8 @@ async def _edges(c, since: dt.datetime) -> list[tuple[dt.datetime, dict]]:
     for when, e in edges:
         obj = objects.get(e["out"])
         if obj:
-            out.append((when, dict(e, platform=obj.get("platform"), title=obj.get("title"), owner=obj.get("owner"))))
+            platform = "social" if obj.get("platform") == "dm" else obj.get("platform")
+            out.append((when, dict(e, platform=platform, title=obj.get("title"), owner=obj.get("owner"))))
     return out
 
 
@@ -180,13 +182,14 @@ async def _collect(c, w: Window) -> dict[str, Any]:
         metrics[mid] = dict(platform=platform, label=label, rows=await _domain_rows(c, table, attr, w.prev))
     # A transfer is stored on both sides; count the sender's half only.
     metrics["payments"]["rows"] = [r for r in metrics["payments"]["rows"] if str(r[1].get("type", "send")).endswith("send")]
-    metrics["dms"] = dict(platform="dm", label="Messages sent", rows=_dm_rows(c, w.prev))
+    metrics["dms"] = dict(platform="social", label="Direct messages", rows=_dm_rows(c, w.prev))
     for mid, platform, label, table in GRAPH:
         metrics[mid] = dict(platform=platform, label=label, rows=await _graph_rows(c, table, w.prev))
     edges = await _edges(c, w.prev)
     by_platform_edges = collections.defaultdict(list)
     for row in edges:
-        by_platform_edges[row[1].get("platform") or "core"].append(row)
+        platform = row[1].get("platform") or "core"
+        by_platform_edges["social" if platform == "dm" else platform].append(row)
     for platform in PRODUCT:
         if by_platform_edges.get(platform):
             metrics[f"{platform}_actions"] = dict(platform=platform, label="Engagement actions",

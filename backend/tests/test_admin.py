@@ -76,7 +76,9 @@ async def test_overview_platforms_traffic_and_live(client: AsyncClient, auth_hea
     kpis = {k["id"]: k for k in o["kpis"]}
     assert kpis["users"]["value"] > 0 and len(kpis["events"]["series"]) == 14
     ids = [p["id"] for p in o["platforms"]]
-    assert ids == ["social", "dm", "rooms", "pay", "book", "shop", "stream", "news", "agent"]
+    assert ids == ["social", "rooms", "pay", "book", "shop", "stream", "news", "agent"]
+    social = next(p for p in o["platforms"] if p["id"] == "social")
+    assert any(m["id"] == "dms" and m["label"] == "Direct messages" for m in social["metrics"])
     agent = next(p for p in o["platforms"] if p["id"] == "agent")
     assert any(m["id"] == "fit_days" and m["value"] >= 1 for m in agent["metrics"])
     assert len(o["daily"]) == 14 and "social" in o["daily"][0]
@@ -137,7 +139,7 @@ async def test_integrations(client: AsyncClient) -> None:
 
 def test_event_helpers() -> None:
     assert platform_for("/api/v1/social/posts") == "social"
-    assert platform_for("/api/v1/messaging/threads") == "dm"
+    assert platform_for("/api/v1/messaging/threads") == "social"
     assert platform_for("/api/v1/admin/overview") is None and platform_for("/media/x.jpg") is None
     assert event_name("POST", "/api/v1/social/posts/p_123abc/like") == "social_posts_like"
     assert event_name("GET", "/api/v1/social/feed") is None

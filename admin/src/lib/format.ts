@@ -1,8 +1,9 @@
-export const PLATFORMS = ["social", "dm", "rooms", "pay", "book", "shop", "stream", "news", "agent"] as const;
+// Direct messages count under Social, room messages under Rooms.
+export const PLATFORMS = ["social", "rooms", "pay", "book", "shop", "stream", "news", "agent"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const LABELS: Record<string, string> = {
-  social: "Social", dm: "Messages", rooms: "Rooms", pay: "Pay", book: "Book", shop: "Shop",
+  social: "Social", rooms: "Rooms", pay: "Pay", book: "Book", shop: "Shop",
   stream: "Stream", news: "News", agent: "Agent", identity: "Accounts", core: "Core", other: "Other",
 };
 

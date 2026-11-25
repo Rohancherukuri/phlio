@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PhlioMark, PhlioName } from "../components/brand";
+import { PhlioMark } from "../components/brand";
 import { OAuthButtons, type OAuthResult } from "../components/oauth";
 import { Button, ErrorNote, Field, Input } from "../components/ui";
 import { api, auth, type Admin } from "../lib/api";
@@ -22,9 +22,7 @@ function Shell({ title, sub, children }: { title: string; sub: React.ReactNode; 
           <p className="mt-1 text-sm text-sub">{sub}</p>
           <div className="mt-6">{children}</div>
         </div>
-        <p className="mt-6 flex items-center justify-center gap-1 text-center text-[11px] text-faint">
-          <PhlioName size={12}>Admin</PhlioName> · for the Phlio team only
-        </p>
+        <p className="mt-6 text-center text-[11px] text-faint">Phlio Admin · for the Phlio team only</p>
       </div>
     </div>
   );
@@ -52,7 +50,7 @@ export function Login() {
   }
 
   return (
-    <Shell title="Sign in" sub={<>Analytics for every <PhlioName size={13} className="align-[-2px]" /> platform.</>}>
+    <Shell title="Sign in" sub="Analytics for every Phlio platform.">
       {status.error && <div className="mb-4"><ErrorNote error={status.error} /></div>}
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email"><Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>

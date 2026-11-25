@@ -35,7 +35,6 @@ log = logging.getLogger("phlio.analytics")
 
 PLATFORMS = {
     "social": "Social",
-    "dm": "Messages",
     "rooms": "Rooms",
     "pay": "Pay",
     "book": "Book",
@@ -50,7 +49,7 @@ PLATFORMS = {
 # First path segment after /api/v1 → platform.
 _SEGMENTS = {
     "social": "social", "stickers": "social", "fact-checks": "social", "memberships": "social",
-    "blends": "social", "messaging": "dm", "rooms": "rooms", "realtime": "rooms", "watch": "rooms",
+    "blends": "social", "messaging": "social", "rooms": "rooms", "realtime": "rooms", "watch": "rooms",
     "pay": "pay", "book": "book", "places": "book", "explore": "book", "shop": "shop",
     "stream": "stream", "music": "stream", "playlists": "stream", "news": "news",
     "agent": "agent", "timeline": "agent", "activities": "agent", "fitness": "agent",

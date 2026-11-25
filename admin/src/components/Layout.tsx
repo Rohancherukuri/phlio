@@ -9,6 +9,7 @@ import { trackPage } from "../lib/analytics";
 import { LABELS, PLATFORMS, color } from "../lib/format";
 import { useLive } from "../lib/live";
 import { PhlioMark, PhlioName } from "./brand";
+import { PlatformIcon } from "./icons";
 import { Segmented } from "./ui";
 
 export function Logo({ small, size = 32 }: { small?: boolean; size?: number }) {
@@ -89,7 +90,7 @@ export function Layout({ admin }: { admin: Admin }) {
       <div className="space-y-0.5">
         <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-faint">Platforms</p>
         {PLATFORMS.map((p) => (
-          <Item key={p} to={`/p/${p}${days !== 30 ? `?days=${days}` : ""}`} dot={color(p)} onClick={close}>{LABELS[p]}</Item>
+          <Item key={p} to={`/p/${p}${days !== 30 ? `?days=${days}` : ""}`} icon={<PlatformIcon platform={p} size={16} style={{ color: color(p) }} />} onClick={close}>{LABELS[p]}</Item>
         ))}
       </div>
       <div className="space-y-0.5">

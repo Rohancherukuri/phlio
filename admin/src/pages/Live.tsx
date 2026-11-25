@@ -6,7 +6,7 @@ import { LABELS, ago, color, num } from "../lib/format";
 import { usePanel } from "../lib/panel";
 import { useState } from "react";
 
-const KEYS = ["social", "dm", "rooms", "pay", "book", "shop", "stream", "news", "agent", "identity", "core"];
+const KEYS = ["social", "rooms", "pay", "book", "shop", "stream", "news", "agent", "identity", "core"];
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
