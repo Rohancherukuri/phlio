@@ -1,5 +1,6 @@
 import clsx from "clsx";
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Eye, EyeOff, Minus } from "lucide-react";
+import { useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 
 export function Card({ className, children, ...rest }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
@@ -47,6 +48,26 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
       )}
       {...rest}
     />
+  );
+}
+
+/** Password field with an eye button to show or hide what's typed. */
+export function PasswordInput({ className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="relative">
+      <Input {...rest} type={shown ? "text" : "password"} className={clsx("pr-10", className)} />
+      <button
+        type="button"
+        onClick={() => setShown((v) => !v)}
+        aria-label={shown ? "Hide password" : "Show password"}
+        aria-pressed={shown}
+        title={shown ? "Hide password" : "Show password"}
+        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg text-faint transition hover:text-ink focus-visible:text-ink focus-visible:outline-none"
+      >
+        {shown ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
   );
 }
 

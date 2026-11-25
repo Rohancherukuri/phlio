@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PhlioMark } from "../components/brand";
 import { OAuthButtons, type OAuthResult } from "../components/oauth";
-import { Button, ErrorNote, Field, Input } from "../components/ui";
+import { Button, ErrorNote, Field, Input, PasswordInput } from "../components/ui";
 import { api, auth, type Admin } from "../lib/api";
 
 interface Status { has_admins: boolean; signup: "bootstrap" | "invite"; code_required: boolean; google_client_id?: string | null; apple_service_id?: string | null }
@@ -54,7 +54,7 @@ export function Login() {
       {status.error && <div className="mb-4"><ErrorNote error={status.error} /></div>}
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email"><Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-        <Field label="Password"><Input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+        <Field label="Password"><PasswordInput autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
         <ErrorNote error={error} />
         <Button className="w-full" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</Button>
       </form>
@@ -105,7 +105,7 @@ export function Signup() {
         <Field label="Name"><Input required autoComplete="name" value={form.name} onChange={set("name")} /></Field>
         <Field label="Email"><Input type="email" required autoComplete="email" value={form.email} onChange={set("email")} /></Field>
         <Field label="Password" hint="At least 10 characters.">
-          <Input type="password" required autoComplete="new-password" value={form.password} onChange={set("password")} />
+          <PasswordInput required autoComplete="new-password" value={form.password} onChange={set("password")} />
         </Field>
         {needsCode && (
           <Field label={bootstrap ? "Signup code" : "Invite code"} hint={bootstrap ? "The ADMIN_SIGNUP_CODE set on the server." : undefined}>
