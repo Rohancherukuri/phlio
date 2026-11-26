@@ -149,11 +149,16 @@ class SocialVideoCard extends ConsumerWidget {
     required this.onTap,
     this.showFollowPill = false,
     this.fallbackGradient = false,
+    this.onLongPress,
     super.key,
   });
 
   final SocialVideo video;
   final VoidCallback onTap;
+
+  /// Press and hold (e.g. the profile's Edit / Delete menu). Without it the
+  /// card keeps the usual share / add-context sheet.
+  final VoidCallback? onLongPress;
   final bool showFollowPill;
   final bool fallbackGradient;
 
@@ -165,7 +170,9 @@ class SocialVideoCard extends ConsumerWidget {
         platform: 'social',
         contentId: video.playable?.id ?? video.title,
         showEngagement: false,
-        child: _content(context, ref));
+        child: onLongPress == null
+            ? _content(context, ref)
+            : GestureDetector(onLongPress: onLongPress, child: _content(context, ref)));
   }
 
   Widget _content(BuildContext context, WidgetRef ref) {
@@ -174,6 +181,7 @@ class SocialVideoCard extends ConsumerWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           InkWell(
               onTap: onTap,
+              onLongPress: onLongPress,
               borderRadius: BorderRadius.circular(14),
               child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),

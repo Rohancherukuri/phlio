@@ -1600,9 +1600,17 @@ Future<bool> deleteChatForMe(BuildContext context, Map peer) async {
 // -- post quick menu (profile) ---------------------------------------------------------------
 
 /// Long-press a post on a profile: returns `pin`, `like`, `comment`,
-/// `share`, `more` (with [more]) or null. [mine] shows the pin row.
+/// `share`, `edit`, `delete`, `more` (with [more]) or null. [mine] shows
+/// the pin, edit and delete rows ([pinnable] false hides pin, e.g. videos).
 Future<String?> showPostQuickMenu(BuildContext context,
-    {required bool mine, required bool pinned, required bool liked, Widget? preview, bool more = false}) {
+    {required bool mine,
+    required bool pinned,
+    required bool liked,
+    Widget? preview,
+    bool more = false,
+    bool pinnable = true,
+    bool reactions = true,
+    String editLabel = 'Edit caption'}) {
   HapticFeedback.mediumImpact();
   return showGeneralDialog<String>(
     context: context,
@@ -1632,20 +1640,30 @@ Future<String?> showPostQuickMenu(BuildContext context,
                 ),
               const SizedBox(height: 12),
               _MenuCard(width: width, children: [
-                if (mine)
+                if (mine && pinnable)
                   _MenuRow(
                       icon: pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                       label: pinned ? 'Unpin from main grid' : 'Pin to your main grid',
                       onTap: () => Navigator.pop(dialog, 'pin')),
-                _MenuRow(
-                    icon: liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                    label: liked ? 'Unlike' : 'Like',
-                    onTap: () => Navigator.pop(dialog, 'like')),
-                _MenuRow(
-                    icon: Icons.chat_bubble_outline_rounded,
-                    label: 'Comment',
-                    onTap: () => Navigator.pop(dialog, 'comment')),
+                if (reactions) ...[
+                  _MenuRow(
+                      icon: liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      label: liked ? 'Unlike' : 'Like',
+                      onTap: () => Navigator.pop(dialog, 'like')),
+                  _MenuRow(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      label: 'Comment',
+                      onTap: () => Navigator.pop(dialog, 'comment')),
+                ],
                 _MenuRow(icon: Icons.send_outlined, label: 'Share', onTap: () => Navigator.pop(dialog, 'share')),
+                if (mine)
+                  _MenuRow(icon: Icons.edit_outlined, label: editLabel, onTap: () => Navigator.pop(dialog, 'edit')),
+                if (mine)
+                  _MenuRow(
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Delete',
+                      danger: true,
+                      onTap: () => Navigator.pop(dialog, 'delete')),
                 if (more)
                   _MenuRow(
                       icon: Icons.more_horiz_rounded, label: 'More options', onTap: () => Navigator.pop(dialog, 'more')),

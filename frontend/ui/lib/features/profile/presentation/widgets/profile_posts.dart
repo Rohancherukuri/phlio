@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 import '../../../../shared/content/social_comments_sheet.dart' show showSocialComments;
 import '../../../../shared/fact_checks/fact_checks.dart' show showFactCheckActions;
+import '../../../social/presentation/widgets/content_owner_menu.dart' show editOrDeleteContent;
 import '../../../../shared/moments/moment_features.dart' show setPostPinned, showPostQuickMenu;
 
 final publicProfileProvider = FutureProvider.autoDispose
@@ -183,7 +184,8 @@ class ProfilePosts extends ConsumerWidget {
                   key: ValueKey('profile-video-${video.id}'),
                   video: socialVideoPresentation(video),
                   fallbackGradient: true,
-                  onTap: () => ref.read(videoPlaybackProvider).open(video))
+                  onTap: () => ref.read(videoPlaybackProvider).open(video),
+                  onLongPress: () => _videoMenu(context, ref, video))
             ),
           for (final post in posts)
             if (!pins.contains(post.id)) (post.createdAt, _postCard(context, ref, post)),
@@ -250,6 +252,7 @@ class ProfilePosts extends ConsumerWidget {
               picture: video.thumbnailUrl,
               videoUrl: video.url,
               onTap: () => ref.read(videoPlaybackProvider).open(video),
+              onLongPress: () => _videoMenu(context, ref, video),
             )
           ),
     ]..sort((a, b) => b.$1.compareTo(a.$1));
@@ -261,6 +264,28 @@ class ProfilePosts extends ConsumerWidget {
       itemCount: tiles.length,
       itemBuilder: (_, i) => tiles[i],
     );
+  }
+
+  /// Long-press an uploaded video: Share, and on your own profile Edit
+  /// title / Delete.
+  Future<void> _videoMenu(BuildContext context, WidgetRef ref, PlayableVideo video) async {
+    final me = ref.read(authControllerProvider).valueOrNull;
+    final mine = me != null && (me.username == author || me.id == author || video.creator == me.username);
+    final action = await showPostQuickMenu(context,
+        mine: mine,
+        pinned: false,
+        liked: false,
+        pinnable: false,
+        reactions: false,
+        editLabel: 'Edit title',
+        preview: SocialVideoCard(video: socialVideoPresentation(video), fallbackGradient: true, onTap: () {}));
+    if (action == null || !context.mounted) return;
+    switch (action) {
+      case 'share':
+        await showContentShare(context, 'social/${video.id}');
+      case 'edit' || 'delete':
+        await editOrDeleteContent(context, ref, action: action, id: video.id, text: video.title, video: true);
+    }
   }
 
   /// Long-press: Pin to your main grid (your own profile), Like, Comment,
@@ -283,6 +308,8 @@ class ProfilePosts extends ConsumerWidget {
         await showSocialComments(context, post.id);
       case 'share':
         await showContentShare(context, 'social/${post.id}');
+      case 'edit' || 'delete':
+        await editOrDeleteContent(context, ref, action: action, id: post.id, text: post.text);
       case 'more': // Add context (fact checks) and the rest
         await showFactCheckActions(context, 'social/${post.id}',
             onShare: () => showContentShare(context, 'social/${post.id}'));
