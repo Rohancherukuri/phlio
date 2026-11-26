@@ -154,6 +154,9 @@ async def notify_dm(c, sender: str, recipient: str, message: dict) -> None:
         from app.api.v1.messaging import chat_pref
         if (await chat_pref(c, recipient, sender)).get("muted"):
             return  # the recipient muted this chat
+        from app.domains.graph.service import key as _key
+        if await c.graph.store.get(_key("restrict", recipient, sender)):
+            return  # restricted: the message waits quietly in Requests
         text, attachment = _describe(message.get("text", ""), message.get("attachments") or [])
         await notify(c, recipient, "dm", "message", person.full_name or person.username, text,
                      actor=sender, group=f"dm:{sender}",

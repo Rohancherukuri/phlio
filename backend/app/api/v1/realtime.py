@@ -120,6 +120,8 @@ async def create_live(body: BroadcastIn, user=Depends(get_current_user), c=Depen
             await lk.room.delete_room(api.DeleteRoomRequest(room=name))
         raise
     result = admission(c, user, name, host=True, audio_only=body.audio_only)
+    from app.api.v1.profile_actions import fanout_later
+    fanout_later(c, user.id, "live", data=dict(live=name), text=body.title or "")
     if body.record and body.audio_only:
         # The recorder joins once the host is in; it waits quietly until then.
         _spawn(_start_recorder(c, name, meta))

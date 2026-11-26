@@ -34,8 +34,12 @@ async def comments(ref: str, platform: str = 'social', user=Depends(get_current_
         if edits:
             rows = [dict(r, text=edits[r['id']]['text'], mentions=edits[r['id']].get('mentions', []), edited_at=edits[r['id']]['edited_at']) if r['id'] in edits else r for r in rows]
     result = []
+    # Restricted people's comments: only they and the owner see them.
+    from app.api.v1.profile_actions import restricted_by
+    restricted = await restricted_by(c, obj['owner']) if obj.get('owner') else set()
     for row in sorted(rows,key=lambda r:r['created_at'],reverse=True)[:200]:
         if await c.graph.blocked(user.id,row['author_id']): continue
+        if row['author_id'] in restricted and user.id not in (row['author_id'], obj.get('owner')): continue
         person = await c.identity_repository.get_by_id(row['author_id'])
         if person:
             reactions = await c.graph.store.rows('comment_reaction', {'comment_id': row['id']})

@@ -1,4 +1,5 @@
 import '../widgets/memberships.dart';
+import '../widgets/profile_menus.dart' show ProfileBellButton, showProfileMore;
 import 'package:phlio/shared/content/content_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -190,23 +191,22 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 style: PhlioTypography.headline,
                               ),
                             ),
-                            IconButton(
-                              tooltip: 'Share profile',
-                              icon: const Icon(Icons.ios_share_rounded,
-                                  color: PhlioColors.textSecondary),
-                              onPressed: () =>
-                                  showProfileShare(context, profile.handle),
-                            ),
+                            // Bell: what you hear about when they share.
+                            if (!isMe) ProfileBellButton(username: profile.handle),
                             IconButton(
                               tooltip: 'More',
                               icon: const Icon(Icons.more_vert_rounded,
                                   color: PhlioColors.textSecondary),
-                              onPressed: () =>
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'Mute, report and block arrive with the social graph.')),
-                              ),
+                              onPressed: () => isMe
+                                  ? showProfileShare(context, profile.handle)
+                                  : showProfileMore(context, ref,
+                                      username: profile.handle,
+                                      name: profile.displayName,
+                                      avatarUrl: profile.avatarUrl,
+                                      onBlocked: () {
+                                        ref.invalidate(publicProfileProvider(widget.username));
+                                        if (context.canPop()) context.pop();
+                                      }),
                             ),
                           ],
                         ),

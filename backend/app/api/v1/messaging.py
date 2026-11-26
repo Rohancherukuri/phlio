@@ -86,6 +86,8 @@ class SignalIn(BaseModel):
 async def conversations(user: User = Depends(get_current_user), c: Container = Depends(get_container)):
     result = []
     prefs = {r["peer"]: r for r in await c.graph.store.rows("chat_pref", {"owner": user.id})}
+    from app.api.v1.profile_actions import restricted_by
+    restricted = await restricted_by(c, user.id)
     for peer_id in c.messaging_service.peers(user.id):
         peer = await c.identity_repository.get_by_id(peer_id)
         if peer and not await c.graph.blocked(user.id, peer.id):
@@ -95,6 +97,8 @@ async def conversations(user: User = Depends(get_current_user), c: Container = D
             state = c.messaging_service.inbox_state(user.id, peer.id)
             unread, replied = c.messaging_service.inbox_counts(user.id, peer.id, state['read_at'])
             folder = state['folder'] or ('primary' if replied or await c.graph.friends(user.id,peer.id) else 'requests')
+            if peer.id in restricted:
+                folder = 'requests'  # restricted: their chat waits in Requests
             pref = prefs.get(peer.id, {})
             result.append(dict(peer=profile(peer), last_message=messages[-1] if messages else None,folder=folder,
                                unread_count=unread, pinned=bool(pref.get("pinned_at")),

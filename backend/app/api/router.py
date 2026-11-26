@@ -111,6 +111,7 @@ api_router.include_router(fact_checks.router)
 # Creator memberships (members-only videos, Razorpay test checkout).
 from app.api.v1 import memberships
 api_router.include_router(memberships.router)
+
 from app.api.v1 import timeline
 api_router.include_router(timeline.router)
 from app.api.v1 import activities
@@ -123,3 +124,5 @@ api_router.include_router(admin.router)
 # Phlio Pay profile: QR codes, test bank accounts and cards, pay settings.
 from app.api.v1 import pay_profile
 api_router.include_router(pay_profile.router)
+from app.api.v1 import profile_actions
+api_router.include_router(profile_actions.router)

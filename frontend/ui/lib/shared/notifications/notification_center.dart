@@ -80,7 +80,10 @@ class PhlioNotification {
         'rooms' => data['room_id'] == null ? null : '/rooms/${data['room_id']}',
         _ => data['path'] is String && '${data['path']}'.contains('/')
             ? '/shared/${'${data['path']}'.split('/').first}/${Uri.encodeComponent('${data['path']}'.split('/').skip(1).join('/'))}'
-            : null,
+            // Profile bell (new moment, snap, experience, live): their profile.
+            : data['creator'] is String
+                ? '/creator/${Uri.encodeComponent('${data['creator']}')}'
+                : null,
       };
 
   /// Messages and comments can be answered right from the banner.

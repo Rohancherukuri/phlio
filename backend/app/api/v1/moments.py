@@ -217,6 +217,8 @@ async def create_moment(
     saved = await c.graph.store.put(moment_id, row)
     if highlight.strip():
         await _add_to_highlight(c, user.id, moment_id, highlight.strip(), saved)
+    from app.api.v1.profile_actions import fanout_later
+    fanout_later(c, user.id, "moments", row=saved)
     return _public(saved, set(), user.id)
 
 

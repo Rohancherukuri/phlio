@@ -160,6 +160,10 @@ async def create_post(
         await c.graph.store.put(post_setting_key(post.id), dict(post_id=post.id, author=current_user.id,
                                                                 profile_only=True, pinned_at=None))
         out.profile_only = True
+    else:
+        # The profile bell: followers who asked to hear about new posts.
+        from app.api.v1.profile_actions import fanout_later
+        fanout_later(c, current_user.id, "posts", data=dict(path=f"social/{post.id}"), text=body.text.strip())
     return out
 
 
@@ -394,7 +398,7 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
         source.replace(private / source.name)
         filename = source.name
     memory_id = 'social_memory:' + uuid.uuid4().hex
-    return await c.graph.store.put(memory_id, dict(
+    saved = await c.graph.store.put(memory_id, dict(
         author=user.id, image_url='/social/memories/' + memory_id + '/photo',
         private_file=filename, media_kind='video' if video else 'image', caption=caption.strip(), decorations=layers, kind=kind,
         # Look / effect drawn live by the app ("look" or "look+effect").
@@ -407,6 +411,10 @@ async def create_memory(file: UploadFile = File(...), caption: str = Form(defaul
         # add their own photos to the same dump), and where it was taken.
         collaborators=team, group_owner=owner, location=place,
         **policy, created_at=now()))
+    if kind in ('snap', 'experience'):
+        from app.api.v1.profile_actions import fanout_later
+        fanout_later(c, user.id, kind + 's', row=saved)
+    return saved
 
 
 

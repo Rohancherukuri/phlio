@@ -23,6 +23,9 @@ async def can_view(c, viewer, row):
         return True
     if await c.graph.blocked(viewer, owner):
         return False
+    # "Hide your moments" from this person (profile ⋮ menu).
+    if await c.graph.store.get(key('moment_hide', owner, viewer)):
+        return False
     audience = row.get('audience', 'friends')
     if audience == 'everyone':
         return True

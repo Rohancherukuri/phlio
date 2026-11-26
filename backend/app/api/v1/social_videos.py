@@ -241,6 +241,10 @@ async def upload_video(
                                                  playlist_id=pid.strip(), move=False), user, c)
             except HTTPException:
                 continue
+    if visibility == "public":
+        from app.api.v1.profile_actions import fanout_later
+        fanout_later(c, user.id, "clips" if kind == "clip" else "videos", data=dict(path=f"social/{video_id}"),
+                     text=title.strip())
     return dict(
         id=video_id,
         title=title,
