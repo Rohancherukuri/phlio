@@ -287,10 +287,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             PhlioSpacing.xs, PhlioSpacing.lg, 0),
                         child: Text(
                           profile.bio ?? 'Hasn\u2019t added a bio yet.',
-                          style: PhlioTypography.body.copyWith(
-                              color: profile.bio == null
-                                  ? PhlioColors.textMuted
-                                  : PhlioColors.textSecondary),
+                          style: bioTextStyle(
+                              profile.bio == null ? 'default' : look.bioFont,
+                              PhlioTypography.body.copyWith(
+                                  color: profile.bio == null
+                                      ? PhlioColors.textMuted
+                                      : PhlioColors.textSecondary)),
                         ),
                       ),
                       if (profile.tags.isNotEmpty)

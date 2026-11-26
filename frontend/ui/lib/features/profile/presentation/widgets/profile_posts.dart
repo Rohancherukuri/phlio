@@ -14,6 +14,9 @@ import '../../../social/presentation/controllers/video_playback_controller.dart'
 import '../../../social/presentation/widgets/social_clips_grid.dart';
 import '../../../social/presentation/widgets/social_videos_view.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import '../../../../shared/content/social_comments_sheet.dart' show showSocialComments;
+import '../../../../shared/fact_checks/fact_checks.dart' show showFactCheckActions;
+import '../../../../shared/moments/moment_plus.dart' show setPostPinned, showPostQuickMenu;
 
 final publicProfileProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, id) async {
@@ -21,23 +24,32 @@ final publicProfileProvider = FutureProvider.autoDispose
       .data as Map<String, dynamic>;
 });
 
+/// Post ids pinned on each profile (up to 6), in the server's order —
+/// filled in by [profilePostsProvider] (the API sends them first).
+final profilePinnedIds = <String, List<String>>{};
+
 final profilePostsProvider = FutureProvider.autoDispose
     .family<List<PostEntity>, String>((ref, id) async {
   ref.watch(authControllerProvider.select((value) => value.valueOrNull?.id));
   ref.watch(feedControllerProvider.select((value) => value.valueOrNull?.posts));
   final posts = <PostEntity>[];
+  final pins = <String>[];
   String? cursor;
   do {
     final data = (await getIt<ApiClient>().dio.get(
             '/users/${Uri.encodeComponent(id)}/posts',
             queryParameters: {if (cursor != null) 'cursor': cursor}))
         .data as Map;
-    posts.addAll((data['items'] as List).map((item) =>
-        PostModel.fromJson(Map<String, dynamic>.from(item as Map)).toEntity()));
+    for (final item in data['items'] as List) {
+      final json = Map<String, dynamic>.from(item as Map);
+      if (json['pinned'] == true) pins.add('${json['id']}');
+      posts.add(PostModel.fromJson(json).toEntity());
+    }
     final next = (data['meta'] as Map)['next_cursor'] as String?;
     if (next == cursor) break;
     cursor = next;
   } while (cursor != null);
+  profilePinnedIds[id] = pins;
   return posts;
 });
 
@@ -148,7 +160,14 @@ class ProfilePosts extends ConsumerWidget {
                         style: Theme.of(context).textTheme.titleMedium)
                   ])));
         }
-        // Newest first across posts and uploaded videos.
+        // Pinned posts first (newest pin first), then newest first across
+        // posts and uploaded videos.
+        final pins = profilePinnedIds[author] ?? const <String>[];
+        final pinned = [
+          for (final pid in pins)
+            for (final post in posts)
+              if (post.id == pid) _postCard(context, ref, post, pinned: true)
+        ];
         final entries = <(DateTime, Widget)>[
           for (final video in videos)
             (
@@ -159,9 +178,12 @@ class ProfilePosts extends ConsumerWidget {
                   fallbackGradient: true,
                   onTap: () => ref.read(videoPlaybackProvider).open(video))
             ),
-          for (final post in posts) (post.createdAt, _postCard(ref, post)),
+          for (final post in posts)
+            if (!pins.contains(post.id)) (post.createdAt, _postCard(context, ref, post)),
         ]..sort((a, b) => b.$1.compareTo(a.$1));
         return ListView(padding: const EdgeInsets.all(12), children: [
+          for (final card in pinned)
+            Padding(padding: const EdgeInsets.only(bottom: 12), child: card),
           for (final entry in entries)
             Padding(
                 padding: const EdgeInsets.only(bottom: 12), child: entry.$2),
@@ -170,17 +192,57 @@ class ProfilePosts extends ConsumerWidget {
     );
   }
 
-  Widget _postCard(WidgetRef ref, PostEntity post) => ContentSurface(
+  /// Long-press: Pin to your main grid (your own profile), Like, Comment,
+  /// Share — with the post shown above the menu.
+  Future<void> _quickMenu(BuildContext context, WidgetRef ref, PostEntity post, bool pinned) async {
+    final me = ref.read(authControllerProvider).valueOrNull;
+    final mine = me != null && (me.username == author || me.id == author || me.id == post.authorId);
+    final action = await showPostQuickMenu(context,
+        mine: mine, pinned: pinned, liked: post.likedByMe, preview: _postBody(ref, post, preview: true), more: true);
+    if (action == null || !context.mounted) return;
+    switch (action) {
+      case 'pin':
+        if (await setPostPinned(context, post.id, !pinned)) ref.invalidate(profilePostsProvider(author));
+      case 'like':
+        try {
+          await getIt<ApiClient>().dio.post('/social/posts/${Uri.encodeComponent(post.id)}/like');
+          ref.invalidate(profilePostsProvider(author));
+        } catch (_) {}
+      case 'comment':
+        await showSocialComments(context, post.id);
+      case 'share':
+        await showContentShare(context, 'social/${post.id}');
+      case 'more': // Add context (fact checks) and the rest
+        await showFactCheckActions(context, 'social/${post.id}',
+            onShare: () => showContentShare(context, 'social/${post.id}'));
+    }
+  }
+
+  Widget _postCard(BuildContext context, WidgetRef ref, PostEntity post, {bool pinned = false}) => ContentSurface(
       platform: 'social',
       contentId: post.id,
-      child: Card(
+      child: GestureDetector(
+        onLongPress: () => _quickMenu(context, ref, post, pinned),
+        child: Card(
           key: ValueKey('profile-post-${post.id}'),
-          child: Padding(
+          child: _postBody(ref, post, pinned: pinned))));
+
+  Widget _postBody(WidgetRef ref, PostEntity post, {bool pinned = false, bool preview = false}) => Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (post.text.isNotEmpty) Text(post.text),
+                    if (pinned)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Row(children: [
+                          Icon(Icons.push_pin_rounded, size: 15, color: PhlioColors.brandViolet),
+                          SizedBox(width: 5),
+                          Text('Pinned',
+                              style: TextStyle(color: PhlioColors.brandViolet, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                    if (post.text.isNotEmpty) Text(post.text, maxLines: preview ? 6 : null),
                     for (final media in post.media.where((m) =>
                         type == ProfilePostType.all ||
                         (type == ProfilePostType.pics
@@ -216,7 +278,7 @@ class ProfilePosts extends ConsumerWidget {
                                               : post.text,
                                           creator: author,
                                           url: media.url)))),
-                  ]))));
+                  ]));
 }
 
 /// The profile Clips tab: the author's uploaded clips as a 3-column grid

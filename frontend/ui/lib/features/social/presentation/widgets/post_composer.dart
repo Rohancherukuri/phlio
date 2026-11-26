@@ -28,6 +28,9 @@ class _PostComposerState extends ConsumerState<PostComposer> {
   Map? song;
   Map<String, dynamic>? poll;
   bool busy = false;
+
+  /// Phlio Plus: post on your profile only (not in followers' feeds).
+  bool profileOnly = false;
   static const accent = PhlioColors.brandOrange;
   final List<Map<String, dynamic>> pendingPosts = [];
   Map<String, dynamic> currentDraft() => {
@@ -229,6 +232,7 @@ class _PostComposerState extends ConsumerState<PostComposer> {
           'media': draft['media'],
           if (draft['song'] != null) 'music_id': (draft['song'] as Map)['id'],
           if (draft['poll'] != null) 'poll': draft['poll'],
+          if (profileOnly) 'profile_only': true,
         });
         pendingPosts.removeAt(0);
         ref.invalidate(feedControllerProvider);
@@ -597,6 +601,22 @@ class _PostComposerState extends ConsumerState<PostComposer> {
                             Text('Everyone can reply',
                                 style: TextStyle(color: accent))
                           ])),
+                      Material(
+                        color: Colors.transparent,
+                        child: SwitchListTile(
+                          value: profileOnly,
+                          onChanged: busy ? null : (v) => setState(() => profileOnly = v),
+                          activeColor: accent,
+                          dense: true,
+                          secondary: Icon(Icons.person_pin_outlined,
+                              color: profileOnly ? accent : PhlioColors.textSecondary),
+                          title: const Text('Profile only',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: const Text(
+                              "Shows on your profile, not in your followers' feeds",
+                              style: TextStyle(color: PhlioColors.textMuted, fontSize: 12)),
+                        ),
+                      ),
                       const Divider(height: 1),
                       Padding(
                           padding: const EdgeInsets.symmetric(

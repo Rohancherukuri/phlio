@@ -582,7 +582,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           const SizedBox(height: PhlioSpacing.xs),
           Text(
             user.bio.isEmpty ? 'No bio yet — tap edit to add one.' : user.bio,
-            style: PhlioTypography.body,
+            style: user.bio.isEmpty ? PhlioTypography.body : bioTextStyle(look.bioFont, PhlioTypography.body),
           ),
           if (user.interests.isNotEmpty) ...[
             const SizedBox(height: PhlioSpacing.sm),

@@ -26,6 +26,9 @@ from app.domains.graph.store import now
 router = APIRouter(prefix="/social/moments", tags=["moments"])
 
 LIFETIME = dt.timedelta(hours=24)
+# How long a moment stays up: 12 h, 24 h (default) or 48 h.
+DURATIONS = (12, 24, 48)
+SPOTLIGHT_EVERY = dt.timedelta(days=7)
 IMAGE_TYPES = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 VIDEO_TYPES = {".mp4", ".mov", ".m4v", ".webm", ".3gp"}
 MAX_IMAGE = 20 * 1024 * 1024
@@ -108,9 +111,12 @@ async def create_moment(
     music: str = Form(default=""),
     edits: str = Form(default=""),
     mentions: str = Form(default="[]", max_length=2000),
+    duration_hours: int = Form(default=24),
     user=Depends(get_current_user),
     c=Depends(get_container),
 ):
+    if duration_hours not in DURATIONS:
+        raise HTTPException(422, "A moment can last 12, 24 or 48 hours.")
     try:
         choice = SnapAudience(audience=audience, recipients=json.loads(recipients))
         layers = json.loads(overlays)
@@ -205,7 +211,8 @@ async def create_moment(
         mentions=tagged,
         **policy,
         created_at=created.isoformat(),
-        expires_at=(created + LIFETIME).isoformat(),
+        duration_hours=duration_hours,
+        expires_at=(created + dt.timedelta(hours=duration_hours)).isoformat(),
     )
     saved = await c.graph.store.put(moment_id, row)
     if highlight.strip():
@@ -222,7 +229,9 @@ async def active(user=Depends(get_current_user), c=Depends(get_container)):
     result, profiles = {}, {}
     for row in await _visible_rows(c, user.id):
         author = row["author"]
-        state = result.setdefault(author, dict(unseen=False, fresh=False, user=author))
+        state = result.setdefault(author, dict(unseen=False, fresh=False, spotlight=False, user=author))
+        if _spotlit(row):
+            state["spotlight"] = True
         if author != user.id and row["id"] not in seen:
             state["unseen"] = True
         if author == user.id and nowish - _time(row["created_at"]) < dt.timedelta(minutes=2):
@@ -240,8 +249,13 @@ async def active(user=Depends(get_current_user), c=Depends(get_container)):
     return result
 
 
+def _spotlit(row) -> bool:
+    """Spotlighted moments go to the front of friends' rails while live."""
+    return bool(row.get("spotlight_at")) and _active(row)
+
+
 def _group_key(group, viewer):
-    return (group["author"]["id"] != viewer, not group["unseen"], -group["latest"])
+    return (group["author"]["id"] != viewer, not group.get("spotlight"), not group["unseen"], -group["latest"])
 
 
 @router.get("/feed")
@@ -258,13 +272,15 @@ async def feed(user=Depends(get_current_user), c=Depends(get_container)):
         except HTTPException:
             continue
         group = groups.setdefault(author, dict(author=profile, items=[], unseen=False, latest=0.0,
-                                               following=author in following))
+                                               following=author in following, spotlight=False))
+        group["spotlight"] = group["spotlight"] or _spotlit(row)
         item = _public(row, seen, user.id)
         group["items"].append(item)
         group["unseen"] = group["unseen"] or not item["seen"]
         group["latest"] = max(group["latest"], _time(row["created_at"]).timestamp())
     await _enrich(c, [i for g in groups.values() for i in g["items"]], user.id)
-    ordered = sorted(groups.values(), key=lambda g: (not g["following"] and g["author"]["id"] != user.id,
+    ordered = sorted(groups.values(), key=lambda g: (not g["following"] and not g["spotlight"]
+                                                    and g["author"]["id"] != user.id,
                                                     *_group_key(g, user.id)))
     return ordered
 
@@ -285,12 +301,26 @@ async def mark_seen(moment_id: str, user=Depends(get_current_user), c=Depends(ge
     row = await _moment(c, moment_id)
     if row["author"] != user.id and not await can_view(c, user.id, row):
         raise HTTPException(404, "Moment unavailable.")
-    await c.graph.store.put(key("moment_view", user.id, row["id"]),
-                            dict(user_id=user.id, moment_id=row["id"], author=row["author"], seen_at=now()))
+    view_key = key("moment_view", user.id, row["id"])
+    before = await c.graph.store.get(view_key)
+    stamp = now()
+    # Every open counts: views − 1 are rewatches (the author's insights).
+    await c.graph.store.put(view_key, dict(
+        user_id=user.id, moment_id=row["id"], author=row["author"],
+        seen_at=(before or {}).get("seen_at") or stamp, last_seen_at=stamp,
+        views=int((before or {}).get("views") or 1) + (1 if before else 0)))
+    if before is None and row["author"] != user.id:
+        settings = await _settings_row(c, row["author"])
+        if user.id in settings.get("notify_viewers", []):
+            from app.api.v1.notifications import notify
+            await notify(c, row["author"], "social", "moment_view", user.full_name or user.username,
+                         "viewed your moment", actor=user.id,
+                         data=dict(moment=row["id"].removeprefix("social_moment:")),
+                         group=f"moment_view:{row['id']}")
 
 
 @router.get("/{moment_id}/viewers")
-async def viewers(moment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+async def viewers(moment_id: str, q: str = "", user=Depends(get_current_user), c=Depends(get_container)):
     """Who watched your moment, with their reaction and whether they
     commented — people who reacted come first, then newest views."""
     row = await _moment(c, moment_id)
@@ -311,15 +341,27 @@ async def viewers(moment_id: str, user=Depends(get_current_user), c=Depends(get_
         except HTTPException:
             continue
         reaction = reactions.get(uid)
+        view = views.get(uid) or {}
+        count = int(view.get("views") or (1 if view else 0))
         people.append(dict(profile,
                            reaction=reaction["emoji"] if reaction else None,
+                           super_heart=bool(reaction and reaction.get("super")),
                            reacted_at=reaction["reacted_at"] if reaction else None,
                            comments=comments.get(uid, 0),
                            responses=answered.get(uid, 0),
-                           seen_at=(views.get(uid) or {}).get("seen_at")))
+                           seen_at=view.get("seen_at"),
+                           last_seen_at=view.get("last_seen_at") or view.get("seen_at"),
+                           views=count, rewatches=max(0, count - 1)))
     people.sort(key=lambda p: (p["reaction"] is None, -_stamp(p["reacted_at"] or p["seen_at"])))
-    return dict(count=len(people), reactions=sum(1 for p in people if p["reaction"]),
-                comments=sum(comments.values()), people=people)
+    total = dict(count=len(people), reactions=sum(1 for p in people if p["reaction"]),
+                 comments=sum(comments.values()), rewatches=sum(p["rewatches"] for p in people),
+                 super_hearts=sum(1 for p in people if p["super_heart"]))
+    # Search the viewer list by name or username (counts stay for everyone).
+    needle = q.strip().lstrip("@").lower()
+    if needle:
+        people = [p for p in people if needle in (p.get("username") or "").lower()
+                  or needle in (p.get("display_name") or "").lower()]
+    return dict(total, people=people)
 
 
 def _stamp(value) -> float:
@@ -620,6 +662,8 @@ async def trending_prompts(user=Depends(get_current_user), c=Depends(get_contain
 
 class ReactionIn(BaseModel):
     emoji: str = Field(min_length=1, max_length=12)
+    # A super heart: press and hold the like button (bursts on screen).
+    super: bool = False
 
 
 async def _viewable(c, moment_id: str, viewer: str) -> dict:
@@ -642,8 +686,9 @@ async def react(moment_id: str, body: ReactionIn, user=Depends(get_current_user)
         raise HTTPException(422, "You can't react to your own moment.")
     await c.cache.rate_limit(user.id, "moment_react", 120)
     await c.graph.store.put(key("moment_reaction", user.id, row["id"]), dict(
-        user_id=user.id, moment_id=row["id"], author=row["author"], emoji=body.emoji.strip(), reacted_at=now()))
-    return dict(reaction=body.emoji.strip())
+        user_id=user.id, moment_id=row["id"], author=row["author"], emoji=body.emoji.strip(), reacted_at=now(),
+        super=body.super))
+    return dict(reaction=body.emoji.strip(), super=body.super)
 
 
 @router.delete("/{moment_id}/reaction", status_code=204)
@@ -826,3 +871,92 @@ async def report_comment(moment_id: str, comment_id: str, body: ReportIn,
     await c.graph.store.put(key("content_report", user.id, comment["id"]), dict(
         reporter_id=user.id, moment_id=row["id"], comment_id=comment["id"], author=comment["user_id"],
         reason=body.reason, status="pending", created_at=now()))
+
+
+
+# -- duration, spotlight and moment settings ------------------------------------------------
+
+
+class DurationIn(BaseModel):
+    hours: int
+
+
+@router.put("/{moment_id}/duration")
+async def set_duration(moment_id: str, body: DurationIn, user=Depends(get_current_user), c=Depends(get_container)):
+    """Make a live moment last 12, 24 or 48 hours from when it was shared."""
+    row = await _moment(c, moment_id)
+    if row["author"] != user.id:
+        raise HTTPException(403, "Only the author can change this.")
+    if body.hours not in DURATIONS:
+        raise HTTPException(422, "A moment can last 12, 24 or 48 hours.")
+    expires = _time(row["created_at"]) + dt.timedelta(hours=body.hours)
+    if expires <= dt.datetime.now(dt.UTC):
+        raise HTTPException(422, "That would end this moment already.")
+    row = dict(row, duration_hours=body.hours, expires_at=expires.isoformat())
+    saved = await c.graph.store.put(row["id"], {k: v for k, v in row.items() if k != "id"})
+    return _public(saved, set(), user.id)
+
+
+@router.post("/{moment_id}/spotlight")
+async def spotlight(moment_id: str, user=Depends(get_current_user), c=Depends(get_container)):
+    """Put a live moment at the front of friends' rails. Once every 7 days."""
+    row = await _moment(c, moment_id)
+    if row["author"] != user.id:
+        raise HTTPException(403, "Only the author can spotlight a moment.")
+    if not _active(row):
+        raise HTTPException(422, "This moment has ended.")
+    nowish = dt.datetime.now(dt.UTC)
+    last = max((_time(r["spotlight_at"]) for r in await c.graph.store.rows("social_moment", {"author": user.id})
+                if r.get("spotlight_at")), default=None)
+    if last and nowish - last < SPOTLIGHT_EVERY:
+        nxt = last + SPOTLIGHT_EVERY
+        raise HTTPException(429, f"You can spotlight again on {nxt.strftime('%d %b, %I:%M %p')} UTC.")
+    row = dict(row, spotlight_at=nowish.isoformat())
+    saved = await c.graph.store.put(row["id"], {k: v for k, v in row.items() if k != "id"})
+    return dict(_public(saved, set(), user.id), next_spotlight_at=(nowish + SPOTLIGHT_EVERY).isoformat())
+
+
+async def _settings_row(c, user_id: str) -> dict:
+    return await c.graph.store.get(key("account_setting", user_id, "moments")) or {}
+
+
+class MomentSettingsIn(BaseModel):
+    notify_viewers: list[str] | None = Field(default=None, max_length=50)
+    default_hours: int | None = None
+
+
+async def _settings_out(c, user_id: str, row: dict) -> dict:
+    people, profiles = [], {}
+    for uid in row.get("notify_viewers", []):
+        try:
+            people.append(await _profile(c, uid, profiles))
+        except HTTPException:
+            pass
+    last = max((_time(r["spotlight_at"]) for r in await c.graph.store.rows("social_moment", {"author": user_id})
+                if r.get("spotlight_at")), default=None)
+    return dict(notify_viewers=people, default_hours=row.get("default_hours", 24),
+                next_spotlight_at=(last + SPOTLIGHT_EVERY).isoformat() if last else None)
+
+
+@router.get("/settings/me")
+async def my_settings(user=Depends(get_current_user), c=Depends(get_container)):
+    """Moment settings: people whose views notify you, default duration."""
+    return await _settings_out(c, user.id, await _settings_row(c, user.id))
+
+
+@router.put("/settings/me")
+async def save_settings(body: MomentSettingsIn, user=Depends(get_current_user), c=Depends(get_container)):
+    row = await _settings_row(c, user.id)
+    if body.notify_viewers is not None:
+        ids = []
+        for name in dict.fromkeys(body.notify_viewers):
+            person = await c.graph.user(name)
+            if person.id != user.id:
+                ids.append(person.id)
+        row["notify_viewers"] = ids
+    if body.default_hours is not None:
+        if body.default_hours not in DURATIONS:
+            raise HTTPException(422, "A moment can last 12, 24 or 48 hours.")
+        row["default_hours"] = body.default_hours
+    await c.graph.store.put(key("account_setting", user.id, "moments"), dict(row, owner=user.id, updated_at=now()))
+    return await _settings_out(c, user.id, row)

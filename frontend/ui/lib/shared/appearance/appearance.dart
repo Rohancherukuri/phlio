@@ -28,6 +28,7 @@ import '../../features/authentication/presentation/controllers/auth_controller.d
 import '../moments/templates/template_canvas.dart';
 import '../moments/templates/template_model.dart';
 import 'themes.dart';
+import '../moments/editor/text_editor.dart' show richFonts;
 import 'package:phlio/core/network/media_cache.dart';
 
 /// Animated effects (index = uEffect in the shader).
@@ -101,7 +102,12 @@ class Appearance {
     this.effectColor = const Color(0xFFFFD27A),
     this.intensity = 0.7,
     this.template,
+    this.bioFont = 'default',
   });
+
+  /// The font of the bio on your profile: `default` or one of the moment
+  /// text fonts (`Classic`, `Bubble`, `Deco`, ... see richFonts).
+  final String bioFont;
 
   /// A ready-made theme id (see themes.dart, e.g. `hacker_green`). When set
   /// it replaces the background and wallpaper; the effect still applies.
@@ -138,6 +144,7 @@ class Appearance {
     double? intensity,
     String? template,
     bool clearTemplate = false,
+    String? bioFont,
   }) =>
       Appearance(
         template: clearTemplate ? null : (template ?? this.template),
@@ -150,6 +157,7 @@ class Appearance {
         effect: effect ?? this.effect,
         effectColor: effectColor ?? this.effectColor,
         intensity: intensity ?? this.intensity,
+        bioFont: bioFont ?? this.bioFont,
       );
 
   factory Appearance.fromJson(Map<String, dynamic> json) {
@@ -171,6 +179,7 @@ class Appearance {
       effectColor: _color(json['effect_color']) ?? const Color(0xFFFFD27A),
       intensity: (json['intensity'] as num?)?.toDouble() ?? 0.7,
       template: json['template'] as String?,
+      bioFont: json['bio_font'] as String? ?? 'default',
     );
   }
 
@@ -189,6 +198,7 @@ class Appearance {
         'effect_color': _hex(effectColor),
         'intensity': intensity,
         'template': template,
+        'bio_font': bioFont,
       };
 
   @override
@@ -203,11 +213,25 @@ class Appearance {
       other.effect == effect &&
       other.effectColor == effectColor &&
       other.intensity == intensity &&
-      other.template == template;
+      other.template == template &&
+      other.bioFont == bioFont;
 
   @override
   int get hashCode => Object.hash(background, wallpaper, liveStyle, palette,
-      photoUrl, dim, effect, effectColor, intensity, template);
+      photoUrl, dim, effect, effectColor, intensity, template, bioFont);
+}
+
+/// [base] in the bio font [font] (`default` keeps [base] as it is).
+TextStyle bioTextStyle(String font, TextStyle base) {
+  if (font == 'default') return base;
+  for (final f in richFonts) {
+    if (f.$1 == font) {
+      // Display fonts read small at body size; give them a little more room.
+      final bump = switch (font) { 'Squeeze' || 'Script' || 'Hand' => 2.0, _ => 0.0 };
+      return templateFont(f.$2, base.copyWith(fontWeight: f.$3, fontSize: (base.fontSize ?? 14) + bump));
+    }
+  }
+  return base;
 }
 
 // -- API -------------------------------------------------------------------------------

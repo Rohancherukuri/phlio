@@ -65,8 +65,13 @@ class Wallpaper(BaseModel):
         return value
 
 
+# Bio fonts: the same faces as the moment text editor (app: text_editor.dart richFonts).
+BIO_FONTS = ("default", "Classic", "Bubble", "Deco", "Squeeze", "Typewriter", "Strong", "Elegant", "Script", "Hand")
+
+
 class Appearance(BaseModel):
     background: str | None = None
+    bio_font: Literal[BIO_FONTS] = "default"  # type: ignore[valid-type]
     wallpaper: Wallpaper = Wallpaper()
     dim: float = Field(default=0.35, ge=0, le=0.9)
     effect: Literal[EFFECTS] = "none"  # type: ignore[valid-type]

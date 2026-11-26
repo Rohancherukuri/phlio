@@ -7,6 +7,8 @@ import '../../../../app/shell/account_switcher.dart';
 import '../../../../design_system/colors.dart';
 import '../../../../design_system/widgets/phlio_card.dart';
 import '../../../../shared/content/content_surface.dart';
+import '../../../../shared/moments/moment_plus.dart'
+    show deleteChatForMe, saveChatPref, showChatPreview;
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../data/datasources/messaging_api.dart';
@@ -69,6 +71,42 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Could not move conversation. Try again.')));
     }
+  }
+
+  /// Long-press: read the chat without marking it read (the messages load
+  /// without the inbox "read" call), then Pin / Delete / Mute.
+  Future<void> peek(Map item) async {
+    final api = ref.read(messagingApiProvider);
+    final peer = item['peer'] as Map;
+    final id = peer['id'] as String;
+    final action = await showChatPreview(context,
+        conversation: item,
+        meId: ref.read(authControllerProvider).valueOrNull?.id,
+        messages: api.messages(id));
+    if (action == null || !mounted) return;
+    void say(String text) =>
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    switch (action) {
+      case 'open':
+        await open(peer);
+        return;
+      case 'pin':
+        final pin = item['pinned'] != true;
+        if (await saveChatPref(context, id, {'pinned': pin}) && mounted) say(pin ? 'Chat pinned' : 'Chat unpinned');
+      case 'mute':
+        final mute = item['muted'] != true;
+        if (await saveChatPref(context, id, {'muted': mute}) && mounted) {
+          say(mute ? 'Messages muted' : 'Messages unmuted');
+        }
+      case 'mute_calls':
+        final mute = item['muted_calls'] != true;
+        if (await saveChatPref(context, id, {'muted_calls': mute}) && mounted) {
+          say(mute ? 'Calls muted' : 'Calls unmuted');
+        }
+      case 'delete':
+        if (await deleteChatForMe(context, peer) && mounted) say('Chat deleted');
+    }
+    if (mounted) ref.invalidate(dmConversationsProvider);
   }
 
   String _sharedNoun(String path, String text) {
@@ -259,6 +297,16 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
                                 fontSize: 13)),
                         trailing:
                             Row(mainAxisSize: MainAxisSize.min, children: [
+                          if (item['muted'] == true)
+                            const Padding(
+                                padding: EdgeInsets.only(right: 6),
+                                child: Icon(Icons.notifications_off_outlined,
+                                    size: 16, color: PhlioColors.textMuted)),
+                          if (item['pinned'] == true)
+                            const Padding(
+                                padding: EdgeInsets.only(right: 6),
+                                child: Icon(Icons.push_pin_rounded,
+                                    size: 16, color: PhlioColors.brandViolet)),
                           if (unread)
                             const Icon(Icons.circle,
                                 size: 8, color: PhlioColors.brandViolet),
@@ -268,7 +316,7 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
                               icon: const Icon(Icons.more_horiz))
                         ]),
                         onTap: () => open(peer),
-                        onLongPress: () => move(item));
+                        onLongPress: () => peek(item));
                   }, childCount: filtered.length)),
                   SliverToBoxAdapter(
                       child: Padding(

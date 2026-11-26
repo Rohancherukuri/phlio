@@ -229,6 +229,16 @@ class MessagingService:
         self.db.execute("INSERT OR IGNORE INTO message_hidden VALUES (?, ?)", (message_id, user))
         self.db.commit()
 
+    def hide_conversation(self, user: str, peer: str) -> int:
+        """Delete a whole chat for you: every message so far is hidden from
+        this user only (new messages show up again)."""
+        cur = self.db.execute(
+            "INSERT OR IGNORE INTO message_hidden SELECT id, ? FROM messages "
+            "WHERE (sender=? AND recipient=?) OR (sender=? AND recipient=?)",
+            (user, user, peer, peer, user))
+        self.db.commit()
+        return cur.rowcount
+
     def unsend(self, message_id: str, user: str, peer: str) -> None:
         """Unsend: the sender removes the message for both people."""
         row = self._participant_message(message_id, user, peer)

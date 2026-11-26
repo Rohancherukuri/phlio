@@ -14,6 +14,7 @@ import '../../../../design_system/widgets/foxy_puppet.dart';
 import '../../../../shared/appearance/appearance.dart';
 import '../../../../shared/appearance/appearance_editor.dart';
 import '../../../../shared/content/content_surface.dart' show catalogProvider;
+import '../../../../shared/moments/editor/text_editor.dart' show richFonts;
 import '../../../../shared/music/stream_song_picker.dart';
 import '../../../authentication/domain/entities/user_entity.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
@@ -267,6 +268,7 @@ class _ProfileEditorScreenState extends ConsumerState<ProfileEditorScreen> {
               decoration: const InputDecoration(
                   labelText: 'Bio', hintText: 'Tell people about you'),
             ),
+            _bioFonts(),
             const SizedBox(height: 4),
             _songTile(),
             const SizedBox(height: 22),
@@ -287,6 +289,54 @@ class _ProfileEditorScreenState extends ConsumerState<ProfileEditorScreen> {
         ),
       ),
     );
+  }
+
+  /// Bio font: a row of "Aa" swatches, each in its own font.
+  Widget _bioFonts() {
+    final options = [('default', 'Default'), for (final f in richFonts) (f.$1, f.$1)];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text('Bio font', style: PhlioTypography.caption.copyWith(color: PhlioColors.textSecondary)),
+      ),
+      SizedBox(
+        height: 64,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: options.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, i) {
+            final (id, label) = options[i];
+            final on = _look.bioFont == id;
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _look = _look.copyWith(bioFont: id));
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 68,
+                decoration: BoxDecoration(
+                  color: on ? PhlioColors.brandViolet.withValues(alpha: .18) : PhlioColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: on ? PhlioColors.brandViolet : Colors.transparent, width: 1.4),
+                ),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('Aa',
+                      style: bioTextStyle(id, PhlioTypography.title.copyWith(color: PhlioColors.textPrimary, fontSize: 20))),
+                  const SizedBox(height: 2),
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PhlioTypography.caption.copyWith(
+                          fontSize: 11, color: on ? PhlioColors.textPrimary : PhlioColors.textMuted)),
+                ]),
+              ),
+            );
+          },
+        ),
+      ),
+    ]);
   }
 
   Widget _preview() {
@@ -320,13 +370,15 @@ class _ProfileEditorScreenState extends ConsumerState<ProfileEditorScreen> {
                       duration: const Duration(milliseconds: 180),
                       child: Text(
                         bio.isEmpty ? 'Your bio shows here' : bio,
-                        key: ValueKey(bio),
+                        key: ValueKey('$bio${_look.bioFont}'),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
-                        style: PhlioTypography.body.copyWith(
-                            color: bio.isEmpty
-                                ? PhlioColors.textMuted
-                                : PhlioColors.textPrimary),
+                        style: bioTextStyle(
+                            bio.isEmpty ? 'default' : _look.bioFont,
+                            PhlioTypography.body.copyWith(
+                                color: bio.isEmpty
+                                    ? PhlioColors.textMuted
+                                    : PhlioColors.textPrimary)),
                       ),
                     ),
                     const Spacer(),

@@ -22,6 +22,7 @@ import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'package:phlio/core/network/media_cache.dart';
 import 'dart:convert' show jsonEncode;
 import 'comment_audio.dart';
+import '../moments/moment_plus.dart' show showProfilePeek;
 import '../../features/rooms/presentation/widgets/note_song_picker.dart' show showNoteSongPicker;
 
 String commentUrl(String id) =>
@@ -220,6 +221,10 @@ class _SocialCommentsSheetState extends ConsumerState<SocialCommentsSheet> {
                                 : '/creator/${author['id']}');
                           }
                         },
+                  // Press and hold: a profile card with View profile.
+                  onLongPress: highlighted || author['id'] == me?.id
+                      ? null
+                      : () => showProfilePeek(context, author),
                   child: author['id'] == me?.id
                       ? MeAvatar(name: me!.fullName, size: 34)
                       : PhlioAvatar(

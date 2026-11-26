@@ -151,6 +151,9 @@ async def notify_dm(c, sender: str, recipient: str, message: dict) -> None:
         person = await c.identity_repository.get_by_id(sender)
         if not person:
             return
+        from app.api.v1.messaging import chat_pref
+        if (await chat_pref(c, recipient, sender)).get("muted"):
+            return  # the recipient muted this chat
         text, attachment = _describe(message.get("text", ""), message.get("attachments") or [])
         await notify(c, recipient, "dm", "message", person.full_name or person.username, text,
                      actor=sender, group=f"dm:{sender}",

@@ -37,6 +37,8 @@ class CreatePostRequest(BaseModel):
     text: str = Field(default="", max_length=2000)
     media: list[MediaAttachmentSchema] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list, max_length=10)
+    # Shown on your profile grid only, not in anyone's feed.
+    profile_only: bool = False
 
 
 class AuthorSummary(BaseModel):
@@ -58,6 +60,8 @@ class PostResponse(BaseModel):
     comment_count: int
     created_at: dt.datetime
     liked_by_me: bool
+    pinned: bool = False
+    profile_only: bool = False
 
     @classmethod
     def from_entity(cls, post: Post, *, liked_by_me: bool) -> PostResponse:
@@ -114,6 +118,9 @@ async def get_feed(
         return Page[PostResponse].model_validate(cached)
     posts, next_cursor = await social_service.get_feed(cursor=cursor, limit=clamp_limit(limit))
     posts, liked_ids = await social_service.feed_metadata(posts, current_user.id)
+    # "Post only to profile" posts stay off the feed.
+    settings = await post_settings(c, [p.id for p in posts])
+    posts = [p for p in posts if not settings.get(p.id, {}).get("profile_only")]
     items = [
         PostResponse.from_entity(p, liked_by_me=p.id in liked_ids)
         for p in posts
@@ -148,7 +155,12 @@ async def create_post(
             post_id=post.id, choices=[dict(text=choice.text.strip(), image_url=choice.image_url) for choice in body.poll.choices],
             expires_at=(dt.datetime.now(dt.UTC)+dt.timedelta(minutes=body.poll.minutes)).isoformat()))
     attach_selection(c,current_user.id,"post",post.id,music)
-    return PostResponse.from_entity(post, liked_by_me=False)
+    out = PostResponse.from_entity(post, liked_by_me=False)
+    if body.profile_only:
+        await c.graph.store.put(post_setting_key(post.id), dict(post_id=post.id, author=current_user.id,
+                                                                profile_only=True, pinned_at=None))
+        out.profile_only = True
+    return out
 
 
 @router.get("/posts/{post_id}", response_model=PostResponse)
@@ -584,3 +596,48 @@ async def set_collaborators(group: str, body: CollaboratorsIn, user=Depends(get_
         others = sorted((set(team) | {owner}) - {row['author']})
         await c.graph.store.put(row['id'], dict(row, collaborators=others))
     return dict(collaborators=[c.graph.profile(await c.graph.user(uid)) for uid in team])
+
+
+
+# -- pinned posts and profile-only posts -------------------------------------------------------
+#
+# ``post_setting:<hash(post id)>`` {post_id, author, profile_only, pinned_at}.
+# Up to six posts can be pinned to the top of your profile grid.
+
+MAX_PINS = 6
+
+
+def post_setting_key(post_id: str) -> str:
+    from app.domains.graph.service import key
+    return key("post_setting", post_id)
+
+
+async def post_settings(c, post_ids: list[str]) -> dict[str, dict]:
+    if not post_ids:
+        return {}
+    rows = await c.graph.store.get_many([post_setting_key(pid) for pid in post_ids])
+    return {r["post_id"]: r for r in rows}
+
+
+class PinIn(BaseModel):
+    pinned: bool = True
+
+
+@router.put("/posts/{post_id}/pin")
+async def pin_post(post_id: str, body: PinIn, social_service: SocialService = Depends(get_social_service),
+                   current_user: User = Depends(get_current_user), c=Depends(get_container)):
+    post = await social_service.get_post_or_raise(post_id)
+    if post.author_id != current_user.id:
+        raise HTTPException(403, "You can only pin your own posts.")
+    from app.domains.graph.store import now
+    row = await c.graph.store.get(post_setting_key(post.id)) or dict(post_id=post.id, author=current_user.id,
+                                                                      profile_only=False)
+    if body.pinned and not row.get("pinned_at"):
+        pinned = [r for r in await c.graph.store.rows("post_setting", {"author": current_user.id}) if r.get("pinned_at")]
+        if len(pinned) >= MAX_PINS:
+            raise HTTPException(422, f"You can pin up to {MAX_PINS} posts. Unpin one first.")
+        row["pinned_at"] = now()
+    elif not body.pinned:
+        row["pinned_at"] = None
+    await c.graph.store.put(post_setting_key(post.id), {k: v for k, v in row.items() if k != "id"})
+    return dict(post_id=post.id, pinned=bool(row.get("pinned_at")))

@@ -42,6 +42,7 @@ import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
 import 'moment_activity.dart';
 import 'moment_meta.dart';
+import 'moment_plus.dart';
 import '../content/mentions.dart' show MentionTextEditingController;
 import 'stickers/sticker_responses.dart';
 import '../media/story_fx_view.dart';
@@ -253,7 +254,8 @@ class _RimPainter extends CustomPainter {
 }
 
 /// Wraps an avatar with the rim light when [userId] has a live moment. Tap
-/// opens their moments; long-press opens the profile. Without a live moment
+/// opens their moments; long-press peeks at them without being seen (your
+/// own ring: opens your profile). Without a live moment
 /// it shows [plain] untouched, so layouts never shift.
 class MomentRingAvatar extends ConsumerWidget {
   const MomentRingAvatar({
@@ -292,8 +294,16 @@ class MomentRingAvatar extends ConsumerWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTapOverride ?? () => openUserMoments(context, owner),
-        onLongPress: () =>
-            context.push('/creator/${Uri.encodeComponent(owner)}'),
+        onLongPress: () {
+          final me = ref.read(authControllerProvider).valueOrNull;
+          if (owner == me?.id || owner == me?.username) {
+            context.push('/creator/${Uri.encodeComponent(owner)}');
+            return;
+          }
+          showMomentPeek(context, owner,
+              onWatch: () => openUserMoments(context, owner),
+              onMuted: () => refreshMoments(ref));
+        },
         child: RimLight(
           size: size,
           unseen: state['unseen'] == true,
@@ -481,6 +491,9 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
   final replyFocus = FocusNode();
   bool paused = false, sending = false, recording = false;
   String? burst;
+
+  /// Press and hold Like: hearts fly up (Phlio Plus "super heart").
+  bool superBurst = false;
   final AudioPlayer _music = AudioPlayer();
   final AudioRecorder _recorder = AudioRecorder();
   Timer? _musicLine, _recordTicker;
@@ -911,6 +924,26 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     if (mounted) setState(() => burst = null);
   }
 
+  /// Press and hold the heart: a super heart. Saved as a ❤️ reaction marked
+  /// `super` (the author sees it in Viewers) and sent to their DMs.
+  Future<void> _superHeart() async {
+    final current = item;
+    HapticFeedback.heavyImpact();
+    setState(() {
+      superBurst = true;
+      current['my_reaction'] = '❤️';
+      current['my_super'] = true;
+    });
+    try {
+      await getIt<ApiClient>()
+          .dio
+          .put('/social/moments/${_mid(current)}/reaction', data: {'emoji': '❤️', 'super': true});
+    } catch (_) {}
+    try {
+      await ref.read(messagingApiProvider).send(author['username'] as String, '💖 Sent a super heart to your moment');
+    } catch (_) {}
+  }
+
   /// Viewers / Comments sheet is up (the moment shrinks to a card).
   bool _sheetOpen = false;
 
@@ -952,8 +985,10 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .8),
       builder: (sheet) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
               leading: const Icon(Icons.favorite_border_rounded),
               title: const Text('Add to highlights'),
@@ -966,6 +1001,27 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
               leading: const Icon(Icons.visibility_outlined),
               title: const Text('Viewers'),
               onTap: () => Navigator.pop(sheet, 'viewers')),
+          if (!widget.highlight) ...[
+            ListTile(
+                leading: const Icon(Icons.timelapse_rounded),
+                title: const Text('Moment length'),
+                subtitle: Text('${(item['duration_hours'] as num?)?.toInt() ?? 24} hours'),
+                onTap: () => Navigator.pop(sheet, 'duration')),
+            ListTile(
+                leading: Icon(Icons.auto_awesome_rounded,
+                    color: item['spotlight_at'] != null ? PhlioColors.brandPeach : null),
+                title: Text(item['spotlight_at'] != null ? 'Spotlighted' : 'Spotlight'),
+                subtitle: const Text('Front of the rail · once every 7 days'),
+                onTap: () => Navigator.pop(sheet, 'spotlight')),
+          ],
+          ListTile(
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('Moment settings'),
+              onTap: () => Navigator.pop(sheet, 'settings')),
+          ListTile(
+              leading: const Icon(Icons.auto_stories_outlined),
+              title: const Text("What's new"),
+              onTap: () => Navigator.pop(sheet, 'tour')),
           ListTile(
               leading: const Icon(Icons.filter_vintage_outlined),
               title: const Text('Edit filters'),
@@ -976,7 +1032,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
               title: const Text('Delete moment',
                   style: TextStyle(color: PhlioColors.danger)),
               onTap: () => Navigator.pop(sheet, 'delete')),
-        ]),
+        ])),
       ),
     );
     final dio = getIt<ApiClient>().dio;
@@ -1014,6 +1070,26 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
         }
       } else if (action == 'viewers') {
         await _openViewers();
+      } else if (action == 'duration') {
+        final updated = await changeMomentDuration(context, item);
+        if (updated != null && mounted) {
+          setState(() {
+            item['duration_hours'] = updated['duration_hours'];
+            item['expires_at'] = updated['expires_at'];
+          });
+          refreshMoments(ref);
+        }
+      } else if (action == 'spotlight') {
+        if (item['spotlight_at'] != null) {
+          _say('This moment is already in the spotlight.');
+        } else if (await spotlightMoment(context, item) && mounted) {
+          setState(() => item['spotlight_at'] = DateTime.now().toUtc().toIso8601String());
+          refreshMoments(ref);
+        }
+      } else if (action == 'settings') {
+        await showMomentSettings(context);
+      } else if (action == 'tour') {
+        await showMomentTour(context);
       } else if (action == 'delete') {
         final id = '${item['id']}';
         await dio.delete('/social/moments/${_mid(item)}');
@@ -1226,8 +1302,9 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
   /// pill, the last one flush with the right gutter.
   List<Widget> _actions(Map current, bool liked, int comments, {bool allowComments = true}) => [
         _BarIcon(
-          tooltip: liked ? 'Unlike' : 'Like',
+          tooltip: liked ? 'Unlike · hold for a super heart' : 'Like · hold for a super heart',
           onTap: () => _react('❤️'),
+          onLongPress: _superHeart,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
             transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
@@ -1491,6 +1568,15 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
                     child: Text(burst!, style: const TextStyle(fontSize: 96)),
                   ),
                 ),
+              if (superBurst)
+                Positioned.fill(
+                  child: SuperHeartBurst(
+                    key: ValueKey('super-${current['id']}'),
+                    onDone: () {
+                      if (mounted) setState(() => superBurst = false);
+                    },
+                  ),
+                ),
               if (recording)
                 Positioned(
                   left: 0,
@@ -1609,9 +1695,10 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
 /// One of the right-hand actions on someone's moment: a fixed 44 px slot,
 /// so like / comment / send line up at the right edge.
 class _BarIcon extends StatelessWidget {
-  const _BarIcon({required this.child, required this.onTap, required this.tooltip, this.badge = 0});
+  const _BarIcon({required this.child, required this.onTap, required this.tooltip, this.badge = 0, this.onLongPress});
   final Widget child;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final String tooltip;
   final int badge;
 
@@ -1629,6 +1716,7 @@ class _BarIcon extends StatelessWidget {
         message: tooltip,
         child: InkResponse(
           onTap: onTap,
+          onLongPress: onLongPress,
           radius: 24,
           child: SizedBox(
             width: slot,

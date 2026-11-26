@@ -85,15 +85,68 @@ class SignalIn(BaseModel):
 @router.get("/conversations")
 async def conversations(user: User = Depends(get_current_user), c: Container = Depends(get_container)):
     result = []
+    prefs = {r["peer"]: r for r in await c.graph.store.rows("chat_pref", {"owner": user.id})}
     for peer_id in c.messaging_service.peers(user.id):
         peer = await c.identity_repository.get_by_id(peer_id)
         if peer and not await c.graph.blocked(user.id, peer.id):
             messages = c.messaging_service.history(user.id, peer.id)
+            if not messages:
+                continue  # every message deleted for you
             state = c.messaging_service.inbox_state(user.id, peer.id)
             unread, replied = c.messaging_service.inbox_counts(user.id, peer.id, state['read_at'])
             folder = state['folder'] or ('primary' if replied or await c.graph.friends(user.id,peer.id) else 'requests')
-            result.append(dict(peer=profile(peer), last_message=messages[-1] if messages else None,folder=folder,unread_count=unread))
-    return sorted(result,key=lambda row:(row['last_message'] or {}).get('created_at',''),reverse=True)
+            pref = prefs.get(peer.id, {})
+            result.append(dict(peer=profile(peer), last_message=messages[-1] if messages else None,folder=folder,
+                               unread_count=unread, pinned=bool(pref.get("pinned_at")),
+                               muted=bool(pref.get("muted")), muted_calls=bool(pref.get("muted_calls"))))
+    result.sort(key=lambda row:(row['last_message'] or {}).get('created_at',''),reverse=True)
+    # Pinned chats first (most recently pinned on top), then newest.
+    pinned = sorted((r for r in result if r["pinned"]),
+                    key=lambda r: prefs[r["peer"]["id"]]["pinned_at"], reverse=True)
+    return pinned + [r for r in result if not r["pinned"]]
+
+
+class ChatPrefIn(BaseModel):
+    pinned: bool | None = None
+    muted: bool | None = None
+    muted_calls: bool | None = None
+
+
+async def chat_pref(c, owner: str, peer: str) -> dict:
+    from app.domains.graph.service import key
+    return await c.graph.store.get(key("chat_pref", owner, peer)) or {}
+
+
+@router.put("/peers/{peer}/prefs")
+async def set_chat_prefs(peer: str, body: ChatPrefIn, user: User = Depends(get_current_user),
+                         c: Container = Depends(get_container)):
+    """Pin a chat, mute its messages (no notifications) or mute its calls."""
+    from app.domains.graph.service import key
+    from app.domains.graph.store import now
+    target = await resolve_peer(peer, c)
+    row = dict(await chat_pref(c, user.id, target.id), owner=user.id, peer=target.id)
+    if body.pinned is not None:
+        if body.pinned and not row.get("pinned_at"):
+            pins = [r for r in await c.graph.store.rows("chat_pref", {"owner": user.id}) if r.get("pinned_at")]
+            if len(pins) >= 3:
+                raise HTTPException(422, "You can pin up to 3 chats.")
+            row["pinned_at"] = now()
+        elif not body.pinned:
+            row["pinned_at"] = None
+    if body.muted is not None:
+        row["muted"] = body.muted
+    if body.muted_calls is not None:
+        row["muted_calls"] = body.muted_calls
+    row.pop("id", None)
+    await c.graph.store.put(key("chat_pref", user.id, target.id), row)
+    return dict(pinned=bool(row.get("pinned_at")), muted=bool(row.get("muted")), muted_calls=bool(row.get("muted_calls")))
+
+
+@router.delete("/peers/{peer}/conversation", status_code=204)
+async def delete_conversation(peer: str, user: User = Depends(get_current_user), c: Container = Depends(get_container)):
+    """Delete the chat for you (the other person keeps their copy)."""
+    target = await resolve_peer(peer, c)
+    c.messaging_service.hide_conversation(user.id, target.id)
 
 
 class GiphySelection(BaseModel):
@@ -385,6 +438,8 @@ async def call_config(user: User = Depends(get_current_user), c: Container = Dep
 async def incoming(user: User = Depends(get_current_user), c: Container = Depends(get_container)):
     result = []
     for call in c.messaging_service.incoming(user.id):
+        if (await chat_pref(c, user.id, call["caller_id"])).get("muted_calls"):
+            continue  # calls from this chat are muted: no ring
         caller = await resolve_peer(call["caller_id"], c)
         result.append(dict(**c.messaging_service.public_call(call), caller=profile(caller)))
     return result

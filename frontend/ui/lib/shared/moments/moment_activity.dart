@@ -23,6 +23,8 @@ import '../../design_system/widgets/phlio_card.dart';
 import '../content/content_surface.dart' show showEndpointShare;
 import '../content/mentions.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
+import 'moment_plus.dart' show showMomentSettings, showProfilePeek, viewedClock;
 
 const _sheetColor = PhlioColors.surface;
 
@@ -64,6 +66,26 @@ class _ViewersSheetState extends State<_ViewersSheet> {
   Map? data;
   String? problem;
   bool reactedOnly = false;
+  final search = TextEditingController();
+  Timer? _debounce;
+  String _query = '';
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    search.dispose();
+    super.dispose();
+  }
+
+  /// Search runs on the server (`?q=`), so it covers everyone who watched.
+  void _onSearch(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 280), () {
+      if (!mounted || text.trim() == _query) return;
+      _query = text.trim();
+      _load();
+    });
+  }
 
   @override
   void initState() {
@@ -73,10 +95,11 @@ class _ViewersSheetState extends State<_ViewersSheet> {
 
   Future<void> _load() async {
     try {
-      final res = await getIt<ApiClient>().dio.get('/social/moments/${_momentId(widget.item)}/viewers');
+      final res = await getIt<ApiClient>().dio.get('/social/moments/${_momentId(widget.item)}/viewers',
+          queryParameters: {if (_query.isNotEmpty) 'q': _query});
       if (!mounted) return;
       setState(() => data = res.data as Map);
-      widget.onCounts?.call(_counts!);
+      if (_query.isEmpty) widget.onCounts?.call(_counts!);
     } catch (_) {
       if (mounted) setState(() => problem = 'Could not load viewers.');
     }
@@ -112,6 +135,11 @@ class _ViewersSheetState extends State<_ViewersSheet> {
               Text(data == null ? 'Viewers' : '${data!['count']} viewer${data!['count'] == 1 ? '' : 's'}',
                   style: PhlioTypography.title.copyWith(color: Colors.white)),
               const Spacer(),
+              IconButton(
+                tooltip: 'Viewer notifications',
+                onPressed: () => showMomentSettings(context),
+                icon: const Icon(Icons.notifications_none_rounded, color: Colors.white70),
+              ),
               if (widget.onComments != null)
                 TextButton.icon(
                   onPressed: () {
@@ -123,6 +151,36 @@ class _ViewersSheetState extends State<_ViewersSheet> {
                 ),
             ]),
           ),
+          if (data != null && ((data!['rewatches'] as num? ?? 0) > 0 || (data!['super_hearts'] as num? ?? 0) > 0))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+              child: Row(children: [
+                _Insight(icon: Icons.replay_rounded, value: '${data!['rewatches'] ?? 0}', label: 'Rewatches'),
+                const SizedBox(width: 10),
+                _Insight(icon: Icons.favorite_rounded, value: '${data!['super_hearts'] ?? 0}', label: 'Super hearts',
+                    colour: const Color(0xFFFF3B5C)),
+              ]),
+            ),
+          if (data != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: TextField(
+                controller: search,
+                onChanged: _onSearch,
+                textInputAction: TextInputAction.search,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search viewers',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 20),
+                  filled: true,
+                  fillColor: PhlioColors.surfaceElevated,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                ),
+              ),
+            ),
           if (data != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -152,7 +210,9 @@ class _ViewersSheetState extends State<_ViewersSheet> {
                         child: Padding(
                           padding: const EdgeInsets.all(32),
                           child: Text(
-                              reactedOnly ? 'No reactions yet.' : 'No one has watched this moment yet.',
+                              _query.isNotEmpty
+                                  ? 'No viewers match "$_query".'
+                                  : reactedOnly ? 'No reactions yet.' : 'No one has watched this moment yet.',
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Colors.white60)),
                         ),
@@ -178,9 +238,13 @@ class _ViewerTile extends StatelessWidget {
     final reaction = person['reaction'] as String?;
     final comments = (person['comments'] as num?)?.toInt() ?? 0;
     final responses = (person['responses'] as num?)?.toInt() ?? 0;
-    final when = _ago(person['reacted_at'] ?? person['seen_at']);
+    // When they watched (the latest time, Instagram-style "viewed at").
+    final when = viewedClock(person['last_seen_at'] ?? person['seen_at']);
+    final rewatches = (person['rewatches'] as num?)?.toInt() ?? 0;
+    final superHeart = person['super_heart'] == true;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+      onLongPress: () => showProfilePeek(context, person),
       leading: SizedBox(
         width: 48,
         height: 48,
@@ -197,7 +261,9 @@ class _ViewerTile extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: const BoxDecoration(color: _sheetColor, shape: BoxShape.circle),
-                child: Text(reaction, style: const TextStyle(fontSize: 15)),
+                child: superHeart
+                    ? const Icon(Icons.favorite_rounded, size: 16, color: Color(0xFFFF3B5C))
+                    : Text(reaction, style: const TextStyle(fontSize: 15)),
               ),
             ),
         ]),
@@ -208,12 +274,24 @@ class _ViewerTile extends StatelessWidget {
           [
             '@${person['username']}',
             if (when.isNotEmpty) when,
-            if (reaction != null) 'reacted $reaction',
+            if (superHeart) 'super heart' else if (reaction != null) 'reacted $reaction',
           ].join(' · '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: Colors.white54)),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (rewatches > 0)
+          Tooltip(
+            message: 'Watched ${rewatches + 1} times',
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.replay_rounded, color: PhlioColors.brandViolet, size: 18),
+                const SizedBox(width: 3),
+                Text('$rewatches', style: const TextStyle(color: Colors.white70)),
+              ]),
+            ),
+          ),
         if (responses > 0)
           Tooltip(
             message: 'Answered your stickers',
@@ -238,6 +316,31 @@ class _ViewerTile extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// A small "12 Rewatches" tile above the viewer list.
+class _Insight extends StatelessWidget {
+  const _Insight({required this.icon, required this.value, required this.label, this.colour = PhlioColors.brandViolet});
+  final IconData icon;
+  final String value, label;
+  final Color colour;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(color: PhlioColors.surfaceElevated, borderRadius: BorderRadius.circular(14)),
+          child: Row(children: [
+            Icon(icon, color: colour, size: 20),
+            const SizedBox(width: 8),
+            Text(value, style: PhlioTypography.bodyStrong.copyWith(color: Colors.white)),
+            const SizedBox(width: 6),
+            Flexible(
+                child: Text(label,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13))),
+          ]),
+        ),
+      );
 }
 
 // -- comments -------------------------------------------------------------------------------
@@ -660,11 +763,14 @@ class _CommentTile extends StatelessWidget {
       child: Padding(
       padding: EdgeInsets.fromLTRB(reply ? 64 : 16, 8, 12, 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        PhlioAvatar(
-            name: user['display_name'] as String? ?? '',
-            imageUrl: user['avatar_url'] as String?,
-            size: reply ? 30 : 40,
-            showMomentRing: false),
+        GestureDetector(
+          onLongPress: () => showProfilePeek(context, user),
+          child: PhlioAvatar(
+              name: user['display_name'] as String? ?? '',
+              imageUrl: user['avatar_url'] as String?,
+              size: reply ? 30 : 40,
+              showMomentRing: false),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

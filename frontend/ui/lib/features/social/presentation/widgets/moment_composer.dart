@@ -11,6 +11,7 @@
 // use them. Templates (also behind Create in the camera) design a photo
 // moment from a layout; see shared/moments/templates/.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -38,6 +39,8 @@ import '../../../../shared/media/story_fx_catalog.dart';
 import '../../../../shared/media/story_fx_view.dart';
 import '../../../../shared/content/mentions.dart' show MentionTextEditingController;
 import '../../../../shared/moments/moments.dart';
+import '../../../../shared/moments/moment_plus.dart'
+    show maybeShowMomentTour, momentDefaultHours, showMomentDurationPicker;
 import '../../../../shared/moments/editor/draw_layer.dart';
 import '../../../../shared/moments/editor/music_editor.dart';
 import '../../../../shared/moments/editor/text_editor.dart';
@@ -156,6 +159,10 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   double lookStrength = 1;
   bool commentsOff = false, saveToHighlights = false, aiLabel = false;
   bool busy = false;
+
+  /// How long the moment stays up: 12, 24 (default) or 48 hours. Starts at
+  /// your default from Moment settings.
+  int hours = 24;
   double volume = .8;
   String? flash; // transient label (filter name)
   VideoPlayerController? video;
@@ -204,6 +211,17 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) pickGallery();
       });
+    }
+    momentDefaultHours().then((h) {
+      if (mounted) setState(() => hours = h);
+    });
+  }
+
+  Future<void> pickLength() async {
+    final picked = await showMomentDurationPicker(context, current: hours);
+    if (picked != null && mounted) {
+      setState(() => hours = picked);
+      _say('Your moment will last $picked hours');
     }
   }
 
@@ -775,6 +793,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
               'caption': caption.text.trim(),
               'audience': audience.mode,
               'recipients': jsonEncode(audience.recipients),
+              'duration_hours': '$hours',
               'allow_comments': (!commentsOff).toString(),
               'overlays': jsonEncode([
                 if (templateOverlay != null) templateOverlay,
@@ -817,11 +836,16 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
       ref.invalidate(momentHighlightsProvider);
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
+      final root = Navigator.of(context, rootNavigator: true);
       Navigator.pop(context);
+      // After your first moment: a short tour of what's new (once).
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 600), () async {
+        if (root.mounted) await maybeShowMomentTour(root.context);
+      }));
       messenger.showSnackBar(SnackBar(
           content: Text(closeFriends
-              ? 'Shared with your close friends for 24 hours'
-              : 'Your moment is live for 24 hours')));
+              ? 'Shared with ${audience.listName ?? 'your close friends'} for $hours hours'
+              : 'Your moment is live for $hours hours')));
     } catch (_) {
       if (mounted) _say('Could not share your moment. Try again.');
     } finally {
@@ -1084,6 +1108,12 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         icon: const Icon(Icons.auto_awesome_motion_outlined),
         onTap: storyEffects,
         on: fx != null || motion != null
+      ),
+      (
+        label: 'Length · ${hours}h',
+        icon: const Icon(Icons.timelapse_rounded),
+        onTap: pickLength,
+        on: hours != 24
       ),
       (
         label: 'Label AI',

@@ -1,5 +1,6 @@
 import '../../../../shared/content/moment_viewer.dart';
 import '../../../../shared/moments/moments.dart';
+import '../../../../shared/moments/moment_plus.dart' show showMomentPeek;
 import 'moment_composer.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Stories for the Social home, following the reference app's behavior:
@@ -247,12 +248,34 @@ class _StoryRing extends ConsumerWidget {
         : ref.watch(momentRingsProvider).valueOrNull?[userId];
     return GestureDetector(
       onTap: onTap,
-      child: RimLight(
-        size: size,
-        unseen: state == null || state['unseen'] == true,
-        fresh: state?['fresh'] == true,
-        child: child,
-      ),
+      // Press and hold: peek at the moment without showing up as a viewer.
+      onLongPress: userId == null
+          ? null
+          : () => showMomentPeek(context, userId!,
+              onWatch: onTap, onMuted: () => refreshMoments(ref)),
+      child: Stack(clipBehavior: Clip.none, children: [
+        RimLight(
+          size: size,
+          unseen: state == null || state['unseen'] == true,
+          fresh: state?['fresh'] == true,
+          child: child,
+        ),
+        // Spotlighted moments carry a small spark.
+        if (state?['spotlight'] == true && size >= 40)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                  color: PhlioColors.brandPeach,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: PhlioColors.background, width: 2)),
+              child: const Icon(Icons.auto_awesome_rounded, size: 11, color: PhlioColors.textOnBrand),
+            ),
+          ),
+      ]),
     );
   }
 }

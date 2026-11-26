@@ -90,13 +90,32 @@ async def author_posts(
     posts, next_cursor = await container.social_repository.list_posts_by_author(
         profile.id, cursor=cursor, limit=limit
     )
+    from app.api.v1.social import post_settings
+
+    # Pinned posts (up to 6) lead the first page, newest pin first.
+    pins = sorted((r for r in await container.graph.store.rows("post_setting", {"author": profile.id})
+                   if r.get("pinned_at")), key=lambda r: r["pinned_at"], reverse=True)
+    pinned_ids = [r["post_id"] for r in pins]
+    if cursor is None and pinned_ids:
+        lead = []
+        for pid in pinned_ids:
+            found = next((p for p in posts if p.id == pid), None) or await container.social_repository.get_post(pid)
+            if found is not None:
+                lead.append(found)
+        posts = lead + [p for p in posts if p.id not in pinned_ids]
+    elif pinned_ids:
+        posts = [p for p in posts if p.id not in pinned_ids]
+    settings = await post_settings(container, [p.id for p in posts])
+    items = []
+    for post in posts:
+        if not await container.social_service.visible_to(post, current_user.id):
+            continue
+        out = PostResponse.from_entity(
+            post, liked_by_me=await container.social_service.is_liked_by(post.id, current_user.id))
+        out.pinned = post.id in pinned_ids
+        out.profile_only = bool(settings.get(post.id, {}).get("profile_only"))
+        items.append(out)
     return Page(
-        items=[
-            PostResponse.from_entity(
-                post, liked_by_me=await container.social_service.is_liked_by(post.id, current_user.id)
-            )
-            for post in posts
-            if await container.social_service.visible_to(post, current_user.id)
-        ],
+        items=items,
         meta=PageMeta(next_cursor=next_cursor, has_more=next_cursor is not None),
     )
