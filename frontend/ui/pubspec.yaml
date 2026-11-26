@@ -90,6 +90,8 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   # Foxy's state-machine animation (assets/rive/foxy.riv when present).
   rive: ^0.13.20
+  # Festival banner illustrations (assets/lottie/festival/).
+  lottie: ^3.3.1
   razorpay_flutter: 1.4.7
   # Push notifications (shared/notifications/push.dart).
   onesignal_flutter: ^5.6.4
@@ -143,6 +145,7 @@ flutter:
     - assets/stickers/moves/
     - assets/emoji/
     - assets/animations/
+    - assets/lottie/festival/
     - assets/audio/
     - assets/rive/
     - assets/foxy_puppet/

@@ -108,11 +108,22 @@ class _Layer {
       };
 }
 
+/// The moment editor for a post photo: the same tools (text, stickers,
+/// draw, filters, effects, templates…) on a 4:5 canvas. Returns the edited
+/// photo's path, or null when closed without "Done".
+Future<String?> openPostPhotoEditor(BuildContext context, String path) =>
+    Navigator.of(context, rootNavigator: true).push<String>(MaterialPageRoute(
+        fullscreenDialog: true, builder: (_) => MomentComposerScreen(initialPath: path, forPost: true)));
+
 class MomentComposerScreen extends ConsumerStatefulWidget {
   const MomentComposerScreen(
-      {super.key, this.initialPath, this.initialVideo = false, this.addYoursPrompt});
+      {super.key, this.initialPath, this.initialVideo = false, this.addYoursPrompt, this.forPost = false});
   final String? initialPath;
   final bool initialVideo;
+
+  /// Editing a photo for a post (see [openPostPhotoEditor]): 4:5 canvas,
+  /// moment-only tools hidden, "Done" returns the flattened photo.
+  final bool forPost;
 
   /// Answering someone's "Add yours": the prompt sticker starts on the canvas.
   final String? addYoursPrompt;
@@ -212,9 +223,11 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         if (mounted) pickGallery();
       });
     }
-    momentDefaultHours().then((h) {
-      if (mounted) setState(() => hours = h);
-    });
+    if (!widget.forPost) {
+      momentDefaultHours().then((h) {
+        if (mounted) setState(() => hours = h);
+      });
+    }
   }
 
   Future<void> pickLength() async {
@@ -747,6 +760,21 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
     return file;
   }
 
+  /// Post mode: bake everything (filters, stickers, text, drawing, smart
+  /// filters) into one photo and hand it back to the post composer.
+  Future<void> finishForPost() async {
+    if (busy || !hasContent) return;
+    setState(() => busy = true);
+    try {
+      final file = await _capture();
+      if (mounted) Navigator.of(context).pop(file.path);
+    } catch (_) {
+      if (mounted) _say('Could not save the edit. Try again.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> publish({bool closeFriends = false}) async {
     if (busy) return;
     if (!hasContent) {
@@ -1044,7 +1072,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(authControllerProvider).valueOrNull;
-    final tools = <({String label, Widget icon, VoidCallback onTap, bool on})>[
+    final allTools = <({String label, Widget icon, VoidCallback onTap, bool on})>[
       (
         label: 'Text',
         icon: const Text('Aa',
@@ -1162,6 +1190,12 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: commentsOff
       ),
     ];
+    // Posts keep the editing tools; moment-only ones (length, highlights,
+    // live effects, audio, commenting…) are hidden.
+    const momentOnly = ['Length', 'Label AI', 'Bookmark', 'Partnership', 'Audio', 'Story FX', 'More', 'Camera'];
+    final tools = widget.forPost
+        ? [for (final t in allTools) if (!momentOnly.any(t.label.startsWith)) t]
+        : allTools;
 
     return PopScope(
       canPop: !busy,
@@ -1172,7 +1206,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
             Expanded(
               child: Center(
                 child: AspectRatio(
-                  aspectRatio: 9 / 16,
+                  aspectRatio: widget.forPost ? 4 / 5 : 9 / 16,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(22),
                     child: LayoutBuilder(builder: (context, box) {
@@ -1189,11 +1223,13 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                                 child: _AiChip(),
                               ),
                             for (final layer in layers) _layer(layer, canvas),
+                            // A post photo bakes its smart filters in.
+                            if (widget.forPost) SmartFilterLayer(spec: smart),
                           ]),
                         ),
                         // Smart filters stay data (editable after posting),
                         // so they're drawn over the canvas, not baked in.
-                        SmartFilterLayer(spec: smart),
+                        if (!widget.forPost) SmartFilterLayer(spec: smart),
                         if (flash != null)
                           IgnorePointer(
                             child: Center(
@@ -1333,7 +1369,28 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
                 ),
               ),
             ),
-            // Share bar.
+            // Share bar (post mode: one "Done").
+            if (widget.forPost)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: PhlioColors.brandViolet,
+                        foregroundColor: Colors.white,
+                        shape: const StadiumBorder()),
+                    onPressed: busy || !hasContent ? null : finishForPost,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.check_rounded),
+                    label: const Text('Done', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  ),
+                ),
+              )
+            else
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Row(children: [

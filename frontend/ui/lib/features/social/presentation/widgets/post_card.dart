@@ -1,4 +1,5 @@
 import 'post_poll.dart';
+import 'post_photos.dart';
 import 'content_owner_menu.dart';
 import '../../../../shared/music/song_picker.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
@@ -47,6 +48,11 @@ class PostCard extends ConsumerWidget {
   Widget _content(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(publicProfileProvider(post.authorId)).valueOrNull;
     final displayName = profile?['full_name'] as String? ?? authorName;
+    // Plain photos (not Phlio Move route cards) share one frame.
+    final photos = [
+      for (final m in post.media)
+        if (m.kind == MediaKind.image && !isActivityMedia(m.url)) m
+    ];
     return PhlioCard(
       padding: const EdgeInsets.all(PhlioSpacing.lg),
       child: Column(
@@ -83,27 +89,32 @@ class PostCard extends ConsumerWidget {
                   id: post.id, owner: post.authorId, text: post.text),
             ],
           ),
-          const SizedBox(height: PhlioSpacing.md),
-          Text(post.text, style: PhlioTypography.bodyLarge),
+          if (post.text.trim().isNotEmpty) ...[
+            const SizedBox(height: PhlioSpacing.md),
+            Text(post.text, style: PhlioTypography.bodyLarge),
+          ],
           PostPoll(id: post.id),
+          // Photos: one full-width frame (a carousel for several), shaped
+          // like the first photo within 4:5 … 1.91:1.
+          if (photos.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: PostPhotos(
+                  key: ValueKey('photos-${post.id}'),
+                  urls: [for (final m in photos) m.url]),
+            ),
           for (final media in post.media)
+            if (!photos.contains(media))
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: media.kind == MediaKind.image && isActivityMedia(media.url)
                   // A Phlio Move activity: route card + stats; tap opens it
                   // from the Agent explore tab.
                   ? ActivityPostBlock(postId: post.id, imageUrl: media.url)
-                  : media.kind == MediaKind.image
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: phlioNetworkImage(AppConfig.mediaUrl(media.url),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const Text('Image unavailable')))
                   : AspectRatio(
                       aspectRatio: 16 / 9,
                       child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                           child: Stack(fit: StackFit.expand, children: [
                             if (media.thumbnailUrl != null)
                               phlioNetworkImage(
@@ -139,7 +150,6 @@ class PostCard extends ConsumerWidget {
                   .toList(),
             ),
           ],
-          const SizedBox(height: PhlioSpacing.md),
         ],
       ),
     );

@@ -13,6 +13,7 @@ import '../../../social/presentation/controllers/video_library.dart';
 import '../../../social/presentation/controllers/video_playback_controller.dart';
 import '../../../social/presentation/widgets/social_clips_grid.dart';
 import '../../../social/presentation/widgets/social_videos_view.dart';
+import '../../../social/presentation/widgets/post_photos.dart';
 import 'package:phlio/core/network/media_cache.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
@@ -165,8 +166,8 @@ class ProfilePosts extends ConsumerWidget {
         // Pinned posts first (newest pin first), then newest first across
         // posts and uploaded videos.
         final pins = profilePinnedIds[author] ?? const <String>[];
-        // Pics / Videos: an Instagram-style 3-column grid.
-        if (type == ProfilePostType.pics || type == ProfilePostType.videos) {
+        // Pics: an Instagram-style 3-column grid (Videos keep the cards).
+        if (type == ProfilePostType.pics) {
           return _grid(context, ref, posts, videos, pins);
         }
         final pinned = [
@@ -313,27 +314,21 @@ class ProfilePosts extends ConsumerWidget {
                         ]),
                       ),
                     if (post.text.isNotEmpty) Text(post.text, maxLines: preview ? 6 : null),
-                    for (final media in post.media.where((m) =>
-                        type == ProfilePostType.all ||
-                        (type == ProfilePostType.pics
-                            ? m.kind == MediaKind.image
-                            : m.kind == MediaKind.video)))
+                    // Photos share one full-width frame, like the feed.
+                    if (type != ProfilePostType.videos &&
+                        post.media.any((m) => m.kind == MediaKind.image))
                       Padding(
                           padding: const EdgeInsets.only(top: 12),
-                          child: media.kind == MediaKind.image
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: phlioNetworkImage(
-                                      AppConfig.mediaUrl(media.url),
-                                      width: double.infinity,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) =>
-                                          const SizedBox(
-                                              height: 100,
-                                              child: Center(
-                                                  child: Text(
-                                                      'Image unavailable')))))
-                              : ListTile(
+                          child: PostPhotos(urls: [
+                            for (final m in post.media)
+                              if (m.kind == MediaKind.image) m.url
+                          ])),
+                    for (final media in post.media.where((m) =>
+                        m.kind == MediaKind.video &&
+                        type != ProfilePostType.pics))
+                      Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   leading: const Icon(
                                       Icons.play_circle_outline_rounded),

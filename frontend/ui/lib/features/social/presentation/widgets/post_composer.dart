@@ -13,6 +13,7 @@ import '../../../../shared/giphy/giphy_picker.dart';
 import '../../../authentication/presentation/controllers/auth_controller.dart';
 import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../controllers/feed_controller.dart';
+import 'moment_composer.dart' show openPostPhotoEditor;
 import 'package:phlio/core/network/media_cache.dart';
 
 class PostComposer extends ConsumerStatefulWidget {
@@ -28,6 +29,10 @@ class _PostComposerState extends ConsumerState<PostComposer> {
   Map? song;
   Map<String, dynamic>? poll;
   bool busy = false;
+
+  /// The original file behind each uploaded photo (by uploaded url), so
+  /// "Edit" can reopen the editor on it.
+  final Map<String, String> _sources = {};
 
   /// Post on your profile only (not in followers' feeds).
   bool profileOnly = false;
@@ -146,7 +151,7 @@ class _PostComposerState extends ConsumerState<PostComposer> {
     }
   }
 
-  Future<void> upload(String path, {bool audio = false}) async {
+  Future<void> upload(String path, {bool audio = false, String? source, int? replace}) async {
     setState(() => busy = true);
     try {
       final result = await ref.read(musicApiProvider).post(
@@ -157,7 +162,13 @@ class _PostComposerState extends ConsumerState<PostComposer> {
         if (audio) {
           song = result.data as Map;
         } else {
-          media.add(Map<String, dynamic>.from(result.data as Map));
+          final item = Map<String, dynamic>.from(result.data as Map);
+          if (source != null) _sources['${item['url']}'] = source;
+          if (replace != null && replace < media.length) {
+            media[replace] = item;
+          } else {
+            media.add(item);
+          }
         }
       });
     } catch (e) {
@@ -170,10 +181,23 @@ class _PostComposerState extends ConsumerState<PostComposer> {
   Future<void> photo(ImageSource source) async {
     try {
       final image = await ImagePicker().pickImage(source: source);
-      if (image != null && mounted) await upload(image.path);
+      if (image == null || !mounted) return;
+      // The moment editor first (text, stickers, draw, filters, effects,
+      // templates); closing it keeps the photo as it is.
+      final edited = await openPostPhotoEditor(context, image.path);
+      if (mounted) await upload(edited ?? image.path, source: image.path);
     } catch (e) {
       error(e);
     }
+  }
+
+  /// Reopens the editor on a photo's original and swaps in the new edit.
+  Future<void> editPhoto(Map<String, dynamic> item) async {
+    final source = _sources['${item['url']}'];
+    if (source == null) return;
+    final edited = await openPostPhotoEditor(context, source);
+    if (edited == null || !mounted) return;
+    await upload(edited, source: source, replace: media.indexOf(item));
   }
 
   Future<void> music() async {
@@ -421,7 +445,7 @@ class _PostComposerState extends ConsumerState<PostComposer> {
                                   ? null
                                   : post,
                               child: Text(busy
-                                  ? 'Postingâ€¦'
+                                  ? 'Posting…'
                                   : pendingPosts.isNotEmpty
                                       ? 'Post all'
                                       : 'Post')))
@@ -559,6 +583,20 @@ class _PostComposerState extends ConsumerState<PostComposer> {
                                                               ___) =>
                                                           const Text(
                                                               'Image unavailable')))),
+                                          if (_sources.containsKey('${item['url']}'))
+                                            Positioned(
+                                              left: 8,
+                                              top: 8,
+                                              child: FilledButton.tonalIcon(
+                                                style: FilledButton.styleFrom(
+                                                    backgroundColor: Colors.black.withValues(alpha: .6),
+                                                    foregroundColor: Colors.white,
+                                                    visualDensity: VisualDensity.compact),
+                                                onPressed: busy ? null : () => editPhoto(item),
+                                                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                                                label: const Text('Edit'),
+                                              ),
+                                            ),
                                           Positioned(
                                               right: 0,
                                               top: 0,
