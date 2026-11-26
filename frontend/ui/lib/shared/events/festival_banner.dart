@@ -131,17 +131,24 @@ class _BannerCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: SizedBox(
-            height: 140,
-            child: Stack(children: [
+          // At least 140 tall; grows with the text (large fonts, narrow
+          // phones) instead of overflowing.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 140),
+            child: LayoutBuilder(builder: (context, box) {
+              // The art takes up to ~40% of the width; the text gets the rest.
+              final artWidth = (box.maxWidth * .42).clamp(120.0, 170.0);
+              return Stack(alignment: AlignmentDirectional.centerStart, children: [
               // The scene, anchored right (its quiet disc runs off the edge).
               Positioned(
                 right: -12,
-                top: 2,
-                bottom: 2,
+                top: 0,
+                bottom: 0,
                 child: ExcludeSemantics(
-                  child: AspectRatio(
-                    aspectRatio: 320 / 256,
+                  child: Center(
+                    child: SizedBox(
+                    width: artWidth,
+                    height: artWidth * 256 / 320,
                     child: Lottie.asset(
                       festivalArt(e),
                       animate: !reduceMotion,
@@ -151,11 +158,13 @@ class _BannerCard extends StatelessWidget {
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                   ),
+                  ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 146, 16),
+                padding: EdgeInsets.fromLTRB(20, 16, artWidth - 18, 16),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -217,7 +226,8 @@ class _BannerCard extends StatelessWidget {
                   ),
                 ),
               ),
-            ]),
+            ]);
+            }),
           ),
         ),
       ),
