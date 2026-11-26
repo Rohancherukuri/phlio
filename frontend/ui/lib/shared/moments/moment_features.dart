@@ -1665,7 +1665,13 @@ Future<bool> setPostPinned(BuildContext context, String postId, bool pinned) asy
     if (context.mounted) _say(context, pinned ? 'Pinned to your profile' : 'Unpinned');
     return true;
   } catch (e) {
-    if (context.mounted) _say(context, _problem(e, 'Could not update the pin. Try again.'));
+    var message = _problem(e, 'Could not update the pin. Try again.');
+    // FastAPI's bare "Not Found" means the route itself is missing: the
+    // server is running code from before pinning existed.
+    if (message == 'Not Found') {
+      message = 'Pinning needs the latest Phlio server. Restart the backend (or redeploy) and try again.';
+    }
+    if (context.mounted) _say(context, message);
     return false;
   }
 }

@@ -14,6 +14,8 @@ import '../../../social/presentation/controllers/video_playback_controller.dart'
 import '../../../social/presentation/widgets/social_clips_grid.dart';
 import '../../../social/presentation/widgets/social_videos_view.dart';
 import 'package:phlio/core/network/media_cache.dart';
+import 'package:go_router/go_router.dart';
+import 'package:video_player/video_player.dart';
 import '../../../../shared/content/social_comments_sheet.dart' show showSocialComments;
 import '../../../../shared/fact_checks/fact_checks.dart' show showFactCheckActions;
 import '../../../../shared/moments/moment_features.dart' show setPostPinned, showPostQuickMenu;
@@ -163,6 +165,10 @@ class ProfilePosts extends ConsumerWidget {
         // Pinned posts first (newest pin first), then newest first across
         // posts and uploaded videos.
         final pins = profilePinnedIds[author] ?? const <String>[];
+        // Pics / Videos: an Instagram-style 3-column grid.
+        if (type == ProfilePostType.pics || type == ProfilePostType.videos) {
+          return _grid(context, ref, posts, videos, pins);
+        }
         final pinned = [
           for (final pid in pins)
             for (final post in posts)
@@ -189,6 +195,70 @@ class ProfilePosts extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: 12), child: entry.$2),
         ]);
       },
+    );
+  }
+
+  /// One tile per post (its first photo or video), pinned first, then newest
+  /// first; uploaded videos join the Videos grid by date.
+  Widget _grid(BuildContext context, WidgetRef ref, List<PostEntity> posts, List<PlayableVideo> videos,
+      List<String> pins) {
+    final pics = type == ProfilePostType.pics;
+    final want = pics ? MediaKind.image : MediaKind.video;
+    Widget postTile(PostEntity post) {
+      final media = post.media.where((m) => m.kind == want).toList();
+      final first = media.first;
+      final pinned = pins.contains(post.id);
+      return _GridTile(
+        key: ValueKey('grid-post-${post.id}'),
+        pinned: pinned,
+        multiple: media.length > 1,
+        video: !pics,
+        picture: pics ? first.url : first.thumbnailUrl,
+        videoUrl: pics ? null : first.url,
+        onTap: () {
+          if (pics) {
+            GoRouter.of(context).push('/shared/social/${Uri.encodeComponent(post.id)}');
+          } else {
+            ref.read(videoPlaybackProvider).open(PlayableVideo(
+                id: '${post.id}-${first.url}',
+                contentId: post.id,
+                title: post.text.isEmpty ? 'Video' : post.text,
+                creator: author,
+                url: first.url));
+          }
+        },
+        onLongPress: () => _quickMenu(context, ref, post, pinned),
+      );
+    }
+
+    final pinnedTiles = [
+      for (final pid in pins)
+        for (final post in posts)
+          if (post.id == pid) postTile(post)
+    ];
+    final rest = <(DateTime, Widget)>[
+      for (final post in posts)
+        if (!pins.contains(post.id)) (post.createdAt, postTile(post)),
+      if (!pics)
+        for (final video in videos)
+          (
+            video.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+            _GridTile(
+              key: ValueKey('grid-video-${video.id}'),
+              video: true,
+              picture: video.thumbnailUrl,
+              videoUrl: video.url,
+              onTap: () => ref.read(videoPlaybackProvider).open(video),
+            )
+          ),
+    ]..sort((a, b) => b.$1.compareTo(a.$1));
+    final tiles = [...pinnedTiles, for (final e in rest) e.$2];
+    return GridView.builder(
+      padding: const EdgeInsets.only(top: 2, bottom: 24),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3, mainAxisSpacing: 2, crossAxisSpacing: 2, childAspectRatio: pics ? .8 : .66),
+      itemCount: tiles.length,
+      itemBuilder: (_, i) => tiles[i],
     );
   }
 
@@ -340,4 +410,101 @@ int profileContentCount(WidgetRef ref, String author) {
           .length ??
       0;
   return posts + uploads;
+}
+
+/// A square-ish grid tile: the photo (or the video's thumbnail / first
+/// frame), with a pin, a "more photos" mark or a play mark in the corner.
+class _GridTile extends StatelessWidget {
+  const _GridTile({
+    required this.onTap,
+    this.onLongPress,
+    this.picture,
+    this.videoUrl,
+    this.video = false,
+    this.pinned = false,
+    this.multiple = false,
+    super.key,
+  });
+  final String? picture, videoUrl;
+  final bool video, pinned, multiple;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    const shadow = [Shadow(color: Color(0x99000000), blurRadius: 6)];
+    final Widget image = picture != null && picture!.isNotEmpty
+        ? phlioNetworkImage(AppConfig.mediaUrl(picture!),
+            fit: BoxFit.cover,
+            cacheWidth: 360,
+            errorBuilder: (_, __, ___) => const Center(
+                child: Icon(Icons.broken_image_outlined, color: PhlioColors.textMuted)))
+        : videoUrl != null
+            ? _FirstFrame(url: videoUrl!)
+            : const Center(child: Icon(Icons.image_outlined, color: PhlioColors.textMuted));
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Stack(fit: StackFit.expand, children: [
+        ColoredBox(color: PhlioColors.surfaceElevated, child: image),
+        Positioned(
+          top: 6,
+          right: 6,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (pinned)
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.push_pin_rounded, color: Colors.white, size: 17, shadows: shadow),
+              ),
+            if (multiple && !video)
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.collections_rounded, color: Colors.white, size: 17, shadows: shadow),
+              ),
+            if (video)
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 21, shadows: shadow),
+              ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// A video's first frame, for videos without a thumbnail.
+class _FirstFrame extends StatefulWidget {
+  const _FirstFrame({required this.url});
+  final String url;
+  @override
+  State<_FirstFrame> createState() => _FirstFrameState();
+}
+
+class _FirstFrameState extends State<_FirstFrame> {
+  late final VideoPlayerController video =
+      VideoPlayerController.networkUrl(Uri.parse(AppConfig.mediaUrl(widget.url)));
+
+  @override
+  void initState() {
+    super.initState();
+    video.initialize().then((_) {
+      if (mounted) setState(() {});
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    video.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => video.value.isInitialized
+      ? FittedBox(
+          fit: BoxFit.cover,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(width: video.value.size.width, height: video.value.size.height, child: VideoPlayer(video)),
+        )
+      : const Center(child: Icon(Icons.movie_outlined, color: PhlioColors.textMuted));
 }
