@@ -1329,7 +1329,10 @@ class _Stat extends StatelessWidget {
 /// Long-press a chat. Shows the latest messages without marking them read
 /// and returns `open`, `pin`, `delete`, `mute` or `mute_calls` (or null).
 Future<String?> showChatPreview(BuildContext context,
-    {required Map conversation, required String? meId, required Future<List<Map<String, dynamic>>> messages}) {
+    {required Map conversation,
+    required String? meId,
+    required Future<List<Map<String, dynamic>>> messages,
+    Widget Function(Map<String, dynamic> message, bool mine)? messageBuilder}) {
   HapticFeedback.mediumImpact();
   final peer = conversation['peer'] as Map;
   final pinned = conversation['pinned'] == true;
@@ -1357,7 +1360,7 @@ Future<String?> showChatPreview(BuildContext context,
                 onTap: () => Navigator.pop(dialog, 'open'),
                 child: Container(
                   width: width,
-                  constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(dialog).height * .5),
+                  constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(dialog).height * .56),
                   decoration: BoxDecoration(color: PhlioColors.surface, borderRadius: BorderRadius.circular(22)),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Padding(
@@ -1396,20 +1399,33 @@ Future<String?> showChatPreview(BuildContext context,
                           }
                           final list = [...s.data!]
                             ..sort((a, b) => '${a['created_at']}'.compareTo('${b['created_at']}'));
-                          // The latest messages, newest at the bottom (where the chat opens).
-                          final last = list.length > 8 ? list.sublist(list.length - 8) : list;
+                          // The latest messages, newest at the bottom (where the chat
+                          // opens); scroll up for earlier ones.
+                          final last = list.length > 30 ? list.sublist(list.length - 30) : list;
                           if (last.isEmpty) {
                             return const Padding(
                                 padding: EdgeInsets.all(24),
                                 child: Text('No messages yet.', style: TextStyle(color: PhlioColors.textMuted)));
                           }
                           final latest = DateTime.tryParse('${last.last['created_at'] ?? ''}');
-                          // Taps go to the chat (cards in the preview don't open on their own).
-                          return IgnorePointer(
-                            child: ListView(
+                          Widget bubble(Map<String, dynamic> m) {
+                            final mine = _sentByMe(m, meId);
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Align(
+                                alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(maxWidth: width * .78),
+                                  child: messageBuilder?.call(m, mine) ?? _PreviewBubble(m, mine: mine),
+                                ),
+                              ),
+                            );
+                          }
+                          // Scrolls; taps on a message open the chat instead of
+                          // the card (AbsorbPointer keeps the scroll working).
+                          return ListView(
                               shrinkWrap: true,
                               reverse: true,
-                              physics: const NeverScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                               children: [
                                 if (latest != null)
@@ -1420,9 +1436,8 @@ Future<String?> showChatPreview(BuildContext context,
                                         textAlign: _sentByMe(last.last, meId) ? TextAlign.right : TextAlign.left,
                                         style: const TextStyle(color: PhlioColors.textMuted, fontSize: 11.5)),
                                   ),
-                                for (final m in last.reversed) _PreviewBubble(m, mine: _sentByMe(m, meId)),
+                                for (final m in last.reversed) AbsorbPointer(child: bubble(m)),
                               ],
-                            ),
                           );
                         },
                       ),

@@ -14,6 +14,7 @@ import '../../../profile/presentation/controllers/avatar_controller.dart';
 import '../../data/datasources/messaging_api.dart';
 import '../controllers/messaging_controller.dart';
 import '../widgets/direct_messages_panel.dart';
+import '../widgets/dm_message_preview.dart';
 import '../widgets/status_notes.dart';
 import 'create_group_screen.dart';
 
@@ -82,7 +83,10 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
     final action = await showChatPreview(context,
         conversation: item,
         meId: ref.read(authControllerProvider).valueOrNull?.id,
-        messages: api.messages(id));
+        messages: api.messages(id),
+        // Drawn like the chat itself: cards, photos, GIFs, voice notes.
+        messageBuilder: (m, mine) => DmMessagePreview(
+            message: m, mine: mine, peer: '${peer['username'] ?? id}'));
     if (action == null || !mounted) return;
     void say(String text) =>
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -126,6 +130,23 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
     };
   }
 
+  /// "Sent a photo", "You sent a voice message", "Sent 3 photos"...
+  String _attachmentNoun(List? files, bool mine) {
+    if (files == null || files.isEmpty) return 'Message';
+    final kinds = {for (final f in files) '${(f as Map)['kind'] ?? 'file'}'};
+    final noun = kinds.length > 1
+        ? '${files.length} attachments'
+        : switch (kinds.first) {
+            'image' => files.length > 1 ? '${files.length} photos' : 'a photo',
+            'video' => files.length > 1 ? '${files.length} videos' : 'a video',
+            'audio' || 'voice' => 'a voice message',
+            'gif' => 'a GIF',
+            'sticker' => 'a sticker',
+            _ => files.length > 1 ? '${files.length} files' : 'a file',
+          };
+    return '${mine ? 'You sent' : 'Sent'} $noun';
+  }
+
   String label(String value) => value[0].toUpperCase() + value.substring(1);
   String preview(Map item) {
     final message = item['last_message'] as Map?;
@@ -142,9 +163,7 @@ class _ChatsInboxScreenState extends ConsumerState<ChatsInboxScreen> {
         ? '${mine ? 'You sent' : 'Sent'} ${_sharedNoun(shared, text)}'
         : text.isNotEmpty
         ? text
-        : ((message['attachments'] as List?)?.isNotEmpty == true
-            ? 'Sent an attachment'
-            : 'Message');
+        : _attachmentNoun(message['attachments'] as List?, mine);
     final date = DateTime.tryParse(message['created_at'] as String? ?? '');
     return '$content${date == null ? '' : ' · ${timeago.format(date, locale: 'en_short')}'}';
   }

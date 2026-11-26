@@ -361,6 +361,12 @@ class _MorphingStoriesHeaderState extends ConsumerState<MorphingStoriesHeader> {
                     size: inner));
         return GestureDetector(
             onTap: () => openMomentGroups(context, groups, start: index),
+            // Press and hold: preview (seen or not) without being a viewer.
+            onLongPress: isMe
+                ? null
+                : () => showMomentPeek(context, '${author['username'] ?? author['id']}',
+                    onWatch: () => openMomentGroups(context, groups, start: index),
+                    onMuted: () => refreshMoments(ref)),
             child: ring);
       }
 
