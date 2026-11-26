@@ -56,7 +56,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                   padding: EdgeInsets.zero,
                   alignment: Alignment.centerLeft,
                   icon: const Icon(Icons.bookmarks_outlined),
-                  onPressed: () => showPlaylists(context, 'news'),
+                  onPressed: () => showPlaylists(context, 'news', browseOnly: true),
                 ),
               Expanded(
                   child: widget.explore

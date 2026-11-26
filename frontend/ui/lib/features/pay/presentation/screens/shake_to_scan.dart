@@ -21,7 +21,13 @@ class ShakeToScan extends ConsumerStatefulWidget {
 }
 
 class _ShakeToScanState extends ConsumerState<ShakeToScan> {
+  /// Off for the rest of the run once the sensor plugin isn't there (an app
+  /// hot-restarted after adding sensors_plus, or a phone without the sensor):
+  /// no retries, no error spam.
+  static bool _unavailable = false;
+
   StreamSubscription<UserAccelerometerEvent>? _sub;
+  bool _wanted = false;
   final _peaks = <DateTime>[];
   DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -29,12 +35,34 @@ class _ShakeToScanState extends ConsumerState<ShakeToScan> {
   static const _window = Duration(milliseconds: 700);
 
   void _listen(bool on) {
-    if (on && _sub == null) {
-      _sub = userAccelerometerEventStream(samplingPeriod: SensorInterval.gameInterval).listen(_onEvent, onError: (_) {});
-    } else if (!on && _sub != null) {
-      _sub!.cancel();
-      _sub = null;
+    if (on == _wanted) return; // only act on changes, not on every build
+    _wanted = on;
+    if (on && _sub == null && !_unavailable) {
+      try {
+        // Default sampling period: asking for another one is a separate
+        // platform call that throws on its own when the plugin is missing.
+        _sub = userAccelerometerEventStream().listen(
+          _onEvent,
+          onError: (Object _) => _giveUp(),
+          cancelOnError: true,
+        );
+      } catch (_) {
+        _giveUp();
+      }
+    } else if (!on) {
+      _stop();
     }
+  }
+
+  void _stop() {
+    final sub = _sub;
+    _sub = null;
+    if (sub != null) unawaited(sub.cancel().catchError((Object _) {}));
+  }
+
+  void _giveUp() {
+    _unavailable = true;
+    _sub = null; // cancelOnError already closed it
   }
 
   void _onEvent(UserAccelerometerEvent e) {
@@ -55,7 +83,7 @@ class _ShakeToScanState extends ConsumerState<ShakeToScan> {
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _stop();
     super.dispose();
   }
 

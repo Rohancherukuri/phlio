@@ -23,16 +23,20 @@ final playlistItemsProvider =
       as Map)['items'] as List;
 });
 
+/// [browseOnly]: just the playlists you already have (the Stream / News
+/// bookmarks button), with no "create playlist" form.
 Future<void> showPlaylists(BuildContext context, String platform,
-        {String? mediaMode}) =>
+        {String? mediaMode, bool browseOnly = false}) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
-        builder: (_) =>
-            PlaylistsScreen(platform: platform, mediaMode: mediaMode)));
+        builder: (_) => PlaylistsScreen(
+            platform: platform, mediaMode: mediaMode, browseOnly: browseOnly)));
 
 class PlaylistsScreen extends ConsumerStatefulWidget {
-  const PlaylistsScreen({required this.platform, this.mediaMode, super.key});
+  const PlaylistsScreen(
+      {required this.platform, this.mediaMode, this.browseOnly = false, super.key});
   final String platform;
   final String? mediaMode;
+  final bool browseOnly;
   @override
   ConsumerState<PlaylistsScreen> createState() => _PlaylistsScreenState();
 }
@@ -74,11 +78,65 @@ class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
     }
   }
 
+  String get _kind => widget.platform == 'news'
+      ? 'News'
+      : widget.mediaMode == 'audio'
+          ? 'Audio'
+          : widget.mediaMode == 'video'
+              ? 'Movies & shows'
+              : widget.platform;
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(
-          title: Text(
-              '${widget.platform == 'news' ? 'News' : widget.mediaMode == 'audio' ? 'Audio' : widget.mediaMode == 'video' ? 'Movies & shows' : widget.platform} playlists')),
+  Widget build(BuildContext context) =>
+      widget.browseOnly ? _browse(context) : _manage(context);
+
+  /// Bookmarks button: the playlists you have, or an empty state.
+  Widget _browse(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text('Saved ${_kind == 'News' ? 'news' : _kind.toLowerCase()}')),
+        body: ref.watch(playlistsProvider(widget.platform)).when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) => Center(
+                  child: TextButton(
+                      onPressed: () => ref.invalidate(playlistsProvider(widget.platform)),
+                      child: const Text('Could not load your playlists. Retry'))),
+              data: (rows) {
+                final mine = rows
+                    .where((row) => widget.mediaMode == null || row['media_mode'] == widget.mediaMode)
+                    .toList();
+                if (mine.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.bookmarks_outlined, size: 48, color: Theme.of(context).hintColor),
+                        const SizedBox(height: 12),
+                        const Text('No saved playlists yet',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 6),
+                        Text('Tap the bookmark on anything you like to save it to a playlist.',
+                            textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).hintColor)),
+                      ]),
+                    ),
+                  );
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => ref.invalidate(playlistsProvider(widget.platform)),
+                  child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+                    for (final row in mine)
+                      ListTile(
+                          leading: const Icon(Icons.playlist_play),
+                          title: Text(row['name'] as String),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                              builder: (_) => PlaylistScreen(playlist: Map<String, dynamic>.from(row as Map))))),
+                  ]),
+                );
+              },
+            ),
+      );
+
+  Widget _manage(BuildContext context) => Scaffold(
+      appBar: AppBar(title: Text('$_kind playlists')),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         const Text('Organize your bookmarks',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),

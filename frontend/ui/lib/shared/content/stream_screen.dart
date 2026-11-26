@@ -289,7 +289,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
         leading: IconButton(
           tooltip: audioMode ? 'Saved music and podcasts' : 'Saved movies and shows',
           icon: const Icon(Icons.bookmarks_outlined),
-          onPressed: () => showPlaylists(context, 'stream', mediaMode: audioMode ? 'audio' : 'video'),
+          onPressed: () => showPlaylists(context, 'stream', mediaMode: audioMode ? 'audio' : 'video', browseOnly: true),
         ),
         actions: [
           const PhlioNotificationsButton(),
