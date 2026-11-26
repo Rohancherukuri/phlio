@@ -42,6 +42,16 @@ class ShopScreen extends ConsumerWidget {
         ),
         const PhlioNotificationsButton(),
       ],
+          // Where you're shopping, like Phlio Book's header.
+          titleSpacing: 20,
+          title: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.place_rounded, size: 17, color: PhlioColors.brandPeach),
+            const SizedBox(width: 4),
+            Text('Hyderabad',
+                style: PhlioTypography.label.copyWith(color: PhlioColors.brandPeach, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 2),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: PhlioColors.brandPeach),
+          ]),
           ),
       body: RefreshIndicator(
         onRefresh: () async {

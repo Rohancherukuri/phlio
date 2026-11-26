@@ -7,6 +7,7 @@ import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
 import '../../features/authentication/presentation/controllers/auth_controller.dart';
 import '../content/content_surface.dart';
+import 'playlists_screen.dart' show showPlaylists;
 import 'package:phlio/core/network/media_cache.dart';
 
 final newsFeedProvider =
@@ -48,6 +49,15 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                 style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
             Row(children: [
+              if (!widget.explore)
+                // Saved articles and news playlists.
+                IconButton(
+                  tooltip: 'Saved news',
+                  padding: EdgeInsets.zero,
+                  alignment: Alignment.centerLeft,
+                  icon: const Icon(Icons.bookmarks_outlined),
+                  onPressed: () => showPlaylists(context, 'news'),
+                ),
               Expanded(
                   child: widget.explore
                       ? Text('Discover', style: PhlioTypography.displayMedium)

@@ -1,5 +1,8 @@
 import 'pay_gateway_screen.dart';
 import 'transaction_history_screen.dart';
+import 'pay_profile_screen.dart' show PayProfileButton;
+import 'shake_to_scan.dart';
+import '../../../authentication/presentation/controllers/auth_controller.dart';
 import 'package:phlio/shared/widgets/notifications_button.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Phlio Pay — the Pay platform's home, formatted after the reference
@@ -44,8 +47,17 @@ class PayScreen extends ConsumerWidget {
     final walletAsync = ref.watch(walletProvider);
     final transactionsAsync = ref.watch(transactionsProvider);
 
+    final me = ref.watch(authControllerProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(
+        // Your photo + scanner badge → QR codes, accounts, cards, settings.
+        leadingWidth: 64,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Center(
+            child: PayProfileButton(name: me?.fullName ?? me?.username ?? 'You', avatarUrl: me?.avatarUrl),
+          ),
+        ),
         actions: [
           const PhlioNotificationsButton(),
           IconButton(
@@ -56,7 +68,7 @@ class PayScreen extends ConsumerWidget {
                       const PlatformCatalogScreen(platform: 'pay'))))
         ],
       ),
-      body: walletAsync.when(
+      body: ShakeToScan(child: walletAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => PhlioErrorView(
           failure: error is Failure ? error : const Failure.unknown(),
@@ -237,7 +249,7 @@ class PayScreen extends ConsumerWidget {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 

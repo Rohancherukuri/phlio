@@ -7,6 +7,7 @@ import '../../app/config/app_config.dart';
 import '../../features/social/presentation/controllers/video_library.dart';
 import '../../features/social/presentation/controllers/video_playback_controller.dart';
 import 'content_surface.dart';
+import 'playlists_screen.dart' show showPlaylists;
 import 'stream_similar.dart' show StorySearchResults;
 import '../../features/stream/anime/anime_screens.dart';
 import '../../features/stream/music/music_explore.dart';
@@ -284,6 +285,12 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
     return Scaffold(
       backgroundColor: audioMode ? const Color(0xff121212) : Colors.black,
       appBar: AppBar(
+        // Saved movies, shows and their playlists.
+        leading: IconButton(
+          tooltip: audioMode ? 'Saved music and podcasts' : 'Saved movies and shows',
+          icon: const Icon(Icons.bookmarks_outlined),
+          onPressed: () => showPlaylists(context, 'stream', mediaMode: audioMode ? 'audio' : 'video'),
+        ),
         actions: [
           const PhlioNotificationsButton(),
           IconButton(

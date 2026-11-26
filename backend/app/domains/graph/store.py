@@ -65,6 +65,7 @@ TABLES = {
     "admin_invite",
     "admin_integration",
     "admin_audit",
+    "pay_profile",
     "live_location",
     "profile_style",
     "chat_theme",

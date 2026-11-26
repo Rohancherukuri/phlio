@@ -599,7 +599,7 @@ class _MoveCard extends StatelessWidget {
   }
 }
 
-/// Opens the Foxy Timeline (day planner + calendar). Same flat card as
+/// Opens Phlio Timeline (day planner + calendar). Same flat card as
 /// Phlio Move and Phlio Fit: surface, tinted border, icon tile.
 class _FoxyTimelineCard extends StatelessWidget {
   const _FoxyTimelineCard();
@@ -633,7 +633,7 @@ class _FoxyTimelineCard extends StatelessWidget {
               const SizedBox(width: PhlioSpacing.lg),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Foxy Timeline', style: PhlioTypography.title),
+                  Text('Phlio Timeline', style: PhlioTypography.title),
                   const SizedBox(height: 4),
                   Text(
                     'A visual timeline and calendar of your day. Foxy builds it from your bookings, Spaces and a quick note — then make it yours.',

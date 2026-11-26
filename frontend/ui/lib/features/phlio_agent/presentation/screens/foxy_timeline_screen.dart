@@ -202,7 +202,7 @@ String _err(Object e) {
     // FastAPI's own 404 ("Not Found") means the server doesn't have the
     // /timeline routes yet — it's running code from before this feature.
     if (code == 404 && (d is! Map || d['detail'] == 'Not Found')) {
-      return 'Foxy Timeline needs the latest backend — restart the server, then reopen the timeline.';
+      return 'Phlio Timeline needs the latest backend — restart the server, then reopen the timeline.';
     }
     if (d is Map && d['detail'] is String) return d['detail'] as String;
     if (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout) {

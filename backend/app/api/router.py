@@ -120,3 +120,6 @@ api_router.include_router(fitness.router)
 # Admin panel: admin accounts, cross-platform analytics, live stream, integrations.
 from app.api.v1 import admin
 api_router.include_router(admin.router)
+# Phlio Pay profile: QR codes, test bank accounts and cards, pay settings.
+from app.api.v1 import pay_profile
+api_router.include_router(pay_profile.router)
