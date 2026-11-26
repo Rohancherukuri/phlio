@@ -1,6 +1,6 @@
 import '../../../../shared/content/moment_viewer.dart';
 import '../../../../shared/moments/moments.dart';
-import '../../../../shared/moments/moment_plus.dart' show showMomentPeek;
+import '../../../../shared/moments/moment_features.dart' show showMomentPeek;
 import 'moment_composer.dart';
 import 'package:phlio/shared/content/content_surface.dart';
 // Stories for the Social home, following the reference app's behavior:

@@ -15,6 +15,7 @@ import '../radii.dart';
 import '../spacing.dart';
 import '../typography.dart';
 import '../../shared/moments/moments.dart';
+import '../../shared/moments/moment_features.dart' show showProfilePeek;
 import 'package:phlio/core/network/media_cache.dart';
 
 class PhlioCard extends StatelessWidget {
@@ -117,11 +118,15 @@ class PhlioAvatar extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: () =>
             context.push('/creator/${Uri.encodeComponent(profileId!)}'),
+        // Press and hold: their moment preview if they have one live,
+        // otherwise a profile card.
+        onLongPress: () => showProfilePeek(context,
+            {'username': profileId, 'display_name': name, 'avatar_url': imageUrl}),
         child: avatar,
       ),
     );
-    // Live moment → Phlio rim light (tap plays it, long-press opens the
-    // profile). Tiny avatars (liker stacks) stay plain.
+    // Live moment → Phlio rim light (tap plays it, long-press previews it
+    // without being seen). Tiny avatars (liker stacks) stay plain.
     if (!showMomentRing || size < 24) return plain;
     return MomentRingAvatar(
       userId: profileId!,

@@ -42,7 +42,7 @@ import '../media/phlio_look_view.dart';
 import '../../features/social/presentation/widgets/moment_composer.dart' show openMomentComposer;
 import 'moment_activity.dart';
 import 'moment_meta.dart';
-import 'moment_plus.dart';
+import 'moment_features.dart';
 import '../content/mentions.dart' show MentionTextEditingController;
 import 'stickers/sticker_responses.dart';
 import '../media/story_fx_view.dart';
@@ -265,8 +265,12 @@ class MomentRingAvatar extends ConsumerWidget {
     required this.ringed,
     this.onTapOverride,
     this.imageUrl,
+    this.peekShowsProfile = true,
     super.key,
   });
+
+  /// "View profile" in the long-press preview (off on their profile page).
+  final bool peekShowsProfile;
 
   /// Profile id/handle; may be empty when only the picture is known.
   final String userId;
@@ -301,7 +305,8 @@ class MomentRingAvatar extends ConsumerWidget {
             return;
           }
           showMomentPeek(context, owner,
-              onWatch: () => openUserMoments(context, owner),
+              showProfile: peekShowsProfile,
+              onWatch: onTapOverride ?? () => openUserMoments(context, owner),
               onMuted: () => refreshMoments(ref));
         },
         child: RimLight(
@@ -492,7 +497,7 @@ class _AuthorMomentsState extends ConsumerState<_AuthorMoments>
   bool paused = false, sending = false, recording = false;
   String? burst;
 
-  /// Press and hold Like: hearts fly up (Phlio Plus "super heart").
+  /// Press and hold Like: hearts fly up (a "super heart").
   bool superBurst = false;
   final AudioPlayer _music = AudioPlayer();
   final AudioRecorder _recorder = AudioRecorder();

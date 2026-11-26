@@ -24,7 +24,7 @@ import '../content/content_surface.dart' show showEndpointShare;
 import '../content/mentions.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'moment_plus.dart' show showMomentSettings, showProfilePeek, viewedClock;
+import 'moment_features.dart' show showMomentSettings, showProfilePeek, viewedClock;
 
 const _sheetColor = PhlioColors.surface;
 

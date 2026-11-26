@@ -591,10 +591,14 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       return MomentRingAvatar(
         userId: profile.handle,
         size: size,
+        peekShowsProfile: false,
         plain: PhlioAvatar(
             name: profile.displayName, imageUrl: profile.avatarUrl, size: size),
         ringed: (inner) => PhlioAvatar(
-            name: profile.displayName, imageUrl: profile.avatarUrl, size: inner),
+            name: profile.displayName,
+            imageUrl: profile.avatarUrl,
+            size: inner,
+            showMomentRing: false),
       );
     }
     return ClipOval(

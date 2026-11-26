@@ -39,7 +39,7 @@ import '../../../../shared/media/story_fx_catalog.dart';
 import '../../../../shared/media/story_fx_view.dart';
 import '../../../../shared/content/mentions.dart' show MentionTextEditingController;
 import '../../../../shared/moments/moments.dart';
-import '../../../../shared/moments/moment_plus.dart'
+import '../../../../shared/moments/moment_features.dart'
     show maybeShowMomentTour, momentDefaultHours, showMomentDurationPicker;
 import '../../../../shared/moments/editor/draw_layer.dart';
 import '../../../../shared/moments/editor/music_editor.dart';
@@ -1131,7 +1131,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: false
       ),
       (
-        label: 'Save',
+        label: 'Bookmark',
         icon: Icon(saveToHighlights
             ? Icons.bookmark_rounded
             : Icons.bookmark_border_rounded),
@@ -1144,7 +1144,7 @@ class _MomentComposerScreenState extends ConsumerState<MomentComposerScreen> {
         on: saveToHighlights
       ),
       (
-        label: 'Save',
+        label: 'Save to device',
         icon: const Icon(Icons.download_rounded),
         onTap: saveToDevice,
         on: false

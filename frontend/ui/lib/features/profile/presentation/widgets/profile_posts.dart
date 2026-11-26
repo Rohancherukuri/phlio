@@ -16,7 +16,7 @@ import '../../../social/presentation/widgets/social_videos_view.dart';
 import 'package:phlio/core/network/media_cache.dart';
 import '../../../../shared/content/social_comments_sheet.dart' show showSocialComments;
 import '../../../../shared/fact_checks/fact_checks.dart' show showFactCheckActions;
-import '../../../../shared/moments/moment_plus.dart' show setPostPinned, showPostQuickMenu;
+import '../../../../shared/moments/moment_features.dart' show setPostPinned, showPostQuickMenu;
 
 final publicProfileProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, id) async {

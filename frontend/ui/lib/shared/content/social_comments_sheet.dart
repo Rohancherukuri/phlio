@@ -22,7 +22,7 @@ import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'package:phlio/core/network/media_cache.dart';
 import 'dart:convert' show jsonEncode;
 import 'comment_audio.dart';
-import '../moments/moment_plus.dart' show showProfilePeek;
+import '../moments/moment_features.dart' show showProfilePeek;
 import '../../features/rooms/presentation/widgets/note_song_picker.dart' show showNoteSongPicker;
 
 String commentUrl(String id) =>

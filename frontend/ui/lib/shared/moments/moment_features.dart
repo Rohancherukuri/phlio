@@ -1,4 +1,4 @@
-// Phlio Plus for moments, posts and chats.
+// Built-in Phlio features for moments, posts and chats.
 //
 //   * [showMomentTour]        the "What's new" pages (illustration, title,
 //                             description and a "how to" row; Next / Done).
@@ -26,6 +26,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:video_player/video_player.dart';
 
 import '../../app/config/app_config.dart';
 import '../../core/di/service_locator.dart';
@@ -34,6 +35,9 @@ import '../../core/network/media_cache.dart';
 import '../../design_system/colors.dart';
 import '../../design_system/typography.dart';
 import '../../design_system/widgets/phlio_card.dart';
+import '../content/content_surface.dart' show SharedContentText;
+import '../pay/payment_message.dart' show PaymentMessageCard, parsePaymentMessage;
+import 'moments.dart' show openUserMoments;
 
 /// The lengths a moment can have, in hours.
 const momentDurations = [12, 24, 48];
@@ -93,8 +97,8 @@ String _problem(Object error, String fallback) {
 
 // -- feature tour ----------------------------------------------------------------------------
 
-class PlusFeature {
-  const PlusFeature(this.icon, this.colour, this.title, this.body, this.howIcon, this.how);
+class MomentFeature {
+  const MomentFeature(this.icon, this.colour, this.title, this.body, this.howIcon, this.how);
   final IconData icon;
   final Color colour;
   final String title, body;
@@ -102,49 +106,49 @@ class PlusFeature {
   final String how;
 }
 
-const plusFeatures = <PlusFeature>[
-  PlusFeature(Icons.visibility_off_outlined, PhlioColors.brandViolet, 'Peek at moments',
+const momentFeatures = <MomentFeature>[
+  MomentFeature(Icons.visibility_off_outlined, PhlioColors.brandViolet, 'Peek at moments',
       "See a preview of someone's moment without showing up in their viewer list.",
       Icons.touch_app_outlined, 'Press and hold a moment ring'),
-  PlusFeature(Icons.timelapse_rounded, PhlioColors.brandPeach, 'Choose how long it lasts',
+  MomentFeature(Icons.timelapse_rounded, PhlioColors.brandPeach, 'Choose how long it lasts',
       'Keep a moment up for 12, 24 or 48 hours. 24 hours is the default.',
       Icons.more_horiz_rounded, 'Tap ••• on your moment, then Moment length'),
-  PlusFeature(Icons.favorite_rounded, _heart, 'Super hearts',
+  MomentFeature(Icons.favorite_rounded, _heart, 'Super hearts',
       'Send a burst of hearts to show you really loved a moment.',
       Icons.favorite_border_rounded, 'Press and hold the heart on a moment'),
-  PlusFeature(Icons.replay_rounded, PhlioColors.brandBlue, 'Rewatch insights',
+  MomentFeature(Icons.replay_rounded, PhlioColors.brandBlue, 'Rewatch insights',
       'See how many times people came back to watch your moment again.',
       Icons.people_alt_outlined, 'Open Viewers on your moment'),
-  PlusFeature(Icons.schedule_rounded, PhlioColors.success, 'See when it was viewed',
+  MomentFeature(Icons.schedule_rounded, PhlioColors.success, 'See when it was viewed',
       'Every viewer shows the time they last watched your moment.',
       Icons.people_alt_outlined, 'Open Viewers on your moment'),
-  PlusFeature(Icons.manage_search_rounded, PhlioColors.brandPink, 'Search your viewers',
+  MomentFeature(Icons.manage_search_rounded, PhlioColors.brandPink, 'Search your viewers',
       'Find someone in your viewer list by name or username.',
       Icons.search_rounded, 'Viewers, then the search bar'),
-  PlusFeature(Icons.notifications_active_outlined, PhlioColors.warning, 'Viewer alerts',
+  MomentFeature(Icons.notifications_active_outlined, PhlioColors.warning, 'Viewer alerts',
       'Get a notification when the people you pick view your moments.',
       Icons.notifications_none_rounded, 'Viewers, then the bell'),
-  PlusFeature(Icons.groups_2_outlined, PhlioColors.brandViolet, 'Moment lists',
+  MomentFeature(Icons.groups_2_outlined, PhlioColors.brandViolet, 'Moment lists',
       'Share to different audiences: close friends, family, your team.',
       Icons.star_outline_rounded, 'Share to Close Friends, then Lists'),
-  PlusFeature(Icons.auto_awesome_rounded, PhlioColors.brandPeach, 'Spotlight your moment',
+  MomentFeature(Icons.auto_awesome_rounded, PhlioColors.brandPeach, 'Spotlight your moment',
       'Put your moment at the front of the rail for your followers. Once every 7 days.',
       Icons.more_horiz_rounded, 'Tap ••• on your moment, then Spotlight'),
-  PlusFeature(Icons.push_pin_outlined, PhlioColors.brandBlue, 'Pin up to 6 posts',
+  MomentFeature(Icons.push_pin_outlined, PhlioColors.brandBlue, 'Pin up to 6 posts',
       'Keep your favourite posts at the top of your profile.',
       Icons.touch_app_outlined, 'Press and hold a post on your profile'),
-  PlusFeature(Icons.person_pin_outlined, PhlioColors.success, 'Post only to your profile',
+  MomentFeature(Icons.person_pin_outlined, PhlioColors.success, 'Post only to your profile',
       "Share a post on your profile without it showing in your followers' feeds.",
       Icons.edit_square, 'New post, then Profile only'),
-  PlusFeature(Icons.text_fields_rounded, PhlioColors.brandPink, 'Fonts for your bio',
+  MomentFeature(Icons.text_fields_rounded, PhlioColors.brandPink, 'Fonts for your bio',
       'Give your bio a look of its own with the moment fonts.',
       Icons.edit_outlined, 'Edit profile, then Bio font'),
-  PlusFeature(Icons.mark_chat_read_outlined, PhlioColors.warning, 'Read chats quietly',
+  MomentFeature(Icons.mark_chat_read_outlined, PhlioColors.warning, 'Read chats quietly',
       'Preview messages without marking them as read. Pin and mute from there too.',
       Icons.touch_app_outlined, 'Press and hold a chat in Messages'),
 ];
 
-const _tourKey = 'phlio_plus_tour_v1';
+const _tourKey = 'phlio_whats_new_v1';
 
 /// Opens the tour once per device (the first time [context] gets here).
 Future<void> maybeShowMomentTour(BuildContext context) async {
@@ -180,7 +184,7 @@ class _TourState extends State<_Tour> {
 
   @override
   Widget build(BuildContext context) {
-    final last = page == plusFeatures.length - 1;
+    final last = page == momentFeatures.length - 1;
     return Scaffold(
       backgroundColor: PhlioColors.background,
       body: SafeArea(
@@ -203,18 +207,18 @@ class _TourState extends State<_Tour> {
           Expanded(
             child: PageView.builder(
               controller: pages,
-              itemCount: plusFeatures.length,
+              itemCount: momentFeatures.length,
               onPageChanged: (i) {
                 HapticFeedback.selectionClick();
                 setState(() => page = i);
               },
-              itemBuilder: (_, i) => _TourPage(plusFeatures[i]),
+              itemBuilder: (_, i) => _TourPage(momentFeatures[i]),
             ),
           ),
           Padding(
             padding: const EdgeInsets.only(bottom: 18),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              for (var i = 0; i < plusFeatures.length; i++)
+              for (var i = 0; i < momentFeatures.length; i++)
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -251,7 +255,7 @@ class _TourState extends State<_Tour> {
 
 class _TourPage extends StatelessWidget {
   const _TourPage(this.f);
-  final PlusFeature f;
+  final MomentFeature f;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -299,7 +303,7 @@ class _TourPage extends StatelessWidget {
 /// A little phone with the feature's icon, drawn from shapes (no photos).
 class _TourArt extends StatelessWidget {
   const _TourArt(this.f);
-  final PlusFeature f;
+  final MomentFeature f;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -363,9 +367,12 @@ class _TourArt extends StatelessWidget {
 
 // -- peek (preview a moment without being seen) ---------------------------------------------
 
-/// Long-press a ring: the moment in a card, not marked as seen.
+/// Long-press someone's picture (a ring, the rail, a comment avatar): their
+/// live moments play in a card, NOT marked as seen. [showProfile] adds
+/// "View profile" (off on their own profile page). [data] is a
+/// `GET /social/moments/user/...` result you already have.
 Future<void> showMomentPeek(BuildContext context, String user,
-    {VoidCallback? onWatch, VoidCallback? onMuted}) async {
+    {VoidCallback? onWatch, VoidCallback? onMuted, bool showProfile = true, Map? data}) async {
   HapticFeedback.mediumImpact();
   final router = GoRouter.maybeOf(context);
   final action = await showGeneralDialog<String>(
@@ -380,11 +387,15 @@ Future<void> showMomentPeek(BuildContext context, String user,
           scale: Tween<double>(begin: .92, end: 1).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
           child: child),
     ),
-    pageBuilder: (dialog, _, __) => _MomentPeek(user: user),
+    pageBuilder: (dialog, _, __) => _MomentPeek(user: user, showProfile: showProfile, initial: data),
   );
   if (!context.mounted) return;
   if (action == 'watch') {
-    onWatch?.call();
+    if (onWatch != null) {
+      onWatch();
+    } else {
+      await openUserMoments(context, user);
+    }
   } else if (action == 'profile') {
     router?.push('/creator/${Uri.encodeComponent(user)}');
   } else if (action == 'mute') {
@@ -401,58 +412,140 @@ Future<void> showMomentPeek(BuildContext context, String user,
 }
 
 class _MomentPeek extends StatefulWidget {
-  const _MomentPeek({required this.user});
+  const _MomentPeek({required this.user, this.showProfile = true, this.initial});
   final String user;
+  final bool showProfile;
+  final Map? initial;
   @override
   State<_MomentPeek> createState() => _MomentPeekState();
 }
 
-class _MomentPeekState extends State<_MomentPeek> {
+class _MomentPeekState extends State<_MomentPeek> with SingleTickerProviderStateMixin {
   Map? data;
   bool failed = false;
   int index = 0;
+  VideoPlayerController? video;
+
+  /// Each moment plays for 5 s (videos: their length, up to 15 s), then the next.
+  late final AnimationController progress = AnimationController(vsync: this, duration: const Duration(seconds: 5))
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.completed) _step(1);
+    });
+
+  List<Map> get items => (data?['items'] as List? ?? const []).cast<Map>();
 
   @override
   void initState() {
     super.initState();
-    // GET /user/... never marks anything seen; only the full viewer does.
-    getIt<ApiClient>().dio.get('/social/moments/user/${Uri.encodeComponent(widget.user)}').then((r) {
-      if (!mounted) return;
-      final d = r.data as Map;
-      final items = (d['items'] as List? ?? const []).cast<Map>();
-      final unseen = items.indexWhere((m) => m['seen'] != true);
-      setState(() {
-        data = d;
-        index = unseen < 0 ? 0 : unseen;
+    if (widget.initial != null) {
+      _ready(widget.initial!);
+    } else {
+      // GET /user/... never marks anything seen; only the full viewer does.
+      getIt<ApiClient>().dio.get('/social/moments/user/${Uri.encodeComponent(widget.user)}').then((r) {
+        if (mounted) _ready(r.data as Map);
+      }, onError: (_) {
+        if (mounted) setState(() => failed = true);
       });
-    }, onError: (_) {
-      if (mounted) setState(() => failed = true);
+    }
+  }
+
+  void _ready(Map d) {
+    final list = (d['items'] as List? ?? const []).cast<Map>();
+    final unseen = list.indexWhere((m) => m['seen'] != true);
+    setState(() {
+      data = d;
+      index = unseen < 0 ? 0 : unseen;
     });
+    _play();
+  }
+
+  Future<void> _play() async {
+    progress
+      ..stop()
+      ..reset();
+    final old = video;
+    video = null;
+    await old?.dispose();
+    if (!mounted || items.isEmpty) return;
+    final item = items[index];
+    if (item['media_kind'] == 'video' && item['media_url'] is String) {
+      final c = VideoPlayerController.networkUrl(Uri.parse(AppConfig.mediaUrl(item['media_url'] as String)));
+      video = c;
+      setState(() {});
+      try {
+        await c.initialize();
+        if (!mounted || video != c) return;
+        await c.setVolume(0); // a quiet preview
+        final length = c.value.duration;
+        progress.duration =
+            length > Duration.zero && length < const Duration(seconds: 15) ? length : const Duration(seconds: 15);
+        setState(() {});
+        await c.play();
+      } catch (_) {
+        progress.duration = const Duration(seconds: 5);
+      }
+    } else {
+      progress.duration = const Duration(seconds: 5);
+      setState(() {});
+    }
+    if (mounted) progress.forward();
+  }
+
+  void _step(int by) {
+    final next = index + by;
+    if (next < 0 || next >= items.length) {
+      if (by > 0) progress.stop(); // stay on the last one
+      return;
+    }
+    setState(() => index = next);
+    _play();
+  }
+
+  @override
+  void dispose() {
+    progress.dispose();
+    video?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final width = math.min(size.width * .74, 340.0);
-    final items = (data?['items'] as List? ?? const []).cast<Map>();
     final author = (data?['author'] as Map?) ?? const {};
     final item = items.isEmpty ? null : items[index.clamp(0, items.length - 1)];
     final picture = item == null
         ? null
-        : (item['media_kind'] == 'video' ? item['cover_url'] : (item['cover_url'] ?? item['media_url'])) as String?;
+        : (item['media_kind'] == 'video' ? item['cover_url'] : (item['media_url'] ?? item['cover_url'])) as String?;
     final created = DateTime.tryParse('${item?['created_at'] ?? ''}');
+    final playing = video != null && video!.value.isInitialized;
+    final caption = '${item?['caption'] ?? ''}'.trim();
     return SafeArea(
       child: Center(
         child: Material(
           type: MaterialType.transparency,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             GestureDetector(
-              onTap: item == null ? null : () => Navigator.pop(context, 'watch'),
-              // Tap the edges to step through their moments in the preview.
-              onHorizontalDragEnd: (d) {
-                final v = d.primaryVelocity ?? 0;
-                if (items.length < 2 || v.abs() < 200) return;
-                setState(() => index = (index + (v < 0 ? 1 : -1)).clamp(0, items.length - 1));
+              // Left third: back. Middle: open the moment. Right third: next.
+              onTapUp: item == null
+                  ? null
+                  : (d) {
+                      final x = d.localPosition.dx / width;
+                      if (x < .3) {
+                        _step(-1);
+                      } else if (x > .7) {
+                        _step(1);
+                      } else {
+                        Navigator.pop(context, 'watch');
+                      }
+                    },
+              onLongPressStart: (_) {
+                progress.stop();
+                video?.pause();
+              },
+              onLongPressEnd: (_) {
+                progress.forward();
+                video?.play();
               },
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
@@ -463,15 +556,37 @@ class _MomentPeekState extends State<_MomentPeek> {
                   child: Stack(fit: StackFit.expand, children: [
                     if (picture != null)
                       phlioNetworkImage(AppConfig.mediaUrl(picture),
-                          fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink())
-                    else if (item != null)
-                      const Center(child: Icon(Icons.play_circle_outline_rounded, color: Colors.white70, size: 56)),
+                          fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                    if (playing)
+                      FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: video!.value.size.width,
+                          height: video!.value.size.height,
+                          child: VideoPlayer(video!),
+                        ),
+                      )
+                    else if (item != null && picture == null && item['media_kind'] == 'video')
+                      const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                     if (data == null && !failed) const Center(child: CircularProgressIndicator()),
                     if (failed || (data != null && items.isEmpty))
                       Center(
-                          child: Text(failed ? 'Could not load this moment.' : 'This moment has ended.',
+                          child: Text(failed ? 'Could not load this moment.' : 'No live moments right now.',
                               style: const TextStyle(color: Colors.white70))),
-                    if (items.length > 1)
+                    const Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      height: 90,
+                      child: DecoratedBox(
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [Color(0x99000000), Color(0x00000000)]))),
+                    ),
+                    if (items.isNotEmpty)
                       Positioned(
                         left: 10,
                         right: 10,
@@ -482,9 +597,21 @@ class _MomentPeekState extends State<_MomentPeek> {
                               child: Container(
                                 height: 3,
                                 margin: const EdgeInsets.symmetric(horizontal: 2),
-                                decoration: BoxDecoration(
-                                    color: i == index ? Colors.white : Colors.white38,
-                                    borderRadius: BorderRadius.circular(2)),
+                                clipBehavior: Clip.antiAlias,
+                                decoration:
+                                    BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2)),
+                                child: i < index
+                                    ? const ColoredBox(color: Colors.white)
+                                    : i == index
+                                        ? AnimatedBuilder(
+                                            animation: progress,
+                                            builder: (_, __) => FractionallySizedBox(
+                                              alignment: Alignment.centerLeft,
+                                              widthFactor: progress.value,
+                                              child: const ColoredBox(color: Colors.white),
+                                            ),
+                                          )
+                                        : const SizedBox.shrink(),
                               ),
                             ),
                         ]),
@@ -493,7 +620,7 @@ class _MomentPeekState extends State<_MomentPeek> {
                       Positioned(
                         left: 12,
                         right: 12,
-                        top: items.length > 1 ? 22 : 12,
+                        top: 22,
                         child: Row(children: [
                           PhlioAvatar(
                               name: '${author['display_name'] ?? ''}',
@@ -516,6 +643,20 @@ class _MomentPeekState extends State<_MomentPeek> {
                           ],
                         ]),
                       ),
+                    if (caption.isNotEmpty)
+                      Positioned(
+                        left: 14,
+                        right: 14,
+                        bottom: 48,
+                        child: Text(caption,
+                            textAlign: TextAlign.center,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                shadows: [Shadow(color: Colors.black87, blurRadius: 10)])),
+                      ),
                     Positioned(
                       left: 12,
                       bottom: 12,
@@ -526,7 +667,7 @@ class _MomentPeekState extends State<_MomentPeek> {
                         child: const Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(Icons.visibility_off_outlined, color: Colors.white, size: 14),
                           SizedBox(width: 6),
-                          Text("Peeking · they won't see you",
+                          Text("Preview · they won't see you",
                               style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                         ]),
                       ),
@@ -537,7 +678,14 @@ class _MomentPeekState extends State<_MomentPeek> {
             ),
             const SizedBox(height: 12),
             _MenuCard(width: width, children: [
-              _MenuRow(icon: Icons.account_circle_outlined, label: 'View profile', onTap: () => Navigator.pop(context, 'profile')),
+              if (item != null)
+                _MenuRow(
+                    icon: Icons.play_circle_outline_rounded,
+                    label: 'Watch moment',
+                    onTap: () => Navigator.pop(context, 'watch')),
+              if (widget.showProfile)
+                _MenuRow(
+                    icon: Icons.account_circle_outlined, label: 'View profile', onTap: () => Navigator.pop(context, 'profile')),
               _MenuRow(icon: Icons.notifications_off_outlined, label: 'Mute', onTap: () => Navigator.pop(context, 'mute')),
             ]),
           ]),
@@ -1083,13 +1231,23 @@ class _PeoplePickerState extends State<_PeoplePicker> {
 
 // -- profile peek (comment avatars) ----------------------------------------------------------
 
-/// [person] needs `username`; `display_name` and `avatar_url` show at once
-/// while the rest of the profile loads.
+/// [person] needs `username` (or `id`). If they have a live moment, the
+/// moment preview opens; otherwise a profile card (`display_name` and
+/// `avatar_url` show at once while the rest loads).
 Future<void> showProfilePeek(BuildContext context, Map person) async {
   HapticFeedback.mediumImpact();
   final router = GoRouter.maybeOf(context);
   final username = '${person['username'] ?? person['id'] ?? ''}'.replaceFirst('@', '');
   if (username.isEmpty) return;
+  // Someone with a live moment: preview the moment (not marked as seen).
+  try {
+    final data = (await getIt<ApiClient>().dio.get('/social/moments/user/${Uri.encodeComponent(username)}')).data;
+    if (data is Map && (data['items'] as List? ?? const []).isNotEmpty) {
+      if (context.mounted) await showMomentPeek(context, username, data: data);
+      return;
+    }
+  } catch (_) {}
+  if (!context.mounted) return;
   final go = await showGeneralDialog<bool>(
     context: context,
     barrierDismissible: true,
@@ -1238,17 +1396,33 @@ Future<String?> showChatPreview(BuildContext context,
                           }
                           final list = [...s.data!]
                             ..sort((a, b) => '${a['created_at']}'.compareTo('${b['created_at']}'));
-                          final last = list.length > 12 ? list.sublist(list.length - 12) : list;
+                          // The latest messages, newest at the bottom (where the chat opens).
+                          final last = list.length > 8 ? list.sublist(list.length - 8) : list;
                           if (last.isEmpty) {
                             return const Padding(
                                 padding: EdgeInsets.all(24),
                                 child: Text('No messages yet.', style: TextStyle(color: PhlioColors.textMuted)));
                           }
-                          return ListView(
-                            shrinkWrap: true,
-                            reverse: true,
-                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                            children: [for (final m in last.reversed) _PreviewBubble(m, mine: m['sender_id'] == meId)],
+                          final latest = DateTime.tryParse('${last.last['created_at'] ?? ''}');
+                          // Taps go to the chat (cards in the preview don't open on their own).
+                          return IgnorePointer(
+                            child: ListView(
+                              shrinkWrap: true,
+                              reverse: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                              children: [
+                                if (latest != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                        'Last message · ${timeago.format(latest)}',
+                                        textAlign: _sentByMe(last.last, meId) ? TextAlign.right : TextAlign.left,
+                                        style: const TextStyle(color: PhlioColors.textMuted, fontSize: 11.5)),
+                                  ),
+                                for (final m in last.reversed) _PreviewBubble(m, mine: _sentByMe(m, meId)),
+                              ],
+                            ),
                           );
                         },
                       ),
@@ -1297,35 +1471,79 @@ Future<String?> showChatPreview(BuildContext context,
   );
 }
 
+/// One message in the chat preview, drawn like the chat: shared posts,
+/// clips, videos, profiles, moments and places are cards (never links),
+/// payments the payment card, attachments a labelled chip.
 class _PreviewBubble extends StatelessWidget {
   const _PreviewBubble(this.m, {required this.mine});
   final Map m;
   final bool mine;
 
+  static String _attachment(List files) {
+    final kinds = {for (final a in files) '${(a as Map)['kind'] ?? 'file'}'};
+    if (kinds.length == 1) {
+      return switch (kinds.first) {
+        'image' => files.length > 1 ? '📷 ${files.length} photos' : '📷 Photo',
+        'video' => '🎬 Video',
+        'audio' || 'voice' => '🎤 Voice message',
+        'gif' => 'GIF',
+        'sticker' => 'Sticker',
+        _ => '📎 Attachment',
+      };
+    }
+    return '📎 ${files.length} attachments';
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = '${m['text'] ?? ''}'.trim();
-    final files = (m['attachments'] as List?)?.length ?? 0;
-    final shown = text.isNotEmpty
-        ? (text.length > 160 ? '${text.substring(0, 160)}…' : text)
-        : files > 0
-            ? '📎 Attachment'
-            : 'Message';
+    final files = (m['attachments'] as List?) ?? const [];
+    final style = TextStyle(color: mine ? Colors.white : PhlioColors.textPrimary, fontSize: 14);
+    final payment = parsePaymentMessage(text);
+    final Widget body;
+    var bare = false; // cards bring their own surface
+    if (payment != null) {
+      body = PaymentMessageCard(payment: payment, mine: mine);
+      bare = true;
+    } else if (text.contains('phlio://')) {
+      body = SharedContentText(text, mine: mine, style: style);
+      bare = true;
+    } else if (text.isNotEmpty) {
+      body = Text(text.length > 220 ? '${text.substring(0, 220)}…' : text, style: style);
+    } else {
+      body = Text(files.isEmpty ? 'Message' : _attachment(files), style: style);
+    }
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 3),
-        constraints: const BoxConstraints(maxWidth: 260),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: mine ? PhlioColors.brandViolet : PhlioColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(18),
+        constraints: const BoxConstraints(maxWidth: 270),
+        padding: bare ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: bare
+            ? null
+            : BoxDecoration(
+                color: mine ? PhlioColors.brandViolet : PhlioColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(18),
+              ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            body,
+            if (text.isNotEmpty && files.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(_attachment(files),
+                    style: style.copyWith(fontSize: 12.5, color: mine ? Colors.white70 : PhlioColors.textMuted)),
+              ),
+          ],
         ),
-        child: Text(shown, style: TextStyle(color: mine ? Colors.white : PhlioColors.textPrimary, fontSize: 14)),
       ),
     );
   }
 }
+
+bool _sentByMe(Map m, String? meId) => m['sender_id'] == meId;
 
 /// Saves a chat preference (`pinned`, `muted`, `muted_calls`).
 Future<bool> saveChatPref(BuildContext context, String peerId, Map<String, bool> body) async {

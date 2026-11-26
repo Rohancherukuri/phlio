@@ -29,7 +29,7 @@ class _PostComposerState extends ConsumerState<PostComposer> {
   Map<String, dynamic>? poll;
   bool busy = false;
 
-  /// Phlio Plus: post on your profile only (not in followers' feeds).
+  /// Post on your profile only (not in followers' feeds).
   bool profileOnly = false;
   static const accent = PhlioColors.brandOrange;
   final List<Map<String, dynamic>> pendingPosts = [];
