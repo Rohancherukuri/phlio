@@ -55,14 +55,6 @@ class PayScreen extends ConsumerWidget {
                   builder: (_) =>
                       const PlatformCatalogScreen(platform: 'pay'))))
         ],
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Phlio Pay'),
-            Text('Scan. Pay. Earn.',
-                style: PhlioTypography.caption.copyWith(height: 1.2)),
-          ],
-        ),
       ),
       body: walletAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

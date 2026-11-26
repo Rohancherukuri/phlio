@@ -218,10 +218,6 @@ class _Header extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Book',
-                        style: PhlioTypography.headline.copyWith(
-                            fontSize: 30, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 2),
                     Row(children: [
                       const BookGlyph('pin',
                           size: 15, color: PhlioColors.brandPeach),

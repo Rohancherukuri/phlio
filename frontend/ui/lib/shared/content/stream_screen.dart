@@ -284,7 +284,6 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
     return Scaffold(
       backgroundColor: audioMode ? const Color(0xff121212) : Colors.black,
       appBar: AppBar(
-        title: const Text('Phlio Stream'),
         actions: [
           const PhlioNotificationsButton(),
           IconButton(

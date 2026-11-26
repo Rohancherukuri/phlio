@@ -42,7 +42,7 @@ class ShopScreen extends ConsumerWidget {
         ),
         const PhlioNotificationsButton(),
       ],
-          title: Text('Phlio Shop', style: PhlioTypography.displayMedium)),
+          ),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(productsControllerProvider);

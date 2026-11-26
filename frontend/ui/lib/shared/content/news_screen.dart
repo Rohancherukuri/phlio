@@ -49,8 +49,9 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
-                  child: Text(widget.explore ? 'Discover' : 'Phlio News',
-                      style: PhlioTypography.displayMedium)),
+                  child: widget.explore
+                      ? Text('Discover', style: PhlioTypography.displayMedium)
+                      : const SizedBox.shrink()),
               const PhlioNotificationsButton()
             ]),
             const SizedBox(height: 24),
