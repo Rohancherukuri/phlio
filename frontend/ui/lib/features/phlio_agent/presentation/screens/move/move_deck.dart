@@ -2,9 +2,10 @@
 //
 // Recent activities from everyone, as a deck: the front card shows the
 // person, title, sport, time and kudos; the next two peek out above it.
-// Tap (or swipe) the deck and the front card slides away while the one
-// behind rises into its place; the deck loops. The round button opens the
-// activity (route replay, stats, kudos and comments).
+// Tap or swipe right for the next one: the front card slides off to the
+// right while the one behind moves forward. Swipe left to bring the
+// previous one back in from the left. The deck loops. The round button
+// opens the activity (route replay, stats, kudos and comments).
 //
 // Backend: GET /activities/feed (backend/app/api/v1/activities.py).
 
@@ -54,13 +55,31 @@ class _MoveActivityDeckState extends ConsumerState<MoveActivityDeck> with Single
     super.dispose();
   }
 
+  /// Which way the front card leaves: +1 to the right (next), -1 to the left.
+  int _dir = 1;
+
+  /// Next activity: the front card slides off to the right and the one
+  /// behind it moves forward.
   Future<void> _next(int count) async {
     if (count < 2 || _c.isAnimating) return;
     HapticFeedback.selectionClick();
+    setState(() => _dir = 1);
     await _c.forward(from: 0);
     if (!mounted) return;
     setState(() => _front = (_front + 1) % count);
     _c.value = 0;
+  }
+
+  /// Previous activity: it slides back in from the left onto the stack.
+  Future<void> _previous(int count) async {
+    if (count < 2 || _c.isAnimating) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _dir = -1;
+      _front = (_front - 1 + count) % count;
+    });
+    _c.value = 1;
+    await _c.reverse(from: 1);
   }
 
   @override
@@ -95,8 +114,14 @@ class _MoveActivityDeckState extends ConsumerState<MoveActivityDeck> with Single
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _next(n),
-          onVerticalDragEnd: (d) {
-            if ((d.primaryVelocity ?? 0).abs() > 120) _next(n);
+          // Swipe right for the next activity, left to go back.
+          onHorizontalDragEnd: (d) {
+            final v = d.primaryVelocity ?? 0;
+            if (v > 120) {
+              _next(n);
+            } else if (v < -120) {
+              _previous(n);
+            }
           },
           child: SizedBox(
             height: _cardHeight + _peek * 2,
@@ -117,10 +142,13 @@ class _MoveActivityDeckState extends ConsumerState<MoveActivityDeck> with Single
   }
 
   Widget _placed(Map<String, dynamic> a, int d, double t, int n) {
-    double y, scale, opacity, shade;
+    double x = 0, turn = 0, y, scale, opacity, shade;
     if (d == 0) {
-      // The front card slides down and fades as the next one takes its place.
-      y = _peek * 2 + t * 70;
+      // The front card slides sideways (the swipe's direction) with a slight
+      // tilt and fades, while the next one takes its place.
+      x = _dir * t * 160;
+      turn = _dir * t * .06;
+      y = _peek * 2 + t * 12;
       scale = 1 - .04 * t;
       opacity = (1 - t * 1.3).clamp(0.0, 1.0);
       shade = 0;
@@ -140,15 +168,21 @@ class _MoveActivityDeckState extends ConsumerState<MoveActivityDeck> with Single
       height: _cardHeight,
       child: Opacity(
         opacity: opacity,
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.topCenter,
-          child: _ActivityCard(
-            key: ValueKey('${a['id']}'),
-            a: a,
-            shade: shade,
-            showContent: full,
-            onNext: () => _next(n),
+        child: Transform.translate(
+          offset: Offset(x, 0),
+          child: Transform.rotate(
+            angle: turn,
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.topCenter,
+              child: _ActivityCard(
+                key: ValueKey('${a['id']}'),
+                a: a,
+                shade: shade,
+                showContent: full,
+                onNext: () => _next(n),
+              ),
+            ),
           ),
         ),
       ),
