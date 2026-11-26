@@ -62,3 +62,34 @@ async def test_places_search_posts_and_area(client: AsyncClient, auth_headers: d
     assert r.json() == {"saved": True}
     r = await client.get("/api/v1/explore/places/posts", headers=auth_headers, params={"lat": cafe["lat"], "lng": cafe["lng"]})
     assert r.json()["place"]["saved"] is True
+
+
+async def test_share_place_to_dm_and_room(client: AsyncClient) -> None:
+    from urllib.parse import parse_qs, urlparse
+
+    arjun = await login(client, "arjun")
+    place = {"name": "Cubbon  Park", "lat": 12.9763, "lng": 77.5929, "address": "Kasturba Road, Bengaluru",
+             "cover": "javascript:alert(1)"}
+    r = await client.post("/api/v1/explore/places/share", headers=arjun, params=place,
+                          json={"destination": "dm", "target": "neha", "message": "Run here on Sunday?"})
+    assert r.status_code == 201, r.text
+    neha = await login(client, "neha")
+    threads = (await client.get("/api/v1/messaging/threads", headers=neha)).json()
+    assert threads
+    rooms = (await client.get("/api/v1/sharing/destinations", headers=arjun)).json()["rooms"]
+    if rooms:
+        r = await client.post("/api/v1/explore/places/share", headers=arjun, params={k: v for k, v in place.items() if k != "cover"},
+                              json={"destination": "room", "target": rooms[0]["id"]})
+        assert r.status_code == 201, r.text
+    app = client._transport.app  # type: ignore[attr-defined]
+    c = app.state.container
+    sent = [m for m in c.messaging_service.db.execute("SELECT text FROM messages").fetchall()]
+    texts = [m["text"] for m in sent]
+    card = next(t for t in texts if "phlio://place?" in t)
+    assert card.startswith("Shared: 📍 Cubbon Park\n")
+    q = parse_qs(urlparse(card.split("\n")[1]).query)
+    assert q["lat"] == ["12.976300"] and q["address"] == ["Kasturba Road, Bengaluru"] and "cover" not in q
+    assert "Run here on Sunday?" in texts
+    bad = await client.post("/api/v1/explore/places/share", headers=arjun, params={"name": "x", "lat": 200, "lng": 0},
+                            json={"destination": "dm", "target": "neha"})
+    assert bad.status_code == 422

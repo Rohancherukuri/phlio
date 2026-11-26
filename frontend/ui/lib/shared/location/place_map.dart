@@ -27,7 +27,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/service_locator.dart';
 import '../../core/network/api_client.dart';
@@ -38,6 +37,7 @@ import 'location_message.dart' show openInMaps;
 import 'location_service.dart';
 import 'location_share_screen.dart' show phlioMapStyle;
 import 'places_api.dart' as osm;
+import 'place_share.dart' show showPlaceShare;
 
 Dio get _dio => getIt<ApiClient>().dio;
 
@@ -597,9 +597,8 @@ class PlaceSheetBodyState extends State<PlaceSheetBody> {
           Expanded(
             child: _ActionButton(
               label: 'Share',
-              onTap: () => SharePlus.instance.share(ShareParams(
-                text: '${_place['name']}\nhttps://www.google.com/maps/search/?api=1&query=${_at.latitude},${_at.longitude}',
-              )),
+              // To friends, groups or Rooms as a place card (or outside Phlio).
+              onTap: () => showPlaceShare(context, _place),
             ),
           ),
           const SizedBox(width: 8),

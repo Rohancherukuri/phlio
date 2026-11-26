@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:phlio/design_system/colors.dart';
 import 'package:phlio/design_system/typography.dart';
 import 'package:phlio/design_system/widgets/phlio_card.dart' show PhlioAvatar;
 
@@ -23,11 +24,13 @@ final moveFeedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
   return [for (final a in ((res.data as Map)['items'] as List? ?? const [])) Map<String, dynamic>.from(a as Map)];
 });
 
-// Card palette: light cards on the dark feed, like a stack of tickets.
-const _card = Color(0xFFF7F7F5);
-const _chip = Color(0xFFEDEDEA);
-const _ink = Color(0xFF111111);
-const _inkSoft = Color(0xFF5B5B5B);
+// Phlio's dark surfaces, flat: no glow, gradient or shadow. The front card
+// is the lightest; cards behind step down towards the feed's background.
+const _card = PhlioColors.surfaceElevated;
+const _cardBehind = PhlioColors.surface;
+const _chip = PhlioColors.surfaceInput;
+const _ink = PhlioColors.textPrimary;
+const _inkSoft = PhlioColors.textMuted;
 
 const _cardHeight = 286.0;
 const _peek = 13.0; // how much of each card behind shows above
@@ -162,12 +165,12 @@ class _ActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = Color.lerp(_card, const Color(0xFFBDBDB8), shade.clamp(0.0, 1.0))!;
+    final bg = Color.lerp(_card, _cardBehind, (shade * 7).clamp(0.0, 1.0))!;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .28), blurRadius: 18, offset: const Offset(0, 6))],
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: PhlioColors.border),
       ),
       child: showContent ? _content(context) : const SizedBox.expand(),
     );
@@ -183,22 +186,25 @@ class _ActivityCard extends StatelessWidget {
     final kudos = (a['kudos_count'] as num?)?.toInt() ?? 0;
     final description = '${a['description'] ?? ''}'.trim();
 
+    final elevation = (a['elevation_m'] as num?) ?? 0;
+    final calories = (a['calories'] as num?) ?? 0;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Flexible(
             child: Container(
-              padding: const EdgeInsets.fromLTRB(4, 4, 16, 4),
+              padding: const EdgeInsets.fromLTRB(4, 4, 14, 4),
               decoration: BoxDecoration(color: _chip, borderRadius: BorderRadius.circular(30)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                PhlioAvatar(name: name, imageUrl: author['avatar_url'] as String?, profileId: author['id'] as String?, size: 40),
-                const SizedBox(width: 10),
+                PhlioAvatar(name: name, imageUrl: author['avatar_url'] as String?, profileId: author['id'] as String?, size: 36),
+                const SizedBox(width: 9),
                 Flexible(
                   child: Text(name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: _ink, fontSize: 15, fontWeight: FontWeight.w600)),
+                      style: PhlioTypography.bodyStrong.copyWith(color: _ink)),
                 ),
               ]),
             ),
@@ -206,53 +212,66 @@ class _ActivityCard extends StatelessWidget {
           const Spacer(),
           _RoundButton(
             color: _chip,
+            size: 44,
             onTap: onNext,
             tooltip: 'Next activity',
             child: const Icon(Icons.unfold_more_rounded, color: _ink, size: 22),
           ),
         ]),
-        const SizedBox(height: 14),
-        Text('${a['title'] ?? ''}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: _ink, fontSize: 27, height: 1.15, fontWeight: FontWeight.w500, letterSpacing: -.3)),
-        const SizedBox(height: 4),
-        Text(description.isNotEmpty ? description : '${sport.label} · ${_when(a['started_at'] as String?)}',
-            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _inkSoft, fontSize: 13.5)),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const NeverScrollableScrollPhysics(),
-          child: Row(children: [
-            _Chip(icon: sport.icon, text: sport.distance && dist > 0 ? '${(dist / 1000).toStringAsFixed(1)} km' : sport.label),
-            const SizedBox(width: 8),
-            _Chip(icon: Icons.schedule_rounded, text: _span(a['started_at'] as String?, a['elapsed_s'] as num? ?? moving)),
-            if (sport.distance && dist > 0) ...[
-              const SizedBox(width: 8),
-              _Chip(
-                icon: Icons.speed_rounded,
-                text: sport.pace ? '${fmtPace(a['pace_s_per_km'] as num?)} /km' : '${a['speed_kmh'] ?? 0} km/h',
-              ),
-            ],
-          ]),
+        const SizedBox(height: 10),
+        // Everything between the header and the footer scrolls when it
+        // doesn't fit (long titles, descriptions, extra stats).
+        Expanded(
+          child: Scrollbar(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(right: 6, bottom: 4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${a['title'] ?? ''}',
+                    style: PhlioTypography.headline.copyWith(color: _ink, fontSize: 24, height: 1.2, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text('${sport.label} · ${_when(a['started_at'] as String?)}',
+                    style: PhlioTypography.caption.copyWith(color: moveAccent, fontWeight: FontWeight.w700)),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(description, style: PhlioTypography.body.copyWith(color: PhlioColors.textSecondary, height: 1.35)),
+                ],
+                const SizedBox(height: 10),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  _Chip(
+                      icon: sport.icon,
+                      accent: true,
+                      text: sport.distance && dist > 0 ? '${(dist / 1000).toStringAsFixed(1)} km' : sport.label),
+                  _Chip(icon: Icons.schedule_rounded, text: _span(a['started_at'] as String?, a['elapsed_s'] as num? ?? moving)),
+                  _Chip(icon: Icons.timer_outlined, text: fmtShortDuration(moving)),
+                  if (sport.distance && dist > 0)
+                    _Chip(
+                      icon: Icons.speed_rounded,
+                      text: sport.pace ? '${fmtPace(a['pace_s_per_km'] as num?)} /km' : '${a['speed_kmh'] ?? 0} km/h',
+                    ),
+                  if (elevation > 0) _Chip(icon: Icons.terrain_rounded, text: '${elevation.round()} m climb'),
+                  if (calories > 0) _Chip(icon: Icons.local_fire_department_outlined, text: '${calories.round()} kcal'),
+                ]),
+              ]),
+            ),
+          ),
         ),
-        const Spacer(),
+        const SizedBox(height: 10),
         Row(children: [
           if (faces.isEmpty)
-            const Text('Be the first to give kudos', style: TextStyle(color: _inkSoft, fontSize: 13))
+            Text('Be the first to give kudos', style: PhlioTypography.caption.copyWith(color: _inkSoft))
           else
             _Faces(faces: faces, extra: kudos - faces.length),
           const Spacer(),
           _RoundButton(
-            color: _ink,
-            size: 56,
+            color: moveAccent,
+            size: 52,
             tooltip: 'Open activity',
             onTap: () {
               HapticFeedback.selectionClick();
               Navigator.of(context, rootNavigator: true)
                   .push(moveActivityRoute('${a['id']}', heroImage: a['image_url'] as String?));
             },
-            child: const Icon(Icons.north_east_rounded, color: Colors.white, size: 24),
+            child: const Icon(Icons.north_east_rounded, color: PhlioColors.textOnBrand, size: 24),
           ),
         ]),
       ]),
@@ -281,18 +300,19 @@ class _ActivityCard extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.icon, required this.text});
+  const _Chip({required this.icon, required this.text, this.accent = false});
   final IconData icon;
   final String text;
+  final bool accent;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(color: _chip, borderRadius: BorderRadius.circular(20)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 16, color: _ink),
+          Icon(icon, size: 16, color: accent ? moveAccent : PhlioColors.textSecondary),
           const SizedBox(width: 6),
-          Text(text, style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text(text, style: PhlioTypography.caption.copyWith(color: _ink, fontWeight: FontWeight.w600)),
         ]),
       );
 }
@@ -331,7 +351,7 @@ class _Faces extends StatelessWidget {
               height: size,
               alignment: Alignment.center,
               decoration: BoxDecoration(color: _chip, shape: BoxShape.circle, border: Border.all(color: _card, width: 2.5)),
-              child: Text('+$extra', style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w600)),
+              child: Text('+$extra', style: PhlioTypography.caption.copyWith(color: _ink, fontWeight: FontWeight.w700)),
             ),
           ),
       ]),

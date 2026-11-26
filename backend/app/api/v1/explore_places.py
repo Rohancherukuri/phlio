@@ -164,3 +164,41 @@ async def save_place(body: dict, user=Depends(get_current_user), c=Depends(get_c
     else:
         await c.graph.store.delete(rid)
     return {"saved": bool(body.get("saved", True))}
+
+
+# -- sharing a place to people, groups and rooms ---------------------------------------------------
+
+from urllib.parse import urlencode  # noqa: E402
+
+from app.api.v1.content import ShareIn, deliver_text  # noqa: E402
+
+
+def place_link(name: str, lat: float, lng: float, address: str = "", cover: str | None = None) -> str:
+    """``phlio://place?...``: the app draws it as a place card that opens the map."""
+    fields = {"name": name, "lat": f"{lat:.6f}", "lng": f"{lng:.6f}"}
+    if address:
+        fields["address"] = address
+    if cover:
+        fields["cover"] = cover
+    return "phlio://place?" + urlencode(fields)
+
+
+@router.post("/share", status_code=201)
+async def share_place(
+    body: ShareIn,
+    name: str = Query(..., min_length=1, max_length=120),
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    address: str = Query("", max_length=240),
+    cover: str | None = Query(None, max_length=600),
+    user=Depends(get_current_user),
+    c=Depends(get_container),
+):
+    """Sends a place as a card to a DM, a group, a new group or a room (same
+    body as content shares). Tapping the card opens the place on the map."""
+    await c.cache.rate_limit(user.id, "share", 30)
+    if cover and not (cover.startswith("/media/") or cover.startswith("https://")):
+        cover = None
+    name = " ".join(name.split())
+    text = f"Shared: 📍 {name}\n{place_link(name, lat, lng, ' '.join(address.split()), cover)}"
+    return await deliver_text(c, user, body, text)

@@ -10,6 +10,7 @@ import '../../features/profile/presentation/controllers/avatar_controller.dart';
 import 'dart:ui' show FontFeature;
 import 'social_comments_sheet.dart';
 import '../social/profile_share_card.dart';
+import '../location/place_share.dart' show PlaceShareCard, parsePlaceShare;
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1806,6 +1807,7 @@ class SharedContentText extends StatelessWidget {
     final path = sharedContentPath(text);
     final creator = _creator.firstMatch(text)?.group(1);
     final moment = _moment.firstMatch(text)?.group(1);
+    final place = parsePlaceShare(text);
     // The words around the link ("Shared: …" boilerplate removed).
     final caption = text
         .split('\n')
@@ -1814,7 +1816,9 @@ class SharedContentText extends StatelessWidget {
         .join('\n')
         .trim();
     Widget? card;
-    if (path != null) {
+    if (place != null) {
+      card = PlaceShareCard(place: place, mine: mine);
+    } else if (path != null) {
       card = SharedContentCard(path: path, mine: mine);
     } else if (creator != null) {
       card = ProfileShareCard(username: Uri.decodeComponent(creator), mine: mine);
